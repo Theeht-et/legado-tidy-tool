@@ -168,12 +168,12 @@ private fun render(event: PipelineEvent) {
         }
         is PipelineEvent.Progress -> {
             // 进度写同一行；每 20 个刷新一次，避免几百个源刷屏。
-            print("\\r  ${event.done}/${event.total}（可用 ${event.ok}，失败 ${event.failed}）")
+            print("\r  ${event.done}/${event.total}（可用 ${event.ok}，失败 ${event.failed}）")
             System.out.flush()
         }
         is PipelineEvent.PhaseFinished -> {
             val sec = "%.1f".format(event.elapsedMs / 1000.0)
-            println("\\n  ${event.phase.label} 完成：${event.note}（${sec}s）")
+            println("\n  ${event.phase.label} 完成：${event.note}（${sec}s）")
         }
         is PipelineEvent.Failed -> System.err.println("失败：${event.message}")
     }
