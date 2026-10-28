@@ -35,7 +35,14 @@ enum class Phase(val label: String) {
 
 sealed interface PipelineEvent {
     data class PhaseStarted(val phase: Phase, val total: Int) : PipelineEvent
-    data class Progress(val phase: Phase, val done: Int, val total: Int, val ok: Int = 0, val failed: Int = 0) : PipelineEvent
+    data class Progress(
+        val phase: Phase,
+        val done: Int,
+        val total: Int,
+        val ok: Int = 0,
+        val failed: Int = 0,
+    ) : PipelineEvent
+
     data class PhaseFinished(val phase: Phase, val elapsedMs: Long, val note: String = "") : PipelineEvent
     data class Log(val message: String) : PipelineEvent
     data class Failed(val phase: Phase, val message: String, val cause: String? = null) : PipelineEvent
@@ -46,7 +53,7 @@ data class PipelineConfig(
     val probe: ProbeOptions = ProbeOptions(),
     val organize: OrganizeConfig = OrganizeConfig(),
     val export: ExportConfig = ExportConfig(),
-    /** 并发上限。超过 200 后吞吐提升有限，超时却会成批出现。 */
+    /** 并发上限。超过 200 后挠吐提升有限，超时却会成批出现。 */
     val concurrency: Int = 200,
     val skipProbe: Boolean = false,
     /** null 表示不导出（只跑前三个阶段）。 */
@@ -69,8 +76,8 @@ data class PipelineResult(
 /**
  * S1 → S2 → S3 → S4 的编排。
  *
- * 这里只关心「顺序、进度、并发」；具体怎么探测由 [ProbeEngine] 提供。
- * 故意不抛异常中断全流程：单源失败只记录，不拖垮整轮。
+ * 只管「顺序、进度、并发」；具体怎么探测由 [ProbeEngine] 提供。
+ * 单源失败只记录，不中断整轮；阶段异常会包成 [PipelineEvent.Failed] 再抛出。
  */
 class Pipeline(private val engine: ProbeEngine?) {
 
@@ -78,76 +85,77 @@ class Pipeline(private val engine: ProbeEngine?) {
         sources: List<BookSourceDoc>,
         config: PipelineConfig = PipelineConfig(),
         emit: suspend (PipelineEvent) -> Unit = { _ -> },
-    ): PipelineResult {
+    ): PipelineResult = coroutineScope {
         val events = Channel<PipelineEvent>(Channel.BUFFERED)
-        val pump = emitEvents(events, emit)
+        val pump = launch { for (e in events) emit(e) }
 
-        // S1
-        events.send(PipelineEvent.PhaseStarted(Phase.DEDUP, sources.size))
-        var mark = TimeSource.Monotonic.markNow()
-        val dedup = Deduper.run(sources, config.dedup)
-        events.send(
-            PipelineEvent.PhaseFinished(
-                Phase.DEDUP, mark.elapsedNow().inWholeMilliseconds,
-                "重复组 ${dedup.groups.size}，建议保留 ${dedup.keepCount}/${dedup.total}",
-            )
-        )
-
-        // S2
-        val probeResults: Map<Int, ProbeResult> = when {
-            config.skipProbe || engine == null -> {
-                events.send(PipelineEvent.PhaseStarted(Phase.PROBE, sources.size))
-                val skipped = sources.indices.associateWith { i ->
-                    ProbeResult(i, if (engine == null) ProbeStatus.SKIPPED else ProbeStatus.SKIPPED, detail = "跳过校验")
-                }
-                events.send(PipelineEvent.PhaseFinished(Phase.PROBE, 0, "已跳过"))
-                skipped
-            }
-            else -> {
-                events.send(PipelineEvent.PhaseStarted(Phase.PROBE, sources.size))
-                mark = TimeSource.Monotonic.markNow()
-                val results = probeAll(sources, config, events)
-                val ok = results.values.count { it.status == ProbeStatus.OK }
-                events.send(
-                    PipelineEvent.PhaseFinished(
-                        Phase.PROBE, mark.elapsedNow().inWholeMilliseconds,
-                        "可用 $ok/${results.size}",
-                    )
-                )
-                results
-            }
-        }
-
-        // S3
-        events.send(PipelineEvent.PhaseStarted(Phase.ORGANIZE, sources.size))
-        mark = TimeSource.Monotonic.markNow()
-        val organize = Organizer.run(sources, probeResults, config.organize)
-        events.send(PipelineEvent.PhaseFinished(Phase.ORGANIZE, mark.elapsedNow().inWholeMilliseconds, "分组 ${organize.pools.size}"))
-
-        // S4
-        var exported: ExportResult? = null
-        val dir = config.exportDir
-        if (dir != null) {
-            events.send(PipelineEvent.PhaseStarted(Phase.EXPORT, sources.size))
-            mark = TimeSource.Monotonic.markNow()
-            val raws = sources.map { it.raw }
-            exported = if (config.exportFileName != null) {
-                Exporter.write(raws, organize.sources, dir, config.exportFileName, config.export)
-            } else {
-                Exporter.write(raws, organize.sources, dir, Exporter.defaultFileName(), config.export)
-            }
+        try {
+            // ---- S1 去重 ----
+            events.send(PipelineEvent.PhaseStarted(Phase.DEDUP, sources.size))
+            var mark = TimeSource.Monotonic.markNow()
+            val dedup = Deduper.run(sources, config.dedup)
             events.send(
                 PipelineEvent.PhaseFinished(
-                    Phase.EXPORT, mark.elapsedNow().inWholeMilliseconds,
-                    "${exported!!.count} 个源 → ${exported!!.file}",
+                    Phase.DEDUP,
+                    mark.elapsedNow().inWholeMilliseconds,
+                    "重复组 ${dedup.groups.size}，建议保留 ${dedup.keepCount}/${dedup.total}",
                 )
             )
+
+            // ---- S2 校验 ----
+            events.send(PipelineEvent.PhaseStarted(Phase.PROBE, sources.size))
+            mark = TimeSource.Monotonic.markNow()
+            val probeResults: Map<Int, ProbeResult> = when {
+                config.skipProbe || engine == null -> sources.indices.associateWith { i ->
+                    ProbeResult(i, ProbeStatus.SKIPPED, detail = "已跳过校验")
+                }
+                else -> probeAll(sources, config, events)
+            }
+            val ok = probeResults.values.count { it.status == ProbeStatus.OK }
+            events.send(
+                PipelineEvent.PhaseFinished(
+                    Phase.PROBE,
+                    mark.elapsedNow().inWholeMilliseconds,
+                    if (config.skipProbe || engine == null) "已跳过" else "可用 $ok/${probeResults.size}",
+                )
+            )
+
+            // ---- S3 整理 ----
+            events.send(PipelineEvent.PhaseStarted(Phase.ORGANIZE, sources.size))
+            mark = TimeSource.Monotonic.markNow()
+            val organize = Organizer.run(sources, probeResults, config.organize)
+            events.send(
+                PipelineEvent.PhaseFinished(
+                    Phase.ORGANIZE, mark.elapsedNow().inWholeMilliseconds, "分组 ${organize.pools.size}",
+                )
+            )
+
+            // ---- S4 导出 ----
+            var exported: ExportResult? = null
+            val dir = config.exportDir
+            if (dir != null) {
+                events.send(PipelineEvent.PhaseStarted(Phase.EXPORT, sources.size))
+                mark = TimeSource.Monotonic.markNow()
+                val raws = sources.map { it.raw }
+                val name = config.exportFileName ?: Exporter.defaultFileName()
+                val result = Exporter.write(raws, organize.sources, dir, name, config.export)
+                exported = result
+                events.send(
+                    PipelineEvent.PhaseFinished(
+                        Phase.EXPORT, mark.elapsedNow().inWholeMilliseconds,
+                        "${result.count} 个源 → ${result.file}",
+                    )
+                )
+            }
+
+            PipelineResult(sources.size, dedup, probeResults, organize, exported)
+        } catch (e: Exception) {
+            events.send(PipelineEvent.Failed(Phase.EXPORT, "流水线中断：${e.message}", e.toString()))
+            throw e
+        } finally {
+            events.close()
+            pump.join()
         }
-
-        events.close()
-        pump.join()
-
-        return PipelineResult(sources.size, dedup, probeResults, organize, exported)
     }
 
     private suspend fun probeAll(
@@ -155,6 +163,7 @@ class Pipeline(private val engine: ProbeEngine?) {
         config: PipelineConfig,
         events: Channel<PipelineEvent>,
     ): Map<Int, ProbeResult> = coroutineScope {
+        val probeEngine = engine ?: return@coroutineScope emptyMap()
         val gate = Semaphore(config.concurrency.coerceIn(1, 2000))
         val done = AtomicInteger()
         val ok = AtomicInteger()
@@ -167,41 +176,19 @@ class Pipeline(private val engine: ProbeEngine?) {
                     ProbeResult(i, ProbeStatus.NO_SEARCH_URL, detail = "searchUrl 或 ruleSearch.bookList 为空")
                 } else {
                     gate.withPermit {
-                        runCatching { engine!!.probe(i, source, config.probe) }
-                            .getOrElse { e ->
-                                ProbeResult(i, ProbeStatus.ERROR, detail = e.toString())
-                            }
+                        runCatching { probeEngine.probe(i, source, config.probe) }
+                            .getOrElse { e -> ProbeResult(i, ProbeStatus.ERROR, detail = e.toString()) }
                     }
                 }
                 results[i] = result
                 if (result.status == ProbeStatus.OK) ok.incrementAndGet() else failed.incrementAndGet()
                 val n = done.incrementAndGet()
                 if (n % config.progressEvery == 0 || n == sources.size) {
-                    events.send(
-                        PipelineEvent.Progress(Phase.PROBE, n, sources.size, ok.get(), failed.get())
-                    )
+                    events.send(PipelineEvent.Progress(Phase.PROBE, n, sources.size, ok.get(), failed.get()))
                 }
             }
         }
         jobs.awaitAll()
-        results.mapIndexed { i, r ->
-            i to (r ?: ProbeResult(i, ProbeStatus.SKIPPED, detail = "未返回结果"))
-        }.toMap()
-    }
-
-    private fun CoroutineScope.eventsPump(
-        events: Channel<PipelineEvent>,
-        emit: suspend (PipelineEvent) -> Unit,
-    ) = launch {
-        for (e in events) emit(e)
-    }
-
-    private fun CoroutineScope.emitEvents(
-        events: Channel<PipelineEvent>,
-        emit: suspend (PipelineEvent) -> Unit,
-    ) = launch {
-        for (e in events) emit(e)
+        results.mapIndexed { i, r -> i to (r ?: ProbeResult(i, ProbeStatus.SKIPPED, detail = "未返回结果")) }.toMap()
     }
 }
-
-private typealias CoroutineScope = kotlinx.coroutines.CoroutineScope
