@@ -15,7 +15,7 @@ hutool = "5.8.22"
 commonsText = "1.13.1"
 annotations = "24.1.0"
 junit = "5.11.4"
-compose = "1.9.0"
+compose = "1.8.2"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
