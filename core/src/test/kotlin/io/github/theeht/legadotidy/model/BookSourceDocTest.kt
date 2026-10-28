@@ -42,7 +42,7 @@ class BookSourceDocTest {
     @Test
     fun `兼容以 JSON 字符串存储的规则组`() {
         val source = doc(
-            """{"ruleSearch":"{\\"bookList\\":\\"div.book\\",\\"name\\":\\"a\\",\\"wordCount\\":\\".count\\"}"}"""
+            """{"ruleSearch":"{\"bookList\":\"div.book\",\"name\":\"a\",\"wordCount\":\".count\"}"}"""
         )
 
         assertEquals("div.book", source.ruleSearch["bookList"])
