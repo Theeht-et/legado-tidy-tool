@@ -26,10 +26,14 @@ jobs:
         with:
           gradle-version: '8.14.4'
 
-      # vendor/legado 与 vendor/glue 的源码都在仓库里，CI 不联网拉取。
-      # 只有 htmlunit-core-js 的 jar（1.9MB 二进制）不进仓库，用脚本从上游拿。
-      - name: 补齐 Rhino jar
-        run: python3 scripts/fetch-engine-jar.py
+      # vendor/legado 与 vendor/glue 的源码都在仓库里，CI 不联网拉源码。
+      # 只有两样东西不进仓库，用脚本从上游拿：
+      #   1) htmlunit-core-js 的 jar（1.9MB 二进制，MCP/网页都推不进去）
+      #   2) CryptoJS（64KB 压缩脚本，进仓库会污染每次 grep 与 review）
+      - name: 补齐 Rhino jar 与运行期 JS 资源
+        run: |
+          python3 scripts/fetch-engine-jar.py
+          python3 scripts/fetch-assets.py
 
       - name: 校验 vendor 完整性
         run: |
@@ -37,7 +41,9 @@ jobs:
           python3 scripts/bootstrap-glue.py --check
 
       - name: 单测
-        run: gradle :core:test --console=plain
+        run: |
+          gradle :core:test --console=plain
+          gradle :engine:test --console=plain
 
       - name: 编译全模块
         run: gradle build -x test --console=plain
@@ -58,9 +64,11 @@ jobs:
         with:
           gradle-version: '8.14.4'
 
-      - name: 补齐 Rhino jar
+      - name: 补齐 Rhino jar 与运行期 JS 资源
         shell: pwsh
-        run: python scripts/fetch-engine-jar.py
+        run: |
+          python scripts/fetch-engine-jar.py
+          python scripts/fetch-assets.py
 
       - name: 组装便携目录
         run: gradle :desktop:portable --console=plain
