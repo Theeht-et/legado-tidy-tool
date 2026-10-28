@@ -1,0 +1,44 @@
+name: vendor-upstream
+
+# 用 GitHub Actions 干这件事的唯一理由：
+# 本机 git 走不动（沙箱禁止子进程管道），而 vendor 是一次性、可复现的搬砖。
+# 脚本本人在本地跑也完全可以，CI 只是多一个「不依赖个人环境」的旁路。
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'vendor/**'
+      - 'scripts/vendor-upstream.py'
+      - '.github/workflows/vendor-upstream.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 拉取上游引擎源码
+        run: python3 scripts/vendor-upstream.py
+
+      - name: 回写
+        run: |
+          set -e
+          if [ -z "$(git status --porcelain vendor)" ]; then
+            echo "vendor 无变化，跳过提交"
+            exit 0
+          fi
+          TAG=$(sed -n 's/^- tag：`\(.*\)`/\1/p' vendor/legado/VENDOR.md)
+          SHA=$(sed -n 's/^- commit：`\(.*\)`/\1/p' vendor/legado/VENDOR.md)
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add vendor
+          git commit -m "chore(vendor): 导入上游 $TAG (${SHA:0:12})"
+          git push
