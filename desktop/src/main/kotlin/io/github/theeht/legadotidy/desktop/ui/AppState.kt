@@ -32,6 +32,22 @@ class AppState {
     var withToc by mutableStateOf(false)
     var proxy by mutableStateOf("")
 
+    /**
+     * 导出目录。
+     *
+     * 默认给「文档\legado-tidy」而不是相对路径 `out`：双击启动器时工作目录是程序目录，
+     * 用户根本想不到文件去了哪。给一个自己能找到的位置，少一轮询问。
+     */
+    var exportDir by mutableStateOf(defaultExportDir())
+
+    /**
+     * 直链地址（可选）。
+     *
+     * 只有用户自己把导出文件放到一个手机能访问的地址后，这一栏才有意义——
+     * 工具不提供发布能力（见 `DirectLink` 的说明）。留空则不显示导入链接。
+     */
+    var directUrl by mutableStateOf("")
+
     // ---- 运行状态 ----
     var busy by mutableStateOf(false)
     var cancelling by mutableStateOf(false)
@@ -65,4 +81,12 @@ class AppState {
 
     val progress: Float
         get() = if (total <= 0) 0f else done.toFloat() / total
+}
+
+/** 「文档\legado-tidy」。中文 Windows 上 `Documents` 可能不存在（被重定向到别处），所以有退回。 */
+private fun defaultExportDir(): String {
+    val home = File(System.getProperty("user.home"))
+    val documents = File(home, "Documents")
+    val base = if (documents.isDirectory) documents else home
+    return File(base, "legado-tidy").absolutePath
 }

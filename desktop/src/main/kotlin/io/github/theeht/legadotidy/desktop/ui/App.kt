@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.theeht.legadotidy.engine.LegadoProbeEngine
+import io.github.theeht.legadotidy.export.DirectLink
 import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.model.SourceIO
 import io.github.theeht.legadotidy.pipeline.Phase
@@ -64,8 +65,11 @@ import kotlinx.coroutines.withContext
 import java.awt.Desktop
 import java.awt.FileDialog
 import java.awt.Frame
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 import java.io.File
 import java.nio.file.Path
+import javax.swing.JFileChooser
 
 private val Primary = Color(0xFF2563EB)
 private val Ok = Color(0xFF15803D)
@@ -197,7 +201,12 @@ private fun Workbench(state: AppState) {
                         keyword = state.keyword,
                         proxy = state.proxy.takeIf { it.isNotBlank() },
                     ),
-                    exportDir = Path.of("out"),
+                    exportDir = run {
+                        // 目录可能被用户删了，跑之前补建一次。
+                        val dir = File(state.exportDir)
+                        dir.mkdirs()
+                        dir.toPath()
+                    },
                 )
                 val result = Pipeline(LegadoProbeEngine()).run(state.docs, config) { event ->
                     withContext(Dispatchers.Main) { apply(state, event) }
@@ -456,9 +465,77 @@ private fun Report(state: AppState) {
                 Text("${result.organize.pools.size} 个分组，${result.organize.sources.size} 个源", fontSize = 13.sp)
                 result.exported?.let { exported ->
                     Text("已导出 ${exported.count} 个源 → ${exported.file.toAbsolutePath()}", fontSize = 13.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = {
+                            runCatching { Desktop.getDesktop().open(exported.file.parent.toFile()) }
+                        }) { Text("打开所在目录") }
+                        TextButton(onClick = {
+                            // 复制路径比「打开目录」更快：用户常常要把它粘到别处。
+                            runCatching {
+                                Toolkit.getDefaultToolkit().systemClipboard
+                                    .setContents(StringSelection(exported.file.toAbsolutePath().toString()), null)
+                            }
+                        }) { Text("复制路径") }
+                    }
+                }
+                // 直链：只有填了地址才出现。没地址时给二维码只会误导人（QR 也装不下整份书源）。
+                val direct = DirectLink.let { link ->
+                    state.directUrl.takeIf { DirectLink.isUsable(it) }?.let {
+                        runCatching { link.forSourceUrl(it) }.getOrNull()
+                    }
+                }
+                if (direct != null) {
+                    HorizontalDivider(color = Color(0xFFF1F5F9))
+                    Text("一键导入链接（手机上用 Legado 打开）", fontSize = 12.sp, color = Muted)
+                    Text(direct, fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = Color(0xFF111827))
                     TextButton(onClick = {
-                        runCatching { Desktop.getDesktop().open(exported.file.parent.toFile()) }
-                    }) { Text("打开所在目录") }
+                        runCatching {
+                            Toolkit.getDefaultToolkit().systemClipboard
+                                .setContents(StringSelection(direct), null)
+                        }
+                    }) { Text("复制导入链接") }
+                }
+            }
+        }
+
+        // 失败明细：这是这个工具最该给出的东西——不是「失败 37 个」，
+        // 而是「这 37 个各自因为什么失败」。按严重度、再按名称排，方便成批外理。
+        val problems = result.probeResults.entries
+            .filter { it.value.status.severity > 0 }
+            .sortedWith(compareBy({ it.value.status.severity }, { state.docs.getOrNull(it.key)?.name ?: "" }))
+        if (problems.isNotEmpty()) {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("失败明细 · ${problems.size} 个", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "同一状态往往对应同一种修法：超时→降并发或换关键词；网络不通→源站己挂或需要代理；" +
+                            "需要浏览器→只能去 App 里手验。",
+                        fontSize = 12.sp,
+                        color = Muted,
+                    )
+                    HorizontalDivider(color = Color(0xFFF1F5F9))
+                    // 只列前 200 个：几千个源全展开会让页面卡住，而人一次也看不过来。
+                    problems.take(200).forEach { (index, probe) ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.width(96.dp)) { StatusChip(probe.status) }
+                            Text(
+                                state.docs.getOrNull(index)?.name ?: "（未命名）",
+                                Modifier.weight(1f),
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                            )
+                            Text(
+                                probe.detail?.takeIf { it.isNotBlank() } ?: "—",
+                                Modifier.weight(1.4f),
+                                fontSize = 11.sp,
+                                color = Muted,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                    if (problems.size > 200) {
+                        Text("还有 ${problems.size - 200} 个未列出；导出后可用于外部分析。", fontSize = 12.sp, color = Muted)
+                    }
                 }
             }
         }
@@ -507,6 +584,49 @@ private fun Settings(state: AppState) {
 
         ToggleRow("跳过校验（只做去重与整理，秒级完成）", state.skipProbe) { state.skipProbe = it }
         ToggleRow("校验时连目录一起验（更准，慢 2~3 倍）", state.withToc) { state.withToc = it }
+
+        HorizontalDivider(color = Line)
+        Text("导出", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = state.exportDir,
+                onValueChange = { state.exportDir = it },
+                label = { Text("导出目录") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            OutlinedButton(onClick = {
+                // AWT 的 FileDialog 在 Windows 上没有「只选目录」模式，所以这里用 Swing 的选择器。
+                val chooser = JFileChooser(File(state.exportDir).takeIf { it.isDirectory })
+                    .apply {
+                        fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                        dialogTitle = "选导出目录"
+                    }
+                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                    state.exportDir = chooser.selectedFile.absolutePath
+                }
+            }) { Text("选择…") }
+        }
+        Text(
+            "默认放在「文档\\legado-tidy」。导出文件名带时间戳，不会覆盖上一次的结果。",
+            fontSize = 12.sp,
+            color = Muted,
+        )
+
+        OutlinedTextField(
+            value = state.directUrl,
+            onValueChange = { state.directUrl = it },
+            label = { Text("直链地址（可空）：导出文件上传后的公开 URL") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            "填了才会在报告页出现「一键导入链接」（legado://import/auto?src=…）。" +
+                "工具不会帮你上传文件——那需要公网服务或局域网监听，前者超出本项目范围，后者被" +
+                "「不做局域网 HTTP」这条约束排除了。本地文件导入始终可用，不需要这一栏。",
+            fontSize = 12.sp,
+            color = Muted,
+        )
 
         HorizontalDivider(color = Line)
         Text(
