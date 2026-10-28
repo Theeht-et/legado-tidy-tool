@@ -1,0 +1,78 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 编译与单测
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.4'
+
+      # vendor/legado 的源码已在仓库里，但 glide 层与 jar 不属于“源码”，需补齐。
+      # 两个脚本都是幂等的：已存在就跳过。
+      - name: 补齐补全层与 Rhino jar
+        run: |
+          python3 scripts/bootstrap-glue.py
+          python3 scripts/fetch-engine-jar.py
+
+      - name: 校验 vendor 完整性
+        run: python3 scripts/vendor-upstream.py --check
+
+      - name: 单测
+        run: gradle :core:test --console=plain
+
+      - name: 编译全模块
+        run: gradle build -x test --console=plain
+
+  portable:
+    name: Windows 便携包
+    runs-on: windows-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.4'
+
+      - name: 补齐补全层与 Rhino jar
+        shell: pwsh
+        run: |
+          python scripts/bootstrap-glue.py
+          python scripts/fetch-engine-jar.py
+
+      - name: 组装便携目录
+        run: gradle :desktop:portable --console=plain
+
+      - name: 打包
+        shell: pwsh
+        run: Compress-Archive -Path desktop/build/portable/legado-tidy/* -DestinationPath legado-tidy-windows-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: legado-tidy-windows-x64
+          path: legado-tidy-windows-x64.zip
+          retention-days: 7
