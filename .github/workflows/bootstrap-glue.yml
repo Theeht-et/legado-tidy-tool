@@ -1,13 +1,14 @@
 name: bootstrap-glue
 
 # 一次性：把参考项目的平台补全层拉进 vendor/glue/ 并提交。
-# 跑完就把本 workflow 删掉（代码已进仓库，不再依赖 gitee）。
+# 失败时同样把错误写进 CI-FAILURE.md。
 
 on:
   workflow_dispatch:
   push:
     paths:
       - 'scripts/bootstrap-glue.py'
+      - 'scripts/glue-filelist.txt'
       - '.github/workflows/bootstrap-glue.yml'
 
 permissions:
@@ -24,16 +25,33 @@ jobs:
           python-version: '3.12'
 
       - name: 拉取平台补全层
-        run: python3 scripts/bootstrap-glue.py
+        run: |
+          set -o pipefail
+          if python3 scripts/bootstrap-glue.py 2>&1 | tee /tmp/glue.log; then
+            exit 0
+          fi
+          {
+            echo '# glue 失败'
+            echo
+            echo '```'
+            tail -c 4000 /tmp/glue.log
+            echo '```'
+          } > CI-FAILURE.md
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -f CI-FAILURE.md
+          git commit -m 'ci: 记录 glue 失败原因'
+          git push
+          exit 1
 
       - name: 回写
         run: |
           set -e
-          if [ -z "$(git status --porcelain vendor/glue)" ]; then
-            echo "vendor/glue 无变化，跳过提交"
+          COUNT=$(git status --porcelain vendor/glue | wc -l)
+          if [ "$COUNT" -eq 0 ]; then
+            echo 'vendor/glue 无变化，跳过提交'
             exit 0
           fi
-          COUNT=$(git status --porcelain vendor/glue | wc -l)
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add vendor/glue

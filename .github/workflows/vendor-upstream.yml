@@ -1,14 +1,13 @@
 name: vendor-upstream
 
-# 用 GitHub Actions 干这件事的唯一理由：
-# 本机 git 走不动（沙箱禁止子进程管道），而 vendor 是一次性、可复现的搬砖。
-# 脚本本人在本地跑也完全可以，CI 只是多一个「不依赖个人环境」的旁路。
+# 一次性搬砖：把上游引擎源码取进 vendor/legado 并提交。
+# 失败时把 traceback 写进 CI-FAILURE.md 提交回仓库——Actions 的日志在网页上，
+# 但这里我们有更快的办法：让 CI 自己把错误推到 git 里。
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'vendor/**'
       - 'scripts/vendor-upstream.py'
       - '.github/workflows/vendor-upstream.yml'
 
@@ -26,13 +25,30 @@ jobs:
           python-version: '3.12'
 
       - name: 拉取上游引擎源码
-        run: python3 scripts/vendor-upstream.py
+        run: |
+          set -o pipefail
+          if python3 scripts/vendor-upstream.py 2>&1 | tee /tmp/vendor.log; then
+            exit 0
+          fi
+          {
+            echo '# vendor 失败'
+            echo
+            echo '```'
+            tail -c 4000 /tmp/vendor.log
+            echo '```'
+          } > CI-FAILURE.md
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -f CI-FAILURE.md
+          git commit -m 'ci: 记录 vendor 失败原因'
+          git push
+          exit 1
 
       - name: 回写
         run: |
           set -e
           if [ -z "$(git status --porcelain vendor)" ]; then
-            echo "vendor 无变化，跳过提交"
+            echo 'vendor 无变化，跳过提交'
             exit 0
           fi
           TAG=$(sed -n 's/^- tag：`\(.*\)`/\1/p' vendor/legado/VENDOR.md)
