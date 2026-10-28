@@ -3,35 +3,31 @@
 
 ## 为什么要单独一个脚本
 
-`vendor/legado` 是上游 Legado 的引擎源码，可以直接从 GitHub 拿（见 `vendor-upstream.py`）。
-但引擎跑在桌面 JVM 上还需要一层**平台补全**：把 `android.*`、`androidx.annotation.*`、
-`com.bumptech.glide.*`、Room/SharedPreferences 之类替换成能在 JVM 上跑的桩，
-再补上 Legado 自己那些 `BaseSource` / `AppConfig` / `appDb` / `JsExtensions`。
+`vendor/legado` 是上游 Legado 的引擎源码。但引擎要跑在桌面 JVM 上还需要一层**平台补全**：
+把 `android.*`、`androidx.annotation.*`、`com.bumptech.glide.*`、Room/SharedPreferences
+之类换成能在 JVM 上跑的桩，再补上 Legado 自己那些 `BaseSource` / `AppConfig` /
+`appDb` / `JsExtensions`。
 
-这一层在 [legado-tool-kotlin](https://gitee.com/lunar-lure/legado-tool-kotlin)
-里已经做过一遍（作者把 2407 个真实书的失败原因逐条打进去了）。我们**直接取用**，
-不自研——重写一遍就是重新踩一遍那些坑，而且会引入与上游不一致的偏差。
+这一层在 [legado-tool-kotlin](https://gitee.com/lunar-lure/legado-tool-kotlin) 里已经做过一遍
+（作者把 2407 个真实源的失败原因逐条打进去了）。我们**直接取用**，不自研——
+重写一遍就是重新踩一遍那些坑，而且会引入与上游不一致的偏差。
 
-## 它在什么时候跑
+## 当前状态：文件已在仓库里
 
-**正常情况不跑**：135 个文件已经提交在 `vendor/glue/` 里，构建只需要它们在场。
-本脚本只在两种情况用：
+`vendor/glue/` 已经提交进仓库，正常情况下**不需要跑这个脚本**。
+它保留两个用途：
 
-- `--check`（CI 每月跑）：只校验文件齐不齐，不联网。
-- 新拉一份仓库但 `vendor/glue/` 是空的（比如 clone 时用了稀疏检出），需要重新填。
+1. `--check`：CI 里校验补全层完整（不联网，秒级）。
+2. 重建：把 vendor/glue 误删了、或者要跟参考项目重新对齐时用。
 
 ## 为什么不 clone
 
-gitee 的 `archive` 端点要登录（匿名访问返回的是登录页 HTML），
-但 **raw 端点匿名可用**，所以按文件清单逐个取。清单在 `scripts/glue-filelist.txt`，
-共 135 个文件——这也让我们能一眼看出到底取了哪些东西。
-
-注意：从 GitHub Actions 的海外 runner 访问 gitee 很慢甚至超时，
-所以 **CI 不依赖本脚本联网**，只跑 `--check`。
+gitee 的 `archive` 端点要登录（匿名访问返回登录页 HTML），但 **raw 端点匿名可用**，
+所以按文件清单逐个取。清单在 `scripts/glue-filelist.txt`，共 135 个文件。
 
 ## 许可证
 
-上游参考项目与本项目同为 GPL-3.0，取用其补全层代码已在 `vendor/glue/SOURCE.md` 注明来源。
+上游参考项目与本项目同为 GPL-3.0，取用其补全层代码需在 `NOTICE` / README 里注明来源。
 """
 from __future__ import annotations
 
@@ -52,26 +48,29 @@ TIMEOUT = 60
 WORKERS = 8
 
 
-def read_manifest() -> list[str]:
+def load_manifest() -> list[str]:
     if not MANIFEST.is_file():
-        raise SystemExit(f"找不到清单：{MANIFEST}")
+        print(f"找不到清单：{MANIFEST}", file=sys.stderr)
+        raise SystemExit(2)
     rels = [line.strip() for line in MANIFEST.read_text("utf-8").splitlines() if line.strip()]
     if not rels:
-        raise SystemExit("清单是空的")
+        print("清单是空的", file=sys.stderr)
+        raise SystemExit(2)
     return rels
 
 
 def check(rels: list[str]) -> int:
+    """只查本地，不联网。CI 用这个。"""
     missing = [rel for rel in rels if not (DEST / rel).is_file()]
+    present = len(rels) - len(missing)
     if missing:
-        print(f"补全层缺 {len(missing)} 个文件（应在 {DEST}）：", file=sys.stderr)
+        print(f"补全层缺文件：{len(missing)}/{len(rels)}", file=sys.stderr)
         for rel in missing[:20]:
-            print(f"  {rel}", file=sys.stderr)
+            print(f"  缺：{rel}", file=sys.stderr)
         if len(missing) > 20:
             print(f"  ……还有 {len(missing) - 20} 个", file=sys.stderr)
-        print("\n修复：python3 scripts/bootstrap-glue.py（需要能访问 gitee）", file=sys.stderr)
         return 1
-    print(f"补全层完整：{len(rels)} 个文件")
+    print(f"[glue] OK：{present}/{len(rels)} 个文件")
     return 0
 
 
@@ -85,7 +84,7 @@ def fetch(rel: str) -> tuple[str, bytes | None, str]:
                 body = resp.read()
             # gitee 在文件不存在时也可能 200 返回 HTML，所以要按内容判。
             head = body.lstrip()[:15].lower()
-            if head.startswith(b"<!doctype") or body.lstrip()[:5].lower() == b"<html":
+            if head.startswith(b"<!doctype") or head.startswith(b"<html"):
                 last = "返回的是 HTML 页面（文件不存在或需要登录）"
                 continue
             if not body:
@@ -97,7 +96,7 @@ def fetch(rel: str) -> tuple[str, bytes | None, str]:
     return rel, None, last
 
 
-def download(rels: list[str]) -> int:
+def rebuild(rels: list[str]) -> int:
     print(f"补全层：{len(rels)} 个文件 → {DEST}")
     failed: list[tuple[str, str]] = []
     written = 0
@@ -120,8 +119,8 @@ def download(rels: list[str]) -> int:
         for rel, err in failed:
             print(f"  {rel}  ← {err}", file=sys.stderr)
         print(
-            "\n提示：gitee raw 在海外可能很慢。在国内网络下重跑本脚本即可；"
-            "或者把同一份文件手动放进 vendor/glue 对应路径（清单见 scripts/glue-filelist.txt）。",
+            "\n提示：把 gitee 上的同一份文件手动放进 vendor/glue 对应路径也能补齐。"
+            "清单见 scripts/glue-filelist.txt。",
             file=sys.stderr,
         )
         return 1
@@ -133,19 +132,19 @@ def download(rels: list[str]) -> int:
         "它们把 Android / Room / Glide 等平台依赖替换成可在桌面 JVM 上运行的桩，\n"
         "并补上 Legado 引擎自身依赖的 `BaseSource`、`AppConfig`、`appDb`、`JsExtensions`。\n\n"
         "**不要手改**：`python scripts/bootstrap-glue.py` 会整体覆盖。\n"
-        "需要改行为请改 `engine/src/main/kotlin/io/github/theeht/legadotidy/engine/` 下的代码。\n",
+        "需要改行为请改 `engine/src/main/kotlin/` 下我们自己的代码。\n",
         encoding="utf-8",
     )
     print("完成。")
     return 0
 
 
-def main() -> int:
-    rels = read_manifest()
-    if "--check" in sys.argv[1:]:
+def main(argv: list[str]) -> int:
+    rels = load_manifest()
+    if "--check" in argv:
         return check(rels)
-    return download(rels)
+    return rebuild(rels)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
