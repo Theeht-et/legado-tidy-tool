@@ -89,12 +89,16 @@ class DeduperTest {
 
     @Test
     fun `同组内优先保留规则更完整的那个`() {
-        val rich = Docs.doc("甲", "https://a.com", extra = mapOf("group" to "小说"))
+        // 同一个站的马甲：名称匹配键与 URL 相同，但一个规则填得全、一个几乎空。
+        // 这类源很常见（有人把同一个站重发一遍，却把正文规则删了）。
+        val rich = Docs.doc("顶点小说", "https://a.com")
         val poor = Docs.docFromJson(
-            """{"bookSourceName":"乙","bookSourceUrl":"https://a.com/"}"""
+            """{"bookSourceName":"顶点小说（备用）","bookSourceUrl":"https://a.com/",
+               "ruleSearch":{"bookList":"//div"}}"""
         )
         val report = Deduper.run(listOf(poor, rich))
         assertEquals(1, report.groups.size)
+        assertEquals(DedupKind.EXACT, report.groups[0].kind)
         assertEquals(1, report.groups[0].keep)
     }
 }
