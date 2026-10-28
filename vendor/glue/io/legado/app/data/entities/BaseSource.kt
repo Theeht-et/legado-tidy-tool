@@ -181,7 +181,7 @@ interface BaseSource : JsExtensions {
                 if(typeof login=='function'){
                     login.apply(this);
                 } else {
-                    throw('Function login not implements!!!');
+                    throw('Function login not implements!!!')
                 }
             """.trimIndent()
             evalJS(js)
