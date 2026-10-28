@@ -239,7 +239,7 @@ class ContentProcessor private constructor(
         val contents = arrayListOf<String>()
         mContent.lineSequence().forEach { str ->
             val paragraph = str.trim {
-                it.code <= 0x20 || it == '\u3000'
+                it.code <= 0x20 || it == '　'
             }
             if (paragraph.isNotEmpty()) {
                 if (contents.isEmpty() && includeTitle) {
