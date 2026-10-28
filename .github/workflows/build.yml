@@ -7,8 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# contents: write 只为了让失败现场能推到 ci-artifacts 分支（见最后一步），
+# 正常构建不需要写权限。
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test:
@@ -47,6 +49,43 @@ jobs:
 
       - name: 编译全模块
         run: gradle build -x test --console=plain
+
+      # 失败时把现场推到一个不保护的分支上，不用登录网页看日志也能定位。
+      # 推 ci-artifacts 而不是 main：main 上不该出现这种文件。
+      - name: 失败现场
+        if: failure()
+        run: |
+          {
+            echo "# CI 失败现场（$(date -u +%Y-%m-%dT%H:%M:%SZ)）"
+            echo
+            echo "commit: $GITHUB_SHA"
+            echo "run: $GITHUB_RUN_ID"
+            echo
+            found=0
+            for f in $(find . -path '*/build/test-results/*' -name '*.xml' 2>/dev/null); do
+              if grep -q '<failure' "$f" 2>/dev/null; then
+                found=1
+                echo "## $f"
+                echo '```'
+                sed -n '/<failure/,/<\/failure>/p' "$f" | head -60
+                echo '```'
+                echo
+              fi
+            done
+            if [ "$found" = "0" ]; then
+              echo "没有测试失败记录，说明挂在编译或其他步骤。"
+              echo
+              echo '```'
+              ls -R */build/test-results 2>/dev/null | head -40
+              echo '```'
+            fi
+          } > CI-FAILURE.md
+          cat CI-FAILURE.md | head -80
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          git add -f CI-FAILURE.md
+          git commit -m "ci: 失败现场" || exit 0
+          git push origin HEAD:ci-artifacts --force
 
   portable:
     name: Windows 便携包
