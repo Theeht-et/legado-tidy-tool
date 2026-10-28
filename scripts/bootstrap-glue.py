@@ -9,8 +9,16 @@
 再补上 Legado 自己那些 `BaseSource` / `AppConfig` / `appDb` / `JsExtensions`。
 
 这一层在 [legado-tool-kotlin](https://gitee.com/lunar-lure/legado-tool-kotlin)
-里已经做过一遍（作者把 2407 个真实源的失败原因逐条打进去了）。我们**直接取用**，
+里已经做过一遍（作者把 2407 个真实书的失败原因逐条打进去了）。我们**直接取用**，
 不自研——重写一遍就是重新踩一遍那些坑，而且会引入与上游不一致的偏差。
+
+## 它在什么时候跑
+
+**正常情况不跑**：135 个文件已经提交在 `vendor/glue/` 里，构建只需要它们在场。
+本脚本只在两种情况用：
+
+- `--check`（CI 每月跑）：只校验文件齐不齐，不联网。
+- 新拉一份仓库但 `vendor/glue/` 是空的（比如 clone 时用了稀疏检出），需要重新填。
 
 ## 为什么不 clone
 
@@ -18,9 +26,12 @@ gitee 的 `archive` 端点要登录（匿名访问返回的是登录页 HTML）�
 但 **raw 端点匿名可用**，所以按文件清单逐个取。清单在 `scripts/glue-filelist.txt`，
 共 135 个文件——这也让我们能一眼看出到底取了哪些东西。
 
+注意：从 GitHub Actions 的海外 runner 访问 gitee 很慢甚至超时，
+所以 **CI 不依赖本脚本联网**，只跑 `--check`。
+
 ## 许可证
 
-上游参考项目与本项目同为 GPL-3.0，取用其补全层代码需在 `NOTICE` / README 里注明来源。
+上游参考项目与本项目同为 GPL-3.0，取用其补全层代码已在 `vendor/glue/SOURCE.md` 注明来源。
 """
 from __future__ import annotations
 
@@ -41,6 +52,29 @@ TIMEOUT = 60
 WORKERS = 8
 
 
+def read_manifest() -> list[str]:
+    if not MANIFEST.is_file():
+        raise SystemExit(f"找不到清单：{MANIFEST}")
+    rels = [line.strip() for line in MANIFEST.read_text("utf-8").splitlines() if line.strip()]
+    if not rels:
+        raise SystemExit("清单是空的")
+    return rels
+
+
+def check(rels: list[str]) -> int:
+    missing = [rel for rel in rels if not (DEST / rel).is_file()]
+    if missing:
+        print(f"补全层缺 {len(missing)} 个文件（应在 {DEST}）：", file=sys.stderr)
+        for rel in missing[:20]:
+            print(f"  {rel}", file=sys.stderr)
+        if len(missing) > 20:
+            print(f"  ……还有 {len(missing) - 20} 个", file=sys.stderr)
+        print("\n修复：python3 scripts/bootstrap-glue.py（需要能访问 gitee）", file=sys.stderr)
+        return 1
+    print(f"补全层完整：{len(rels)} 个文件")
+    return 0
+
+
 def fetch(rel: str) -> tuple[str, bytes | None, str]:
     url = RAW_BASE + urllib.parse.quote(rel)
     last = ""
@@ -50,7 +84,8 @@ def fetch(rel: str) -> tuple[str, bytes | None, str]:
             with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
                 body = resp.read()
             # gitee 在文件不存在时也可能 200 返回 HTML，所以要按内容判。
-            if body.lstrip()[:15].lower().startswith(b"<!doctype") or body.lstrip()[:5].lower() == b"<html":
+            head = body.lstrip()[:15].lower()
+            if head.startswith(b"<!doctype") or body.lstrip()[:5].lower() == b"<html":
                 last = "返回的是 HTML 页面（文件不存在或需要登录）"
                 continue
             if not body:
@@ -62,16 +97,7 @@ def fetch(rel: str) -> tuple[str, bytes | None, str]:
     return rel, None, last
 
 
-def main() -> int:
-    if not MANIFEST.is_file():
-        print(f"找不到清单：{MANIFEST}", file=sys.stderr)
-        return 2
-
-    rels = [line.strip() for line in MANIFEST.read_text("utf-8").splitlines() if line.strip()]
-    if not rels:
-        print("清单是空的", file=sys.stderr)
-        return 2
-
+def download(rels: list[str]) -> int:
     print(f"补全层：{len(rels)} 个文件 → {DEST}")
     failed: list[tuple[str, str]] = []
     written = 0
@@ -94,8 +120,8 @@ def main() -> int:
         for rel, err in failed:
             print(f"  {rel}  ← {err}", file=sys.stderr)
         print(
-            "\n提示：把 gitee 上的同一份文件手动放进 vendor/glue 对应路径也能补齐。"
-            "清单见 scripts/glue-filelist.txt。",
+            "\n提示：gitee raw 在海外可能很慢。在国内网络下重跑本脚本即可；"
+            "或者把同一份文件手动放进 vendor/glue 对应路径（清单见 scripts/glue-filelist.txt）。",
             file=sys.stderr,
         )
         return 1
@@ -110,9 +136,15 @@ def main() -> int:
         "需要改行为请改 `engine/src/main/kotlin/io/github/theeht/legadotidy/engine/` 下的代码。\n",
         encoding="utf-8",
     )
-
     print("完成。")
     return 0
+
+
+def main() -> int:
+    rels = read_manifest()
+    if "--check" in sys.argv[1:]:
+        return check(rels)
+    return download(rels)
 
 
 if __name__ == "__main__":
