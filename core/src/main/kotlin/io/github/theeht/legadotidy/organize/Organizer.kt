@@ -68,7 +68,8 @@ object Organizer {
             }
             pools.add(Pool(group, members.toList()))
         }
-        organized.sortBy { it.index }
+        // 返回顺序就是写入 customOrder 的顺序：按分类聚在一起、组内按 rank。
+        // 不要再 sortBy(index)——那会把刚排好的顺序打回原形。
         return OrganizeReport(organized, pools)
     }
 
