@@ -6,6 +6,7 @@
 kotlin = "2.2.20"
 coroutines = "1.11.0"
 gson = "2.14.0"
+# okhttp 必须 5.x：4.x 的 Response.body 是 nullable，上游引擎按非空用。
 okhttp = "5.4.0"
 jsoup = "1.23.2"
 jsonPath = "3.0.0"
@@ -34,4 +35,6 @@ junit-launcher = { module = "org.junit.platform:junit-platform-launcher", versio
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
-kotlin-compose = { id = "org.jetbrains.compose", version.ref = "compose" }
+# Kotlin 2.x 起 Compose 编译器插件从 compose 插件里拆了出来，两个都要声明。
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+compose = { id = "org.jetbrains.compose", version.ref = "compose" }
