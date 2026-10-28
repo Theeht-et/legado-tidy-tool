@@ -1,1 +1,37 @@
-# 版本一律 pin 死。理由：解析语义跟版本绑定 ——\n# jsoup 的 text() 拼接、Jayway JsonPath 的过滤器、okhttp 的重定向/编码都可能变，\n# 升级会静默改变书源解析结果。不要随手 bump。\n\n[versions]\nkotlin = "2.2.20"\ncoroutines = "1.11.0"\ngson = "2.14.0"\nokhttp = "5.4.0"\njsoup = "1.23.2"\njsonPath = "3.0.0"\njsoupXpath = "2.5.3"\nhutool = "5.8.22"\ncommonsText = "1.13.1"\nannotations = "24.1.0"\njunit = "5.11.4"\ncompose = "1.9.0"\n\n[libraries]\nkotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }\nkotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "coroutines" }\ngson = { module = "com.google.code.gson:gson", version.ref = "gson" }\nokhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }\njsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }\njson-path = { module = "com.jayway.jsonpath:json-path", version.ref = "jsonPath" }\njsoup-xpath = { module = "cn.wanghaomiao:JsoupXpath", version.ref = "jsoupXpath" }\nhutool-core = { module = "cn.hutool:hutool-core", version.ref = "hutool" }\nhutool-crypto = { module = "cn.hutool:hutool-crypto", version.ref = "hutool" }\ncommons-text = { module = "org.apache.commons:commons-text", version.ref = "commonsText" }\nannotations = { module = "org.jetbrains:annotations", version.ref = "annotations" }\nkotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }\njunit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }\njunit-launcher = { module = "org.junit.platform:junit-platform-launcher", version = "1.11.4" }\n\n[plugins]\nkotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }\nkotlin-compose = { id = "org.jetbrains.compose", version.ref = "compose" }\n
+# 版本一律 pin 死。理由：解析语义跟版本绑定 ——
+# jsoup 的 text() 拼接、Jayway JsonPath 的过滤器、okhttp 的重定向/编码都可能变，
+# 升级会静默改变书源解析结果。不要随手 bump。
+
+[versions]
+kotlin = "2.2.20"
+coroutines = "1.11.0"
+gson = "2.14.0"
+okhttp = "5.4.0"
+jsoup = "1.23.2"
+jsonPath = "3.0.0"
+jsoupXpath = "2.5.3"
+hutool = "5.8.22"
+commonsText = "1.13.1"
+annotations = "24.1.0"
+junit = "5.11.4"
+compose = "1.9.0"
+
+[libraries]
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "coroutines" }
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
+json-path = { module = "com.jayway.jsonpath:json-path", version.ref = "jsonPath" }
+jsoup-xpath = { module = "cn.wanghaomiao:JsoupXpath", version.ref = "jsoupXpath" }
+hutool-core = { module = "cn.hutool:hutool-core", version.ref = "hutool" }
+hutool-crypto = { module = "cn.hutool:hutool-crypto", version.ref = "hutool" }
+commons-text = { module = "org.apache.commons:commons-text", version.ref = "commonsText" }
+annotations = { module = "org.jetbrains:annotations", version.ref = "annotations" }
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-launcher = { module = "org.junit.platform:junit-platform-launcher", version = "1.11.4" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.compose", version.ref = "compose" }
