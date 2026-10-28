@@ -42,7 +42,7 @@ object EncoderUtils {
     fun base64Encode(bytes: ByteArray, flags: Int = Base64.NO_WRAP): String {
         return Base64.encodeToString(bytes, flags)
     }
-
+    
     @JvmOverloads
     fun base64DecodeToByteArray(str: String, flags: Int = Base64.DEFAULT): ByteArray {
         return Base64.decode(str, flags)
