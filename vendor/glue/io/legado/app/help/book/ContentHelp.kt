@@ -39,7 +39,7 @@ object ContentHelp {
         buffer.append("  ")
         if (chapterName.trim { it <= ' ' } != p[0].trim { it <= ' ' }) {
             // 去除段落内空格。unicode 3000 象形字间隔（中日韩符号和标点），不包含在\s内
-            buffer.append(p[0].replace("[\\u3000\\s]+".toRegex(), ""))
+            buffer.append(p[0].replace("[\u3000\\s]+".toRegex(), ""))
         }
 
         //如果原文存在分段错误，需要把段落重新黏合
@@ -52,7 +52,7 @@ object ContentHelp {
             }
             // 段落开头以外的地方不应该有空格
             // 去除段落内空格。unicode 3000 象形字间隔（中日韩符号和标点），不包含在\s内
-            buffer.append(p[i].replace("[\\u3000\\s]".toRegex(), ""))
+            buffer.append(p[i].replace("[\u3000\\s]".toRegex(), ""))
         }
         //     预分段预处理
         //         ”“处理为”\n“。
