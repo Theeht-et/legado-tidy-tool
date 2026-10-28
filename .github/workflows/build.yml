@@ -105,6 +105,9 @@ jobs:
 
       - name: 补齐 Rhino jar 与运行期 JS 资源
         shell: pwsh
+        env:
+          # Windows runner 的 Python 默认控制台编码可能是 cp1252，无法输出脚本中的中文日志。
+          PYTHONUTF8: '1'
         run: |
           python scripts/fetch-engine-jar.py
           python scripts/fetch-assets.py
