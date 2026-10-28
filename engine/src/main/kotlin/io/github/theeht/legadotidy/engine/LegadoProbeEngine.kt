@@ -1,7 +1,6 @@
 package io.github.theeht.legadotidy.engine
 
 import com.google.gson.Gson
-import com.google.gson.GsonBuilder
 import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.probe.ProbeDepth
 import io.github.theeht.legadotidy.probe.ProbeEngine
@@ -10,6 +9,7 @@ import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
 import io.legado.app.data.entities.BookSource
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.utils.GSON
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import java.io.IOException
@@ -36,7 +36,16 @@ import java.net.UnknownHostException
  * 顶不到 60s 的源仍然会先被我们的 withTimeout 记成 TIMEOUT。
  */
 class LegadoProbeEngine(
-    private val gson: Gson = GsonBuilder().disableHtmlEscaping().create(),
+    /**
+     * 必须用上游那套 `GSON`，不能自己 `GsonBuilder().create()`。
+     *
+     * 上游给它挂了几个关键适配器，其中 [io.legado.app.utils.StringJsonDeserializer]
+     * 会把「不是原始值」的字段整体 `toString()` 成字面量——真实源里
+     * `contentRule.replaceRegex` 有时是数组（老版本导出），自建 Gson 会直接抛
+     * `Expected STRING but was BEGIN_ARRAY`，于是**能用的源被判成解析失败**。
+     * 这类源在参考项目的 2407 个样本里占比不小，属于「一上来就全红」的原因之一。
+     */
+    private val gson: Gson = GSON,
 ) : ProbeEngine {
 
     override suspend fun probe(index: Int, source: BookSourceDoc, options: ProbeOptions): ProbeResult {
@@ -139,11 +148,10 @@ class LegadoProbeEngine(
             return ProbeStatus.NEED_BROWSER
         }
 
-        // 其余已知的「引擎有、但我们这套补全层没有」的 JS 能力。
-        if (rules.contains("@js:", ignoreCase = true) || rules.contains("<js>", ignoreCase = true)) {
-            return ProbeStatus.NEED_JS
-        }
-
+        // 注意：这里**不能**因为出现 `@js:` 就判「跑不了」。
+        // Rhino 就是用来跑这些脚本的，真实源里九成以上都带 @js:。
+        // 真跑不动的情况交给运行时去暴露（会被 classify() 归成 NEED_JS / ERROR），
+        // 静态阶段只拦「再跑也没意义」的那几种。
         return null
     }
 
