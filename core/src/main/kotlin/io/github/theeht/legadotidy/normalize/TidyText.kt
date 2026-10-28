@@ -10,10 +10,12 @@ package io.github.theeht.legadotidy.normalize
  */
 object TidyText {
 
-    private val EMOJI = Regex(
-        "[\\uD800-\\uDBFF][\\uDC00-\\uDFFF]" +
-            "|[\\u2600-\\u27BF\\u2B00-\\u2BFF\\uFE0F\\u200D\\u20E3]"
-    )
+    /**
+     * emoji 走 Unicode 类别，而不是手写代理对区间：Java 的 regex 按码点匹配，
+     * `[\uD800-\uDBFF][\uDC00-\uDFFF]` 这种写法永远匹配不到——它只认「孤立代理」。
+     * 这类 bug 编译期看不出来，只有拿真数据跑才会暴露。
+     */
+    private val EMOJI = Regex("[\\p{So}\\p{Sk}\\p{Cs}\\uFE0F\\u200D\\u20E3]")
     private val ZERO_WIDTH = Regex("[\\u200B-\\u200F\\uFEFF]")
     private val WHITESPACE = Regex("[\\s\\u00A0\\u3000]+")
     private val BRACKETED = Regex("[（(【\\[][^）)】\\]]*[）)】\\]]")
