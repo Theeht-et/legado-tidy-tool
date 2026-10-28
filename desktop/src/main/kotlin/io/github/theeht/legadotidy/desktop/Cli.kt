@@ -18,14 +18,18 @@ import java.nio.file.Path
  * 命令行入口。
  *
  * 界面出问题时先跑它：这条路对了、界面不对，问题就只在界面。
- * 批量跑几千个源时也应该用它——比界面里盯着进度条靠谱。
+ * 批量跑几千个源时也应该用它——比界面里盯着进度条靠谱，而且 `--verbose` 能逐条看清是哪个源、因为什么失败。
  *
  * ```
  * legado-tidy --in sources.json [--out 输出目录] [--keyword 剑来]
- *             [--limit N] [--concurrency 100] [--skip-probe] [--with-toc] [--timeout 20]
+ *             [--limit N] [--concurrency 100] [--skip-probe] [--with-toc] [--timeout 20] [--verbose]
  * ```
  */
 fun runCli(args: Array<String>): Int {
+    if (args.any { it == "--help" || it == "-h" }) {
+        printUsage()
+        return 0
+    }
     val opts = parseArgs(args) ?: run {
         printUsage()
         return 2
@@ -82,6 +86,21 @@ fun runCli(args: Array<String>): Int {
     }
     println("整理：${result.organize.pools.size} 个分组，${result.organize.sources.size} 个源")
     result.exported?.let { println("导出：${it.count} 个源 → ${it.file.toAbsolutePath()}") }
+
+    if (opts.verbose) {
+        println()
+        println("逐个结果：")
+        result.probeResults.toSortedMap().forEach { (index, probe) ->
+            val name = selected.getOrNull(index)?.name?.take(22) ?: "#$index"
+            val http = probe.httpCode?.let { " HTTP $it" }.orEmpty()
+            val detail = probe.detail?.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
+            println(
+                "  #%-3d %-22s %-12s %6dms%s%s".format(
+                    index, name, probe.status.label, probe.elapsedMs, http, detail,
+                )
+            )
+        }
+    }
     return 0
 }
 
@@ -95,6 +114,7 @@ class Options(
     val skipProbe: Boolean,
     val withToc: Boolean,
     val proxy: String?,
+    val verbose: Boolean = false,
 )
 
 private fun parseArgs(args: Array<String>): Options? {
@@ -107,6 +127,7 @@ private fun parseArgs(args: Array<String>): Options? {
     var skipProbe = false
     var withToc = false
     var proxy: String? = null
+    var verbose = false
 
     var i = 0
     while (i < args.size) {
@@ -120,6 +141,7 @@ private fun parseArgs(args: Array<String>): Options? {
             "--proxy" -> proxy = args.getOrNull(++i)?.takeIf { it.isNotBlank() }
             "--skip-probe" -> skipProbe = true
             "--with-toc" -> withToc = true
+            "--verbose", "-v" -> verbose = true
             "--help", "-h" -> return null
             else -> {
                 if (a.startsWith("-")) {
@@ -135,7 +157,7 @@ private fun parseArgs(args: Array<String>): Options? {
         i++
     }
     if (input.isNullOrBlank()) return null
-    return Options(input, out, keyword, timeout, limit, concurrency.coerceIn(1, 2000), skipProbe, withToc, proxy)
+    return Options(input, out, keyword, timeout, limit, concurrency.coerceIn(1, 2000), skipProbe, withToc, proxy, verbose)
 }
 
 private fun printUsage() {
@@ -154,6 +176,7 @@ private fun printUsage() {
           --proxy <地址>       代理，如 http://127.0.0.1:7890
           --skip-probe         跳过 S2 校验（只做去重与整理，秒级完成）
           --with-toc           校验时连目录一起验（更准，但慢 2~3 倍）
+          --verbose, -v        逐条列出每个书源的校验结果与失败原因
         """.trimIndent()
     )
 }
@@ -162,12 +185,12 @@ private fun render(event: PipelineEvent) {
     when (event) {
         is PipelineEvent.Log -> println(event.message)
         is PipelineEvent.PhaseStarted -> {
-            // 阶段之间空一行，否则进度会把四段挤成一行。
+            // 阶段之间空一行，否则四段进度会挤在一起。
             if (event.phase != Phase.DEDUP) println()
             println("== ${event.phase.label} ==")
         }
         is PipelineEvent.Progress -> {
-            // 进度写同一行；每 20 个刷新一次，避免几百个源刷屏。
+            // 进度写同一行，每几个刷新一次，避免几千个源刷屏。
             print("\r  ${event.done}/${event.total}（可用 ${event.ok}，失败 ${event.failed}）")
             System.out.flush()
         }

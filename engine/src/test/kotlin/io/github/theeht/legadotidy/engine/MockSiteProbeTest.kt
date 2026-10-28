@@ -1,0 +1,181 @@
+package io.github.theeht.legadotidy.engine
+
+import com.sun.net.httpserver.HttpExchange
+import com.sun.net.httpserver.HttpServer
+import io.github.theeht.legadotidy.model.BookSourceDoc
+import io.github.theeht.legadotidy.model.SourceIO
+import io.github.theeht.legadotidy.probe.ProbeDepth
+import io.github.theeht.legadotidy.probe.ProbeOptions
+import io.github.theeht.legadotidy.probe.ProbeStatus
+import kotlinx.coroutines.runBlocking
+import java.net.InetSocketAddress
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/**
+ * 用本地假站点跑通「真引擎」。
+ *
+ * ## 为什么必须有这个测试
+ * 这个模块的价值在于「引擎真的能跑」，而引擎是由上游源码 + 平台桩拼出来的。
+ * 桩只要有一个方法签名不对，编译照样能过、运行期才炸。所以必须有一个真的 HTTP 往返：
+ * 起一个本地服务器，写一个最普通的书源，让上游 `WebBook.searchBookAwait` 去搜。
+ *
+ * 用本地假站点而不是真站点的理由：
+ * - 结果确定。真站点会改版、会限流，CI 里抖动会让人以为引擎坏了。
+ * - 不碰第三方内容，也不需要外网。
+ *
+ * 它挡住的是「引擎接线错了」这类错误；挡不住「规则写得不好」，那不归静态校验管。
+ */
+class MockSiteProbeTest {
+
+    private lateinit var server: HttpServer
+    private var port: Int = 0
+
+    @BeforeTest
+    fun start() {
+        server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        port = server.address.port
+
+        server.createContext("/search") { exchange ->
+            respond(
+                exchange,
+                """
+                <!DOCTYPE html>
+                <html><head><meta charset="utf-8"><title>搜索</title></head>
+                <body>
+                  <ul class="list">
+                    <li class="book-item">
+                      <a href="/book/1/">测试之书</a>
+                      <span class="au">某作者</span>
+                    </li>
+                  </ul>
+                </body></html>
+                """.trimIndent(),
+            )
+        }
+
+        // 详情页直接带目录：真实站点里「详情页即目录页」是最常见的一种。
+        // 想覆盖「目录在单独页面」，加一个 ruleBookInfo.tocUrl 就行；
+        // 这里只求把链路跑通，所以取更简单的那种。
+        server.createContext("/book/1/") { exchange ->
+            respond(
+                exchange,
+                """
+                <!DOCTYPE html>
+                <html><head><meta charset="utf-8"><title>测试之书</title></head>
+                <body>
+                  <h1>测试之书</h1>
+                  <span class="au">某作者</span>
+                  <ul class="ch">
+                    <li><a href="/book/1/c1">第一章</a></li>
+                    <li><a href="/book/1/c2">第二章</a></li>
+                  </ul>
+                </body></html>
+                """.trimIndent(),
+            )
+        }
+
+        server.start()
+    }
+
+    @AfterTest
+    fun stop() {
+        server.stop(0)
+    }
+
+    private fun respond(exchange: HttpExchange, html: String) {
+        val bytes = html.toByteArray(Charsets.UTF_8)
+        exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+        exchange.sendResponseHeaders(200, bytes.size.toLong())
+        exchange.responseBody.use { it.write(bytes) }
+    }
+
+    private fun sourceJson(): String = """
+        {
+          "bookSourceName": "本地模拟站",
+          "bookSourceGroup": "测试",
+          "bookSourceUrl": "http://127.0.0.1:$port",
+          "bookSourceType": 0,
+          "enabled": true,
+          "searchUrl": "/search?q={{key}}",
+          "ruleSearch": {
+            "bookList": "class.list@tag.li",
+            "name": "tag.a@text",
+            "author": "class.au@text",
+            "bookUrl": "tag.a@href"
+          },
+          "ruleBookInfo": { "name": "tag.h1@text", "author": "class.au@text" },
+          "ruleToc": {
+            "chapterList": "class.ch@tag.li",
+            "chapterName": "tag.a@text",
+            "chapterUrl": "tag.a@href"
+          }
+        }
+    """.trimIndent()
+
+    private fun doc(): BookSourceDoc = BookSourceDoc(SourceIO.parse(sourceJson()).single())
+
+    private fun options(depth: ProbeDepth = ProbeDepth.SEARCH) = ProbeOptions(
+        depth = depth,
+        timeoutMs = 10_000,
+        keyword = "test",
+    )
+
+    @Test
+    fun `搜索能解析出一条结果`() = runBlocking {
+        val result = LegadoProbeEngine().probe(0, doc(), options())
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertTrue(result.bookCount >= 1, "应至少解析出 1 本书，实际 ${result.bookCount}")
+    }
+
+    @Test
+    fun `连目录一起验能拿到章节`() = runBlocking {
+        val result = LegadoProbeEngine().probe(0, doc(), options(ProbeDepth.WITH_TOC))
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertEquals("目录 2 章", result.detail)
+    }
+
+    @Test
+    fun `没有 searchUrl 的源不浪费网络请求`() = runBlocking {
+        val json = """
+            {
+              "bookSourceName": "只有发现页",
+              "bookSourceUrl": "http://127.0.0.1:$port",
+              "bookSourceType": 0,
+              "exploreUrl": "/explore"
+            }
+        """.trimIndent()
+        val doc = BookSourceDoc(SourceIO.parse(json).single())
+
+        val result = LegadoProbeEngine().probe(0, doc, options())
+
+        assertEquals(ProbeStatus.NO_SEARCH_URL, result.status)
+    }
+
+    @Test
+    fun `需要 webView 的源被静态识别出来`() = runBlocking {
+        val json = """
+            {
+              "bookSourceName": "要浏览器",
+              "bookSourceUrl": "http://127.0.0.1:$port",
+              "bookSourceType": 0,
+              "searchUrl": "/search?q={{key}}",
+              "ruleSearch": {
+                "bookList": "class.list@tag.li@js:webView(\"xxx\")",
+                "name": "tag.a@text",
+                "bookUrl": "tag.a@href"
+              }
+            }
+        """.trimIndent()
+        val doc = BookSourceDoc(SourceIO.parse(json).single())
+
+        val result = LegadoProbeEngine().probe(0, doc, options())
+
+        assertEquals(ProbeStatus.NEED_BROWSER, result.status)
+    }
+}

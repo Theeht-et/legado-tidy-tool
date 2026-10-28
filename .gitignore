@@ -12,7 +12,7 @@ Thumbs.db
 run/
 *.log
 _dl/
+out/
 
-# 上游 vendored 的 htmlunit-core-js jar：源码进仓库、二进制用脚本拉
-# （python scripts/fetch-engine-jar.py），否则 git clone 会多背 1.9MB 且没法看 diff
-vendor/legado/third_party/
+# 从上游取的运行期 JS 资源（scripts/fetch-assets.py 生成，64KB 压缩脚本不进仓库）
+engine/src/main/resources/scripts/*.js
