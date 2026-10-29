@@ -1105,16 +1105,19 @@ private fun SourceListPanel(
             ) {
                 sourceFilterLabels.forEach { label ->
                     val count = sourceFilterCount(state, label)
+                    val selected = state.sourceFilter == label
                     TextButton(
                         onClick = { state.sourceFilter = label },
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                            .background(if (selected) SoftBlue else Color.Transparent)
+                            .border(1.dp, if (selected) Color(0xFFD8E4FF) else Color.Transparent, RoundedCornerShape(8.dp)),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 5.dp, vertical = 5.dp),
-                        colors = ButtonDefaults.textButtonColors(contentColor = if (state.sourceFilter == label) Primary else Muted),
+                        colors = ButtonDefaults.textButtonColors(contentColor = if (selected) Primary else Muted),
                     ) {
                         Text(
                             "$label $count",
                             fontSize = 10.sp,
-                            fontWeight = if (state.sourceFilter == label) FontWeight.SemiBold else FontWeight.Normal,
-                            modifier = if (state.sourceFilter == label) Modifier.clip(RoundedCornerShape(7.dp)).background(SoftBlue).padding(horizontal = 5.dp, vertical = 3.dp) else Modifier,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                         )
                     }
                 }
