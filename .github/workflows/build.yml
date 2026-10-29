@@ -46,6 +46,7 @@ jobs:
         run: |
           gradle :core:test --console=plain
           gradle :engine:test --console=plain
+          gradle :desktop:test --console=plain
 
       - name: 编译全模块
         run: gradle build -x test --console=plain
