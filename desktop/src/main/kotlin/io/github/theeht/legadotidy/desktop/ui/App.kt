@@ -1469,16 +1469,17 @@ private fun BottomActions(
                 }
             }
             WorkflowStage.DEDUP_REVIEW -> {
-                OutlinedButton(onClick = onShowImportInfo, enabled = state.inputFile != null && !state.busy, colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)) {
-                    Text("查看导入信息")
-                }
                 Button(colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C86F5), contentColor = Color.White), onClick = onConfirmDedup, enabled = state.sources.isNotEmpty() && !state.busy) {
                     Text("确认去重并进入校验")
                 }
             }
             WorkflowStage.PROBE_REVIEW -> {
+                OutlinedButton(
+                    onClick = { state.sourceFilter = "异常 / 复核" },
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF263652), contentColor = Color.White),
+                ) { Text("查看异常项") }
                 if (state.busy) {
-                    OutlinedButton(onClick = onStop, colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)) { Text("停止校验") }
+                    OutlinedButton(onClick = onStop, colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF263652), contentColor = Color.White)) { Text("停止校验") }
                 } else if (state.sources.any { it.probe == null }) {
                     Button(colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C86F5), contentColor = Color.White), onClick = onContinueValidation) { Text("继续校验") }
                 } else {
@@ -1488,14 +1489,34 @@ private fun BottomActions(
                 }
             }
             WorkflowStage.ORGANIZE_REVIEW -> {
-                Button(colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C86F5), contentColor = Color.White), onClick = onGeneratePreview, enabled = state.sources.isNotEmpty() && !state.busy) {
-                    Text(if (state.preview == null) "生成整理预览" else "重新生成预览")
-                }
-                Button(colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C86F5), contentColor = Color.White), onClick = onConfirmOrganize, enabled = state.preview != null && !state.busy) {
-                    Text("确认整理并进入导出")
+                if (state.preview == null) {
+                    OutlinedButton(
+                        onClick = { state.sourceFilter = "待删除" },
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF263652), contentColor = Color.White),
+                    ) { Text("查看待删除项") }
+                    Button(
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C86F5), contentColor = Color.White),
+                        onClick = onGeneratePreview,
+                        enabled = state.sources.isNotEmpty() && !state.busy,
+                    ) { Text("生成整理预览") }
+                } else {
+                    OutlinedButton(
+                        onClick = onGeneratePreview,
+                        enabled = !state.busy,
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF263652), contentColor = Color.White),
+                    ) { Text("重新生成预览") }
+                    Button(
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C86F5), contentColor = Color.White),
+                        onClick = onConfirmOrganize,
+                        enabled = !state.busy,
+                    ) { Text("确认整理并进入导出") }
                 }
             }
             WorkflowStage.EXPORT -> {
+                OutlinedButton(
+                    onClick = { state.showReport = true },
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF263652), contentColor = Color.White),
+                ) { Text("查看最终清单") }
                 if (DirectLink.isUsable(state.directUrl)) {
                     OutlinedButton(onClick = onCopyImportLink, enabled = !state.busy, colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)) { Text("复制导入链接") }
                 }
@@ -1619,6 +1640,22 @@ private fun ReportDialog(state: WorkflowState, onDismiss: () -> Unit) {
                         Text(status.label, Modifier.weight(1f), fontSize = 12.sp, color = statusColor(status))
                         Text(count.toString(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
+                }
+                if (state.stage == WorkflowStage.EXPORT || state.preview != null) {
+                    HorizontalDivider(color = Line)
+                    DetailField("最终输出数", state.sources.size.toString())
+                    DetailField(
+                        "名称待变更",
+                        state.sources.count { source ->
+                            state.preview?.get(source.id)?.name?.let { it != source.doc.name } == true
+                        }.toString(),
+                    )
+                    DetailField(
+                        "分组待变更",
+                        state.sources.count { source ->
+                            state.preview?.get(source.id)?.group?.let { it != source.doc.group } == true
+                        }.toString(),
+                    )
                 }
                 state.exported?.let {
                     HorizontalDivider(color = Line)
