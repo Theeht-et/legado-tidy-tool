@@ -478,7 +478,7 @@ fun TidyApp() {
                 if (state.markDisabledForDeletion) {
                     state.sources.indices.forEach { sourceIndex ->
                         val source = state.sources[sourceIndex]
-                        if (!source.doc.enabled && !source.deleteMarked && source.suggestion != "用户决定保留") {
+                        if (source.isDisabledForDisplay() && !source.deleteMarked && source.suggestion != "用户决定保留") {
                             state.sources[sourceIndex] = source.copy(
                                 deleteMarked = true,
                                 suggestion = "禁用书源，建议删除",
@@ -1292,10 +1292,14 @@ private fun DetailPanel(
                     Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text("基本信息", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("基本信息", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
+                        val statusLabel = source.probe?.status?.label ?: "待校验"
+                        SmallChip(statusLabel, statusBackground(source.probe?.status), statusColor(source.probe?.status))
+                    }
                     DetailField("类型", source.doc.type.toString())
                     DetailField("源分组", preview?.group ?: source.doc.group.ifBlank { "未分组" })
-                    DetailField("启用状态", if (source.doc.enabled) "启用" else "禁用")
+                    DetailField("启用状态", if (source.isDisabledForDisplay()) "禁用" else "启用")
                     DetailField("搜索规则", if (source.doc.canSearch) "已配置 / 待引擎确认" else "未发现常规搜索规则")
                     DetailField("规则字段", source.doc.ruleCompleteness.toString())
                     DetailField("校验状态", source.probe?.status?.label ?: "尚未校验")
@@ -1362,6 +1366,7 @@ private fun DetailPanel(
                         }
                         Text("仅已勾选的规则生效；确认进入导出阶段后，标记删除项才会移出当前书源池。", fontSize = 10.sp, color = Muted)
                     }
+                    Text("操作", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
                     OutlinedButton(
                         onClick = { onEdit(source.id) },
                         enabled = !state.busy && state.stage != WorkflowStage.EXPORT,
@@ -1724,7 +1729,7 @@ private fun CompareGroupDialog(
                                     HorizontalDivider(color = Line)
                                     DetailField("URL", source.doc.url)
                                     DetailField("类型 / 分组", "${source.doc.type} / ${source.doc.group.ifBlank { "未分组" }}")
-                                    DetailField("启用 / 规则字段", "${if (source.doc.enabled) "启用" else "禁用"} / ${source.doc.ruleCompleteness}")
+                                    DetailField("启用 / 规则字段", "${if (source.isDisabledForDisplay()) "禁用" else "启用"} / ${source.doc.ruleCompleteness}")
                                     Text("关键规则", fontSize = 10.sp, color = Muted, fontWeight = FontWeight.SemiBold)
                                     compareFields.forEach { (key, label) ->
                                         val value = rawString(source, key)
@@ -1781,7 +1786,7 @@ private fun EditSourceDialog(
         mutableStateOf(preview?.group ?: source.doc.group)
     }
     var type by remember(source.id) { mutableStateOf(source.doc.type.toString()) }
-    var enabled by remember(source.id) { mutableStateOf(source.doc.enabled) }
+    var enabled by remember(source.id) { mutableStateOf(!source.isDisabledForDisplay()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1874,6 +1879,13 @@ private fun statusBackground(status: ProbeStatus?): Color = when (status) {
     ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> SoftAmber
     ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS, ProbeStatus.ERROR -> SoftRed
     else -> SoftSlate
+}
+
+private fun WorkflowSource.isDisabledForDisplay(): Boolean {
+    val legacyEnabled = doc.raw.get("bookSourceEnabled")?.let { value ->
+        if (value.isJsonNull) null else runCatching { value.asBoolean }.getOrNull()
+    }
+    return !doc.enabled || legacyEnabled == false
 }
 
 private fun buildSourceRows(state: WorkflowState): List<SourceListRow> {
