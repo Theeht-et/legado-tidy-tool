@@ -396,29 +396,28 @@ fun TidyApp() {
                     )
                 }
                 val byIndex = report.sources.associateBy { it.index }
-                val orderedIds = if (OrganizeRule.SORT_BY_RESPONSE_TIME in rules) {
-                    snapshot.sortedWith(
-                        compareBy<WorkflowSource> {
-                            it.probe?.takeIf { result -> result.status != ProbeStatus.SKIPPED }?.elapsedMs
-                                ?: Long.MAX_VALUE
-                        }.thenBy { it.id }
-                    ).map { it.id }
+                // Re-grouping and explicit sorting use the organizer's grouped order.
+                // Name-only rules keep the source pool's existing order.
+                val orderedIds = if (
+                    OrganizeRule.REGROUP_BY_TYPE in rules ||
+                    OrganizeRule.SORT_BY_RESPONSE_TIME in rules
+                ) {
+                    report.sources.mapNotNull { organized ->
+                        snapshot.getOrNull(organized.index)?.id
+                    }
                 } else {
                     snapshot.map { it.id }
                 }
-                val rankByGroup = HashMap<String, Int>()
                 val previewRows = linkedMapOf<Int, PreviewSource>()
                 orderedIds.forEach { id ->
                     val inputIndex = snapshot.indexOfFirst { it.id == id }
                     val organized = byIndex[inputIndex]
                     if (organized != null) {
-                        val rank = rankByGroup[organized.group] ?: 0
-                        rankByGroup[organized.group] = rank + 1
                         previewRows[id] = PreviewSource(
                             name = organized.name,
                             group = organized.group,
                             status = organized.status,
-                            rank = rank,
+                            rank = organized.rank,
                         )
                     }
                 }
@@ -646,8 +645,43 @@ fun TidyApp() {
                         )
                         state.preview = all
                     } else {
+                        val changedUrl = url != source.doc.url
+                        val anyMetadataChanged = name != source.doc.name ||
+                            changedUrl ||
+                            group != source.doc.group ||
+                            type != source.doc.type ||
+                            enabled != source.doc.enabled
                         updateSource(state, id) { old ->
-                            old.copy(doc = editedDocument(old.doc, name, url, group, type, enabled))
+                            val edited = editedDocument(old.doc, name, url, group, type, enabled)
+                            when {
+                                state.stage == WorkflowStage.PROBE_REVIEW && changedUrl -> old.copy(
+                                    doc = edited,
+                                    probe = null,
+                                    deleteMarked = false,
+                                    suggestion = "待重新校验",
+                                )
+                                else -> old.copy(doc = edited)
+                            }
+                        }
+                        if (state.stage == WorkflowStage.DEDUP_REVIEW && anyMetadataChanged) {
+                            // These fields influence candidate grouping or keep scoring. Invalidate
+                            // old recommendations instead of letting stale groups delete the wrong source.
+                            state.stage = WorkflowStage.IMPORT
+                            state.duplicateGroups = emptyList()
+                            state.duplicateReport = null
+                            state.sources.indices.forEach { index ->
+                                state.sources[index] = state.sources[index].copy(
+                                    duplicateGroup = null,
+                                    deleteMarked = false,
+                                    suggestion = "待去重",
+                                    probe = null,
+                                )
+                            }
+                            state.notice = "源信息已修改，旧去重建议已重置。请重新开始去重。"
+                        } else if (state.stage == WorkflowStage.PROBE_REVIEW && changedUrl) {
+                            state.completed = state.sources.count { it.probe != null }
+                            state.total = state.sources.size
+                            state.notice = "URL 已修改，该书源需要重新校验。"
                         }
                     }
                     editingId = null
