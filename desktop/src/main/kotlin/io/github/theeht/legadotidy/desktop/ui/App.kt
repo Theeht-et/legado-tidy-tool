@@ -11,18 +11,21 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -35,32 +38,47 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.theeht.legadotidy.dedup.DedupKind
+import io.github.theeht.legadotidy.dedup.DedupReport
+import io.github.theeht.legadotidy.dedup.Deduper
 import io.github.theeht.legadotidy.engine.LegadoProbeEngine
 import io.github.theeht.legadotidy.export.DirectLink
+import io.github.theeht.legadotidy.export.ExportConfig
+import io.github.theeht.legadotidy.export.ExportResult
+import io.github.theeht.legadotidy.export.Exporter
 import io.github.theeht.legadotidy.model.BookSourceDoc
+import io.github.theeht.legadotidy.model.SourceField
 import io.github.theeht.legadotidy.model.SourceIO
-import io.github.theeht.legadotidy.pipeline.Phase
-import io.github.theeht.legadotidy.pipeline.Pipeline
-import io.github.theeht.legadotidy.pipeline.PipelineConfig
-import io.github.theeht.legadotidy.pipeline.PipelineEvent
+import io.github.theeht.legadotidy.organize.OrganizeConfig
+import io.github.theeht.legadotidy.organize.OrganizeRule
+import io.github.theeht.legadotidy.organize.Organizer
+import io.github.theeht.legadotidy.organize.OrganizedSource
 import io.github.theeht.legadotidy.probe.ProbeDepth
 import io.github.theeht.legadotidy.probe.ProbeOptions
+import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.awt.Desktop
 import java.awt.FileDialog
@@ -77,603 +95,1283 @@ private val Warn = Color(0xFFB45309)
 private val Bad = Color(0xFFB91C1C)
 private val Muted = Color(0xFF6B7280)
 private val Line = Color(0xFFE5E7EB)
+private val Canvas = Color(0xFFF8FAFC)
+private val SoftBlue = Color(0xFFEFF4FF)
 
 private val LightColors = lightColorScheme(
     primary = Primary,
     onPrimary = Color.White,
     surface = Color.White,
-    background = Color(0xFFF8FAFC),
+    background = Canvas,
 )
+
+private enum class WorkflowStage(val label: String, val help: String) {
+    IMPORT("导入", "导入书源文件"),
+    DEDUP_REVIEW("去重审核", "系统已推荐保留项；请检查重复组"),
+    PROBE_REVIEW("校验审核", "真实引擎校验完成后，请检查待删除建议"),
+    ORGANIZE_REVIEW("整理预览", "先选择规则，再生成可编辑预览"),
+    EXPORT("导出", "导出当前已确认的书源工作集"),
+}
+
+private data class WorkflowSource(
+    val id: Int,
+    val doc: BookSourceDoc,
+    val duplicateGroup: Int? = null,
+    val probe: ProbeResult? = null,
+    val deleteMarked: Boolean = false,
+    val suggestion: String = "待去重",
+)
+
+private data class DuplicateGroupUi(
+    val number: Int,
+    val kind: DedupKind,
+    val sourceIds: List<Int>,
+    val suggestedKeepId: Int,
+    val similarity: Double,
+)
+
+private data class PreviewSource(
+    val name: String,
+    val group: String,
+    val status: ProbeStatus,
+    val rank: Int,
+    val nameEdited: Boolean = false,
+    val groupEdited: Boolean = false,
+)
+
+private sealed class SourceListRow(val key: String) {
+    data class GroupHeader(val group: DuplicateGroupUi) : SourceListRow("group-${group.number}")
+    data class SourceEntry(val source: WorkflowSource) : SourceListRow("source-${source.id}")
+}
+
+private class WorkflowState {
+    var stage by mutableStateOf(WorkflowStage.IMPORT)
+    val sources = mutableStateListOf<WorkflowSource>()
+    var inputFile by mutableStateOf<File?>(null)
+    var inputCount by mutableStateOf(0)
+    var selectedId by mutableStateOf<Int?>(null)
+    var error by mutableStateOf<String?>(null)
+    var notice by mutableStateOf<String?>(null)
+    var busy by mutableStateOf(false)
+    var completed by mutableStateOf(0)
+    var total by mutableStateOf(0)
+    var removedCount by mutableStateOf(0)
+    var duplicateGroups by mutableStateOf<List<DuplicateGroupUi>>(emptyList())
+    var duplicateReport by mutableStateOf<DedupReport?>(null)
+    var preview by mutableStateOf<Map<Int, PreviewSource>?>(null)
+    var previewOrder by mutableStateOf<List<Int>>(emptyList())
+    var exported by mutableStateOf<ExportResult?>(null)
+
+    var keyword by mutableStateOf("剑来")
+    var concurrency by mutableStateOf(100)
+    var timeoutSeconds by mutableStateOf(20)
+    var skipProbe by mutableStateOf(false)
+    var withToc by mutableStateOf(false)
+    var proxy by mutableStateOf("")
+    var exportDir by mutableStateOf(defaultExportDir())
+    var directUrl by mutableStateOf("")
+
+    var selectedRules by mutableStateOf<Set<OrganizeRule>>(emptySet())
+    var applyCleanNames by mutableStateOf(false)
+    var applyGroups by mutableStateOf(false)
+    var applyOrder by mutableStateOf(false)
+
+    var showImportInfo by mutableStateOf(false)
+    var showSettings by mutableStateOf(false)
+    var showReport by mutableStateOf(false)
+}
 
 @Composable
 fun TidyApp() {
-    val state = remember { AppState() }
-    var tab by remember { mutableStateOf(Tab.WORKBENCH) }
-
-    MaterialTheme(colorScheme = LightColors) {
-        Surface(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize()) {
-                TopBar(state)
-                HorizontalDivider(color = Line)
-                Row(Modifier.fillMaxSize()) {
-                    Rail(tab) { tab = it }
-                    Box(Modifier.fillMaxSize().background(Color(0xFFF8FAFC))) {
-                        when (tab) {
-                            Tab.WORKBENCH -> Workbench(state)
-                            Tab.POOL -> Pool(state)
-                            Tab.REPORT -> Report(state)
-                            Tab.SETTINGS -> Settings(state)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private enum class Tab(val label: String) {
-    WORKBENCH("工作台"),
-    POOL("书源池"),
-    REPORT("报告"),
-    SETTINGS("设置"),
-}
-
-@Composable
-private fun TopBar(state: AppState) {
-    Row(
-        Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("书源整理", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Primary)
-        Spacer(Modifier.width(16.dp))
-        Text(
-            state.inputFile?.name?.let { "$it · ${state.docs.size} 个书源" } ?: "尚未选择文件",
-            fontSize = 13.sp,
-            color = Muted,
-        )
-        Spacer(Modifier.weight(1f))
-        if (state.busy) {
-            Text("运行中", fontSize = 13.sp, color = Primary)
-        }
-    }
-}
-
-@Composable
-private fun Rail(current: Tab, onSelect: (Tab) -> Unit) {
-    Column(
-        Modifier.fillMaxHeight().width(148.dp).background(Color.White).padding(vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Tab.entries.forEach { tab ->
-            val selected = tab == current
-            Row(
-                Modifier.fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .background(if (selected) Color(0xFFEFF4FF) else Color.Transparent, RoundedCornerShape(8.dp))
-                    .clickable { onSelect(tab) }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(tab.label, fontSize = 14.sp, color = if (selected) Primary else Color(0xFF374151))
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------- 工作台
-
-@Composable
-private fun Workbench(state: AppState) {
+    val state = remember { WorkflowState() }
     val scope = rememberCoroutineScope()
-    var job by remember { mutableStateOf<Job?>(null) }
+    var activeJob by remember { mutableStateOf<Job?>(null) }
+    var editingId by remember { mutableStateOf<Int?>(null) }
+    var comparingGroup by remember { mutableStateOf<Int?>(null) }
 
-    fun pickFile() {
-        val dialog = FileDialog(null as Frame?, "选择书源文件", FileDialog.LOAD)
+    fun importFile() {
+        if (state.busy) return
+        val dialog = FileDialog(null as Frame?, "选择书源 JSON 文件", FileDialog.LOAD)
         dialog.setFilenameFilter { _, name -> name.endsWith(".json", ignoreCase = true) }
         dialog.isVisible = true
         val dir = dialog.directory ?: return
         val name = dialog.file ?: return
-        state.parseError = null
-        state.inputFile = File(dir, name)
+        val selectedFile = File(dir, name)
         try {
-            val parsed = SourceIO.parse(state.inputFile!!.readText())
-            state.docs = parsed.map { BookSourceDoc(it) }
-            state.result = null
-            state.log("读到 ${state.docs.size} 个书源：$name")
+            val docs = SourceIO.parse(selectedFile.readText())
+            if (docs.isEmpty()) {
+                state.error = "文件中没有可导入的书源对象。"
+                return
+            }
+            state.sources.clear()
+            state.sources.addAll(docs.mapIndexed { index, raw -> WorkflowSource(index, BookSourceDoc(raw)) })
+            state.inputFile = selectedFile
+            state.inputCount = docs.size
+            state.selectedId = state.sources.firstOrNull()?.id
+            state.stage = WorkflowStage.IMPORT
+            state.duplicateGroups = emptyList()
+            state.duplicateReport = null
+            state.preview = null
+            state.previewOrder = emptyList()
+            state.exported = null
+            state.error = null
+            state.notice = "已导入 ${docs.size} 个书源；原始文件不会被修改。"
+            state.removedCount = 0
+            state.completed = 0
+            state.total = 0
         } catch (e: Exception) {
-            state.docs = emptyList()
-            state.parseError = "解析失败：${e.message ?: e::class.java.simpleName}"
+            state.error = "导入失败：${e.message ?: e::class.java.simpleName}"
         }
     }
 
-    fun start() {
-        if (state.docs.isEmpty() || state.busy) return
-        state.reset()
+    fun startDedup() {
+        if (state.busy || state.sources.isEmpty()) return
         state.busy = true
-        job = scope.launch {
+        state.error = null
+        state.notice = "正在分析重复候选，不会直接删除书源。"
+        activeJob = scope.launch {
             try {
-                val config = PipelineConfig(
-                    concurrency = state.concurrency,
-                    skipProbe = state.skipProbe,
-                    probe = ProbeOptions(
-                        depth = if (state.withToc) ProbeDepth.WITH_TOC else ProbeDepth.SEARCH,
-                        timeoutMs = state.timeoutSeconds * 1000L,
-                        keyword = state.keyword,
-                        proxy = state.proxy.takeIf { it.isNotBlank() },
-                    ),
-                    exportDir = run {
-                        // 目录可能被用户删了，跑之前补建一次。
-                        val dir = File(state.exportDir)
-                        dir.mkdirs()
-                        dir.toPath()
-                    },
-                )
-                val result = Pipeline(LegadoProbeEngine()).run(state.docs, config) { event ->
-                    withContext(Dispatchers.Main) { apply(state, event) }
+                val snapshot = state.sources.toList()
+                val report = withContext(Dispatchers.Default) {
+                    Deduper.run(snapshot.map { it.doc })
                 }
-                state.result = result
+                val groups = report.groups.mapIndexed { index, group ->
+                    DuplicateGroupUi(
+                        number = index + 1,
+                        kind = group.kind,
+                        sourceIds = group.members.mapNotNull { snapshot.getOrNull(it)?.id },
+                        suggestedKeepId = snapshot[group.keep].id,
+                        similarity = group.similarity,
+                    )
+                }
+                val groupById = groups.flatMap { group -> group.sourceIds.map { it to group } }.toMap()
+                state.sources.clear()
+                state.sources.addAll(snapshot.map { source ->
+                    val group = groupById[source.id]
+                    val keep = group?.suggestedKeepId == source.id
+                    source.copy(
+                        duplicateGroup = group?.number,
+                        deleteMarked = group != null && !keep,
+                        suggestion = when {
+                            group == null -> "未发现重复"
+                            keep -> "建议保留"
+                            else -> "建议删除"
+                        },
+                    )
+                })
+                state.duplicateGroups = groups
+                state.duplicateReport = report
+                state.stage = WorkflowStage.DEDUP_REVIEW
+                state.selectedId = state.sources.firstOrNull()?.id
+                state.notice = "去重分析完成：发现 ${groups.size} 个重复组。进入校验时才会应用删除标记。"
             } catch (e: CancellationException) {
-                state.log("已取消")
+                state.error = "去重分析已停止。"
             } catch (e: Throwable) {
-                state.log("失败：${e.message ?: e::class.java.simpleName}")
+                state.error = "去重分析失败：${e.message ?: e::class.java.simpleName}"
             } finally {
                 state.busy = false
-                state.cancelling = false
-                job = null
+                activeJob = null
             }
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = ::pickFile, enabled = !state.busy) { Text("选择书源文件") }
-            OutlinedButton(onClick = ::start, enabled = !state.busy && state.docs.isNotEmpty()) { Text("开始处理") }
-            if (state.busy) {
-                OutlinedButton(
-                    onClick = { state.cancelling = true; job?.cancel() },
-                    enabled = !state.cancelling,
-                ) { Text(if (state.cancelling) "正在停止…" else "停止") }
+    fun runValidation() {
+        if (state.busy || state.sources.isEmpty()) return
+        state.busy = true
+        state.error = null
+        state.total = state.sources.size
+        state.completed = state.sources.count { it.probe != null }
+        state.notice = if (state.skipProbe) "按设置跳过真实校验。" else "正在使用 Legado 引擎校验书源。"
+        val snapshot = state.sources.toList()
+        val pending = snapshot.filter { it.probe == null }
+        val options = ProbeOptions(
+            depth = if (state.withToc) ProbeDepth.WITH_TOC else ProbeDepth.SEARCH,
+            timeoutMs = state.timeoutSeconds.coerceAtLeast(1) * 1000L,
+            keyword = state.keyword,
+            proxy = state.proxy.takeIf { it.isNotBlank() },
+        )
+        activeJob = scope.launch {
+            try {
+                val gate = Semaphore(state.concurrency.coerceIn(1, 2000))
+                coroutineScope {
+                    pending.map { source ->
+                        async(Dispatchers.IO) {
+                            val index = snapshot.indexOfFirst { it.id == source.id }
+                            val result = if (state.skipProbe) {
+                                ProbeResult(index, ProbeStatus.SKIPPED, detail = "按设置跳过校验")
+                            } else {
+                                try {
+                                    gate.withPermit { LegadoProbeEngine().probe(index, source.doc, options) }
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Throwable) {
+                                    ProbeResult(index, ProbeStatus.ERROR, detail = e.message ?: e::class.java.simpleName)
+                                }
+                            }
+                            withContext(Dispatchers.Main) {
+                                val currentIndex = state.sources.indexOfFirst { it.id == source.id }
+                                if (currentIndex >= 0) {
+                                    val deleteByDefault = result.status in setOf(
+                                        ProbeStatus.NO_SEARCH_URL,
+                                        ProbeStatus.UNSUPPORTED,
+                                        ProbeStatus.PARSE_EMPTY,
+                                    )
+                                    state.sources[currentIndex] = state.sources[currentIndex].copy(
+                                        probe = result,
+                                        deleteMarked = deleteByDefault,
+                                        suggestion = when {
+                                            deleteByDefault -> "建议删除"
+                                            result.status == ProbeStatus.OK -> "建议保留"
+                                            else -> "建议复核"
+                                        },
+                                    )
+                                }
+                                state.completed = (state.completed + 1).coerceAtMost(state.total)
+                            }
+                        }
+                    }.awaitAll()
+                }
+                if (state.sources.all { it.probe != null }) {
+                    val marked = state.sources.count { it.deleteMarked }
+                    state.notice = "校验完成。当前有 ${marked} 个书源被标记为待删除；网络错误和超时默认建议复核。"
+                }
+            } catch (e: CancellationException) {
+                state.error = "校验已停止；已完成的结果已保留，可继续校验剩余书源。"
+            } catch (e: Throwable) {
+                state.error = "校验任务失败：${e.message ?: e::class.java.simpleName}"
+            } finally {
+                state.busy = false
+                activeJob = null
             }
-            Spacer(Modifier.weight(1f))
+        }
+    }
+
+    fun confirmDedupAndValidate() {
+        if (!commitMarkedDeletions(state)) return
+        state.stage = WorkflowStage.PROBE_REVIEW
+        state.sources.indices.forEach { index ->
+            state.sources[index] = state.sources[index].copy(duplicateGroup = null, probe = null)
+        }
+        state.duplicateGroups = state.duplicateGroups
+        runValidation()
+    }
+
+    fun confirmValidation() {
+        if (state.sources.any { it.probe == null }) {
+            state.error = "还有书源没有校验结果。请完成或停止后继续校验，再进入整理。"
+            return
+        }
+        if (!commitMarkedDeletions(state)) return
+        state.sources.indices.forEach { index ->
+            state.sources[index] = state.sources[index].copy(duplicateGroup = null)
+        }
+        state.stage = WorkflowStage.ORGANIZE_REVIEW
+        state.selectedRules = emptySet()
+        state.preview = null
+        state.previewOrder = emptyList()
+        state.error = null
+        state.notice = "校验阶段已确认。现在选择需要执行的整理规则；未勾选的规则不会执行。"
+    }
+
+    fun generateOrganizePreview() {
+        if (state.busy || state.sources.isEmpty()) return
+        state.busy = true
+        state.error = null
+        state.notice = "正在按已勾选的规则生成预览。"
+        val snapshot = state.sources.toList()
+        val rules = state.selectedRules.toSet()
+        val resultMap = snapshot.mapIndexedNotNull { index, source ->
+            source.probe?.let { index to it.copy(index = index) }
+        }.toMap()
+        activeJob = scope.launch {
+            try {
+                val report = withContext(Dispatchers.Default) {
+                    Organizer.run(
+                        sources = snapshot.map { it.doc },
+                        results = resultMap,
+                        config = OrganizeConfig(selectedRules = rules),
+                    )
+                }
+                val byIndex = report.sources.associateBy { it.index }
+                val orderedIds = if (OrganizeRule.SORT_BY_RESPONSE_TIME in rules) {
+                    snapshot.sortedWith(
+                        compareBy<WorkflowSource> {
+                            it.probe?.takeIf { result -> result.status != ProbeStatus.SKIPPED }?.elapsedMs
+                                ?: Long.MAX_VALUE
+                        }.thenBy { it.id }
+                    ).map { it.id }
+                } else {
+                    snapshot.map { it.id }
+                }
+                val rankByGroup = HashMap<String, Int>()
+                val previewRows = linkedMapOf<Int, PreviewSource>()
+                orderedIds.forEach { id ->
+                    val inputIndex = snapshot.indexOfFirst { it.id == id }
+                    val organized = byIndex[inputIndex]
+                    if (organized != null) {
+                        val rank = rankByGroup[organized.group] ?: 0
+                        rankByGroup[organized.group] = rank + 1
+                        previewRows[id] = PreviewSource(
+                            name = organized.name,
+                            group = organized.group,
+                            status = organized.status,
+                            rank = rank,
+                        )
+                    }
+                }
+                state.preview = previewRows
+                state.previewOrder = orderedIds
+                state.notice = "整理预览已生成。请检查新名称、分组和顺序，再确认应用。"
+            } catch (e: CancellationException) {
+                state.error = "整理预览已取消。"
+            } catch (e: Throwable) {
+                state.error = "整理预览失败：${e.message ?: e::class.java.simpleName}"
+            } finally {
+                state.busy = false
+                activeJob = null
+            }
+        }
+    }
+
+    fun confirmOrganize() {
+        val preview = state.preview ?: run {
+            state.error = "请先生成整理预览。"
+            return
+        }
+        val rules = state.selectedRules
+        state.applyCleanNames = rules.any {
+            it == OrganizeRule.CLEAN_DECORATIONS ||
+                it == OrganizeRule.REMOVE_ADVERTISING_WORDS ||
+                it == OrganizeRule.NORMALIZE_PUNCTUATION
+        } || preview.values.any { it.nameEdited }
+        state.applyGroups = OrganizeRule.KEEP_ORIGINAL_GROUPS in rules ||
+            OrganizeRule.REGROUP_BY_TYPE in rules ||
+            preview.values.any { it.groupEdited }
+        state.applyOrder = state.applyGroups || OrganizeRule.SORT_BY_RESPONSE_TIME in rules
+        val byId = state.sources.associateBy { it.id }
+        val ordered = state.previewOrder.mapNotNull { byId[it] }
+        if (ordered.isEmpty()) {
+            state.error = "整理结果为空，无法进入导出。"
+            return
+        }
+        state.sources.clear()
+        state.sources.addAll(ordered.map { it.copy(deleteMarked = false, duplicateGroup = null) })
+        state.stage = WorkflowStage.EXPORT
+        state.selectedId = state.sources.firstOrNull()?.id
+        state.exported = null
+        state.error = null
+        state.notice = "整理结果已确认。导出时只写入已勾选或手动修改的字段。"
+    }
+
+    fun exportFile() {
+        if (state.busy || state.sources.isEmpty()) return
+        state.busy = true
+        state.error = null
+        val snapshot = state.sources.toList()
+        val preview = state.preview.orEmpty()
+        activeJob = scope.launch {
+            try {
+                val raws = snapshot.map { it.doc.raw }
+                val organized = snapshot.mapIndexed { index, source ->
+                    val planned = preview[source.id]
+                    OrganizedSource(
+                        index = index,
+                        name = planned?.name ?: source.doc.name,
+                        group = planned?.group ?: source.doc.group,
+                        status = source.probe?.status ?: ProbeStatus.SKIPPED,
+                        rank = planned?.rank ?: index,
+                    )
+                }
+                val result = withContext(Dispatchers.IO) {
+                    Exporter.write(
+                        raws = raws,
+                        organized = organized,
+                        dir = Path.of(state.exportDir),
+                        fileName = Exporter.defaultFileName(),
+                        config = ExportConfig(
+                            applyCleanNames = state.applyCleanNames,
+                            applyGroupAndOrder = state.applyGroups || state.applyOrder,
+                            pretty = true,
+                            applyGroups = state.applyGroups,
+                            applyOrder = state.applyOrder,
+                        ),
+                    )
+                }
+                state.exported = result
+                state.notice = "导出完成：${result.count} 个书源已写入 ${result.file.toAbsolutePath()}"
+            } catch (e: CancellationException) {
+                state.error = "导出已取消。"
+            } catch (e: Throwable) {
+                state.error = "导出失败：${e.message ?: e::class.java.simpleName}"
+            } finally {
+                state.busy = false
+                activeJob = null
+            }
+        }
+    }
+
+    MaterialTheme(colorScheme = LightColors) {
+        Surface(Modifier.fillMaxSize(), color = Canvas) {
+            Column(Modifier.fillMaxSize()) {
+                TopBar(state, onImport = ::importFile)
+                HorizontalDivider(color = Line)
+                Column(
+                    Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Stepper(state.stage)
+                    KpiRow(state)
+                    if (state.stage == WorkflowStage.ORGANIZE_REVIEW) {
+                        OrganizeRulePanel(state) { rule, checked ->
+                            val next = if (checked) state.selectedRules + rule else state.selectedRules - rule
+                            state.selectedRules = when (rule) {
+                                OrganizeRule.KEEP_ORIGINAL_GROUPS -> if (checked) next - OrganizeRule.REGROUP_BY_TYPE else next
+                                OrganizeRule.REGROUP_BY_TYPE -> if (checked) next - OrganizeRule.KEEP_ORIGINAL_GROUPS else next
+                                else -> next
+                            }
+                            if (state.preview != null) {
+                                state.preview = null
+                                state.previewOrder = emptyList()
+                                state.notice = "整理规则已变化，请重新生成预览。"
+                            }
+                        }
+                    }
+                    state.error?.let {
+                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2))) {
+                            Text(it, Modifier.fillMaxWidth().padding(10.dp), color = Bad, fontSize = 13.sp)
+                        }
+                    }
+                    state.notice?.let {
+                        Text(it, fontSize = 12.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (state.busy && state.total > 0 && state.stage == WorkflowStage.PROBE_REVIEW) {
+                        LinearProgressIndicator(
+                            progress = { if (state.total == 0) 0f else state.completed.toFloat() / state.total },
+                            modifier = Modifier.fillMaxWidth().height(5.dp),
+                        )
+                        Text("校验进度：${state.completed}/${state.total}", fontSize = 12.sp, color = Muted)
+                    }
+                    Row(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        SourceListPanel(
+                            state = state,
+                            onDetail = { state.selectedId = it },
+                            onEdit = { editingId = it },
+                            onCompare = { comparingGroup = it },
+                            modifier = Modifier.weight(0.70f).fillMaxHeight(),
+                        )
+                        DetailPanel(
+                            state = state,
+                            onEdit = { editingId = it },
+                            onToggleDelete = { id -> toggleDeleteMark(state, id) },
+                            modifier = Modifier.weight(0.30f).fillMaxHeight(),
+                        )
+                    }
+                }
+                HorizontalDivider(color = Line)
+                BottomActions(
+                    state = state,
+                    onShowImportInfo = { state.showImportInfo = true },
+                    onStartDedup = ::startDedup,
+                    onConfirmDedup = ::confirmDedupAndValidate,
+                    onStop = { activeJob?.cancel() },
+                    onContinueValidation = ::runValidation,
+                    onConfirmValidation = ::confirmValidation,
+                    onGeneratePreview = ::generateOrganizePreview,
+                    onConfirmOrganize = ::confirmOrganize,
+                    onExport = ::exportFile,
+                    onOpenFolder = {
+                        val file = state.exported?.file?.toFile()
+                        val dir = file?.parentFile ?: File(state.exportDir)
+                        runCatching { if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(dir) }
+                            .onFailure { state.error = "无法打开目录：${it.message}" }
+                    },
+                )
+            }
+        }
+    }
+
+    if (state.showImportInfo) ImportInfoDialog(state, onDismiss = { state.showImportInfo = false })
+    if (state.showSettings) {
+        SettingsDialog(state, onDismiss = { state.showSettings = false }) {
+            val chooser = JFileChooser(File(state.exportDir))
+            chooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+            chooser.isAcceptAllFileFilterUsed = false
+            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                state.exportDir = chooser.selectedFile.absolutePath
+            }
+        }
+    }
+    if (state.showReport) ReportDialog(state, onDismiss = { state.showReport = false })
+    comparingGroup?.let { groupNo ->
+        state.duplicateGroups.firstOrNull { it.number == groupNo }?.let { group ->
+            CompareGroupDialog(
+                state = state,
+                group = group,
+                onDismiss = { comparingGroup = null },
+            )
+        }
+    }
+    editingId?.let { id ->
+        state.sources.firstOrNull { it.id == id }?.let { source ->
+            val previewRow = if (state.stage == WorkflowStage.ORGANIZE_REVIEW) state.preview?.get(id) else null
+            EditSourceDialog(
+                source = source,
+                preview = previewRow,
+                onDismiss = { editingId = null },
+                onSave = { name, url, group, type, enabled ->
+                    if (previewRow != null) {
+                        val all = state.preview.orEmpty().toMutableMap()
+                        val latest = all[id] ?: previewRow
+                        all[id] = latest.copy(
+                            name = name,
+                            group = group,
+                            nameEdited = latest.nameEdited || name != latest.name,
+                            groupEdited = latest.groupEdited || group != latest.group,
+                        )
+                        state.preview = all
+                    } else {
+                        updateSource(state, id) { old ->
+                            old.copy(doc = editedDocument(old.doc, name, url, group, type, enabled))
+                        }
+                    }
+                    editingId = null
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("书源整理", fontSize = 19.sp, fontWeight = FontWeight.SemiBold, color = Primary)
             Text(
-                if (state.skipProbe) "跳过校验" else "关键词「${state.keyword}」",
+                state.inputFile?.let { "${it.name} · 原始 ${state.inputCount} 个" } ?: "导入本地书源 JSON，分阶段审核后导出",
                 fontSize = 12.sp,
                 color = Muted,
             )
         }
-
-        state.parseError?.let { Text(it, color = Bad, fontSize = 13.sp) }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PhaseCard("S1 去重", state, Phase.DEDUP, Modifier.weight(1f))
-            PhaseCard("S2 校验", state, Phase.PROBE, Modifier.weight(1f))
-            PhaseCard("S3 整理", state, Phase.ORGANIZE, Modifier.weight(1f))
-            PhaseCard("S4 导出", state, Phase.EXPORT, Modifier.weight(1f))
+        Spacer(Modifier.weight(1f))
+        if (state.busy) {
+            LinearProgressIndicator(Modifier.width(72.dp).height(4.dp))
+            Spacer(Modifier.width(12.dp))
         }
-
-        Progress(state)
-        LogPane(state, Modifier.weight(1f))
+        OutlinedButton(onClick = onImport, enabled = !state.busy) { Text("导入书源") }
+        Spacer(Modifier.width(8.dp))
+        TextButton(onClick = { state.showReport = true }) { Text("报告") }
+        TextButton(onClick = { state.showSettings = true }) { Text("设置") }
     }
 }
 
 @Composable
-private fun PhaseCard(title: String, state: AppState, phase: Phase, modifier: Modifier = Modifier) {
-    val note = state.notes[phase]
-    val active = state.busy && state.phase == phase
-    Card(
-        modifier,
-        colors = CardDefaults.cardColors(
-            containerColor = if (active) Color(0xFFEFF4FF) else Color.White,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Primary)
-            Text(
-                note ?: if (active) "进行中…" else "等待",
-                fontSize = 12.sp,
-                color = if (note != null) Color(0xFF111827) else Muted,
-            )
-        }
-    }
-}
-
-@Composable
-private fun Progress(state: AppState) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        LinearProgressIndicator(
-            progress = { state.progress },
-            modifier = Modifier.fillMaxWidth().height(6.dp),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(state.phase?.label ?: "未开始", fontSize = 12.sp, color = Muted)
-            if (state.total > 0) {
-                Text("${state.done}/${state.total}", fontSize = 12.sp, color = Muted)
-                Text("可用 ${state.ok}", fontSize = 12.sp, color = Ok)
-                Text("失败 ${state.failed}", fontSize = 12.sp, color = if (state.failed > 0) Bad else Muted)
-            }
-        }
-    }
-}
-
-@Composable
-private fun LogPane(state: AppState, modifier: Modifier = Modifier) {
-    Card(modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))) {
-        LazyColumn(Modifier.fillMaxSize().padding(12.dp)) {
-            itemsIndexed(state.logs) { _, line ->
-                Text(
-                    line,
-                    fontSize = 12.sp,
-                    color = Color(0xFFE2E8F0),
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(vertical = 1.dp),
-                )
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------- 书源池
-
-@Composable
-private fun Pool(state: AppState) {
-    val results = state.result?.probeResults.orEmpty()
-    val organized = state.result?.organize?.sources.orEmpty().associateBy { it.index }
-
-    Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("书源池 · ${state.docs.size} 个", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        if (state.docs.isEmpty()) {
-            Text("还没有载入书源。回到工作台选择文件。", fontSize = 13.sp, color = Muted)
-            return@Column
-        }
-        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-            Text("名称", Modifier.weight(2.2f), fontSize = 12.sp, color = Muted)
-            Text("分组", Modifier.weight(1.2f), fontSize = 12.sp, color = Muted)
-            Text("状态", Modifier.weight(1.4f), fontSize = 12.sp, color = Muted)
-            Text("权重", Modifier.weight(0.7f), fontSize = 12.sp, color = Muted)
-            Text("地址", Modifier.weight(3f), fontSize = 12.sp, color = Muted)
-        }
-        HorizontalDivider(color = Line)
-        LazyColumn(Modifier.fillMaxSize()) {
-            items(state.docs.withIndex().toList()) { (index, doc) ->
-                val probe = results[index]
-                val org = organized[index]
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(doc.name ?: "（未命名）", Modifier.weight(2.2f), fontSize = 13.sp)
-                    Text(org?.group ?: doc.group ?: "—", Modifier.weight(1.2f), fontSize = 12.sp, color = Muted)
-                    Box(Modifier.weight(1.4f)) {
-                        if (probe == null) {
-                            Text("未校验", fontSize = 12.sp, color = Muted)
-                        } else {
-                            StatusChip(probe.status)
-                        }
-                    }
-                    Text((org?.rank ?: 0).toString(), Modifier.weight(0.7f), fontSize = 12.sp, color = Muted)
+private fun Stepper(stage: WorkflowStage) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WorkflowStage.entries.forEachIndexed { index, item ->
+            val current = item == stage
+            val complete = item.ordinal < stage.ordinal
+            Card(
+                Modifier.weight(1f),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (current) SoftBlue else if (complete) Color(0xFFF1F5F9) else Color.White,
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp)) {
                     Text(
-                        doc.url ?: "—",
-                        Modifier.weight(3f),
-                        fontSize = 12.sp,
+                        "${index + 1}. ${item.label}",
+                        fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (current) Primary else if (complete) Color(0xFF374151) else Muted,
+                        fontSize = 13.sp,
+                    )
+                    Text(item.help, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun KpiRow(state: WorkflowState) {
+    val values = listOf(
+        "当前书源" to state.sources.size.toString(),
+        "重复组" to state.duplicateGroups.size.toString(),
+        "待删除" to state.sources.count { it.deleteMarked }.toString(),
+        "校验可用" to state.sources.count { it.probe?.status == ProbeStatus.OK }.toString(),
+    )
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        values.forEach { (label, value) ->
+            Card(
+                Modifier.weight(1f),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
+                    Text(label, color = Muted, fontSize = 11.sp)
+                    Text(value, color = Color(0xFF111827), fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OrganizeRulePanel(
+    state: WorkflowState,
+    onRuleChange: (OrganizeRule, Boolean) -> Unit,
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("整理规则（未勾选的规则不会执行）", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OrganizeRule.entries.take(3).forEach { rule ->
+                    RuleCheckbox(rule, rule in state.selectedRules, onRuleChange, Modifier.weight(1f))
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OrganizeRule.entries.drop(3).forEach { rule ->
+                    RuleCheckbox(rule, rule in state.selectedRules, onRuleChange, Modifier.weight(1f))
+                }
+            }
+            Text("「保留原有分组」与「按类型重新分组」互斥；响应时间排序使用本轮校验耗时。", fontSize = 10.sp, color = Muted)
+        }
+    }
+}
+
+@Composable
+private fun RuleCheckbox(
+    rule: OrganizeRule,
+    checked: Boolean,
+    onRuleChange: (OrganizeRule, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = checked, onCheckedChange = { onRuleChange(rule, it) })
+        Text(rule.label, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun SourceListPanel(
+    state: WorkflowState,
+    onDetail: (Int) -> Unit,
+    onEdit: (Int) -> Unit,
+    onCompare: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(modifier, colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
+        Column(Modifier.fillMaxSize().padding(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("书源列表", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        when (state.stage) {
+                            WorkflowStage.IMPORT -> "导入后先查看书源，再开始去重"
+                            WorkflowStage.DEDUP_REVIEW -> "重复候选按组相邻显示，可在组内对比"
+                            WorkflowStage.PROBE_REVIEW -> "检查校验状态与系统删除建议"
+                            WorkflowStage.ORGANIZE_REVIEW -> if (state.preview == null) "选择规则后生成整理预览" else "预览可编辑，确认后才应用"
+                            WorkflowStage.EXPORT -> "以下为最终待导出的书源顺序"
+                        },
+                        fontSize = 11.sp,
                         color = Muted,
-                        maxLines = 1,
                     )
                 }
-                HorizontalDivider(color = Color(0xFFF1F5F9))
+                Spacer(Modifier.weight(1f))
+                Text("${state.sources.size} 个", fontSize = 11.sp, color = Muted)
+            }
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(color = Line)
+            TableHeader()
+            HorizontalDivider(color = Line)
+            if (state.sources.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("尚未导入书源", fontSize = 16.sp, color = Color(0xFF374151))
+                        Text("点击右上角「导入书源」选择 JSON 文件。", fontSize = 12.sp, color = Muted)
+                    }
+                }
+            } else {
+                val rows = buildSourceRows(state)
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(rows, key = { it.key }) { row ->
+                        when (row) {
+                            is SourceListRow.GroupHeader -> {
+                                Row(
+                                    Modifier.fillMaxWidth().background(Color(0xFFF1F5F9)).padding(horizontal = 6.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            "重复组 ${row.group.number} · ${row.group.kind.label}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF334155),
+                                        )
+                                        Text(
+                                            "${row.group.sourceIds.size} 个候选 · 相似度 ${(row.group.similarity * 100).toInt()}%",
+                                            fontSize = 10.sp,
+                                            color = Muted,
+                                        )
+                                    }
+                                    OutlinedButton(
+                                        onClick = { onCompare(row.group.number) },
+                                        enabled = !state.busy,
+                                    ) { Text("对比重复组", fontSize = 11.sp) }
+                                }
+                            }
+                            is SourceListRow.SourceEntry -> SourceRowItem(
+                                state = state,
+                                source = row.source,
+                                onDetail = onDetail,
+                                onEdit = onEdit,
+                            )
+                        }
+                        HorizontalDivider(color = Color(0xFFF1F5F9))
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun StatusChip(status: ProbeStatus) {
-    val color = when {
-        status.severity <= 0 -> Ok
-        status.severity == 1 -> Warn
-        else -> Bad
+private fun TableHeader() {
+    Row(
+        Modifier.fillMaxWidth().background(Color(0xFFFAFAFA)).padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("源名 / URL", Modifier.weight(2.2f), fontSize = 10.sp, color = Muted)
+        Text("类型", Modifier.weight(0.55f), fontSize = 10.sp, color = Muted)
+        Text("分组", Modifier.weight(0.8f), fontSize = 10.sp, color = Muted)
+        Text("状态", Modifier.weight(1.15f), fontSize = 10.sp, color = Muted)
+        Text("耗时", Modifier.weight(0.65f), fontSize = 10.sp, color = Muted)
+        Text("建议", Modifier.weight(0.9f), fontSize = 10.sp, color = Muted)
+        Text("操作", Modifier.width(92.dp), fontSize = 10.sp, color = Muted)
     }
-    Text(
-        status.label,
-        fontSize = 12.sp,
-        color = color,
-        modifier = Modifier
-            .background(color.copy(alpha = 0.10f), RoundedCornerShape(4.dp))
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+}
+
+@Composable
+private fun SourceRowItem(
+    state: WorkflowState,
+    source: WorkflowSource,
+    onDetail: (Int) -> Unit,
+    onEdit: (Int) -> Unit,
+) {
+    val selected = source.id == state.selectedId
+    val preview = state.preview?.get(source.id).takeIf { state.stage == WorkflowStage.ORGANIZE_REVIEW || state.stage == WorkflowStage.EXPORT }
+    val name = preview?.name ?: source.doc.name
+    val group = preview?.group ?: source.doc.group
+    val status = source.probe?.status?.label ?: if (state.stage == WorkflowStage.IMPORT || state.stage == WorkflowStage.DEDUP_REVIEW) "待校验" else "未校验"
+    val elapsed = source.probe?.let { if (it.elapsedMs >= 1000) "${"%.1f".format(it.elapsedMs / 1000.0)}s" else "${it.elapsedMs}ms" } ?: "—"
+    val advice = when {
+        source.deleteMarked -> "待删除"
+        source.suggestion.isNotBlank() -> source.suggestion
+        else -> "待审核"
+    }
+    Row(
+        Modifier.fillMaxWidth()
+            .background(if (selected) SoftBlue else Color.White)
+            .clickable { onDetail(source.id) }
+            .padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(2.2f).padding(end = 5.dp)) {
+            Text(name.ifBlank { "（未命名）" }, fontSize = 11.sp, color = Color(0xFF111827), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(source.doc.url, fontSize = 9.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text(source.doc.type.toString(), Modifier.weight(0.55f), fontSize = 10.sp, color = Muted, maxLines = 1)
+        Text(group.ifBlank { "—" }, Modifier.weight(0.8f), fontSize = 10.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(status, Modifier.weight(1.15f), fontSize = 10.sp, color = statusColor(source.probe?.status), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(elapsed, Modifier.weight(0.65f), fontSize = 10.sp, color = Muted, maxLines = 1)
+        Text(
+            advice,
+            Modifier.weight(0.9f),
+            fontSize = 10.sp,
+            color = if (source.deleteMarked) Bad else if (source.probe?.status == ProbeStatus.OK) Ok else Muted,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Row(Modifier.width(92.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            TextButton(onClick = { onDetail(source.id) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 3.dp, vertical = 2.dp)) {
+                Text("详情", fontSize = 10.sp)
+            }
+            TextButton(
+                onClick = { onEdit(source.id) },
+                enabled = !state.busy && state.stage != WorkflowStage.EXPORT,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 3.dp, vertical = 2.dp),
+            ) { Text("编辑", fontSize = 10.sp) }
+        }
+    }
+}
+
+@Composable
+private fun DetailPanel(
+    state: WorkflowState,
+    onEdit: (Int) -> Unit,
+    onToggleDelete: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val source = state.sources.firstOrNull { it.id == state.selectedId }
+    Card(modifier, colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
+        if (source == null) {
+            Box(Modifier.fillMaxSize().padding(18.dp), contentAlignment = Alignment.Center) {
+                Text("选择一条书源查看详情。", fontSize = 13.sp, color = Muted)
+            }
+        } else {
+            val preview = state.preview?.get(source.id).takeIf { state.stage == WorkflowStage.ORGANIZE_REVIEW || state.stage == WorkflowStage.EXPORT }
+            Column(
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("书源详情", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(preview?.name ?: source.doc.name.ifBlank { "（未命名）" }, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
+                Text(source.doc.url, fontSize = 11.sp, color = Muted)
+                HorizontalDivider(color = Line)
+                DetailField("类型", source.doc.type.toString())
+                DetailField("分组", preview?.group ?: source.doc.group.ifBlank { "未分组" })
+                DetailField("启用状态", if (source.doc.enabled) "启用" else "禁用")
+                DetailField("规则字段数量", source.doc.ruleCompleteness.toString())
+                DetailField("校验状态", source.probe?.status?.label ?: "尚未校验")
+                DetailField("响应耗时", source.probe?.let { "${it.elapsedMs} ms" } ?: "—")
+                source.probe?.httpCode?.let { DetailField("HTTP 状态码", it.toString()) }
+                if (!source.probe?.detail.isNullOrBlank()) {
+                    Text("校验详情", fontSize = 11.sp, color = Muted, fontWeight = FontWeight.SemiBold)
+                    Text(source.probe?.detail.orEmpty(), fontSize = 11.sp, color = Color(0xFF374151))
+                }
+                Text("系统建议", fontSize = 11.sp, color = Muted, fontWeight = FontWeight.SemiBold)
+                Text(if (source.deleteMarked) "标记为待删除" else source.suggestion, fontSize = 12.sp, color = if (source.deleteMarked) Bad else Color(0xFF374151))
+                if (preview != null && state.stage == WorkflowStage.ORGANIZE_REVIEW) {
+                    Text("整理预览可通过「编辑」修改；当前显示的值不会在确认前写入工作集。", fontSize = 10.sp, color = Muted)
+                }
+                Spacer(Modifier.height(4.dp))
+                OutlinedButton(
+                    onClick = { onEdit(source.id) },
+                    enabled = !state.busy && state.stage != WorkflowStage.EXPORT,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (preview != null && state.stage == WorkflowStage.ORGANIZE_REVIEW) "编辑整理结果" else "编辑书源") }
+                if (state.stage != WorkflowStage.EXPORT && !state.busy) {
+                    Button(onClick = { onToggleDelete(source.id) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (source.deleteMarked) "撤销删除标记" else "标记为删除")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailField(label: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, fontSize = 10.sp, color = Muted)
+        Text(value.ifBlank { "—" }, fontSize = 12.sp, color = Color(0xFF111827))
+    }
+}
+
+@Composable
+private fun BottomActions(
+    state: WorkflowState,
+    onShowImportInfo: () -> Unit,
+    onStartDedup: () -> Unit,
+    onConfirmDedup: () -> Unit,
+    onStop: () -> Unit,
+    onContinueValidation: () -> Unit,
+    onConfirmValidation: () -> Unit,
+    onGeneratePreview: () -> Unit,
+    onConfirmOrganize: () -> Unit,
+    onExport: () -> Unit,
+    onOpenFolder: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 18.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(state.stage.label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                when (state.stage) {
+                    WorkflowStage.IMPORT -> "开始后自动生成去重建议"
+                    WorkflowStage.DEDUP_REVIEW -> "确认后从工作池移除标记删除的重复项，并自动开始校验"
+                    WorkflowStage.PROBE_REVIEW -> "超时与网络异常默认复核；确认后才移除删除项"
+                    WorkflowStage.ORGANIZE_REVIEW -> "仅执行勾选的整理规则，确认后应用预览"
+                    WorkflowStage.EXPORT -> "只导出已确认的当前工作池，不覆盖导入文件"
+                },
+                fontSize = 10.sp,
+                color = Muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        when (state.stage) {
+            WorkflowStage.IMPORT -> {
+                OutlinedButton(onClick = onShowImportInfo, enabled = state.inputFile != null && !state.busy) {
+                    Text("查看导入信息")
+                }
+                Button(onClick = onStartDedup, enabled = state.sources.isNotEmpty() && !state.busy) {
+                    Text("开始去重")
+                }
+            }
+            WorkflowStage.DEDUP_REVIEW -> {
+                OutlinedButton(onClick = onShowImportInfo, enabled = state.inputFile != null && !state.busy) {
+                    Text("查看导入信息")
+                }
+                Button(onClick = onConfirmDedup, enabled = state.sources.isNotEmpty() && !state.busy) {
+                    Text("确认去重并进入校验")
+                }
+            }
+            WorkflowStage.PROBE_REVIEW -> {
+                if (state.busy) {
+                    OutlinedButton(onClick = onStop) { Text("停止校验") }
+                } else if (state.sources.any { it.probe == null }) {
+                    Button(onClick = onContinueValidation) { Text("继续校验") }
+                } else {
+                    Button(onClick = onConfirmValidation, enabled = state.sources.isNotEmpty()) {
+                        Text("确认校验并进入整理")
+                    }
+                }
+            }
+            WorkflowStage.ORGANIZE_REVIEW -> {
+                Button(onClick = onGeneratePreview, enabled = state.sources.isNotEmpty() && !state.busy) {
+                    Text(if (state.preview == null) "生成整理预览" else "重新生成预览")
+                }
+                Button(onClick = onConfirmOrganize, enabled = state.preview != null && !state.busy) {
+                    Text("确认整理并进入导出")
+                }
+            }
+            WorkflowStage.EXPORT -> {
+                OutlinedButton(onClick = onOpenFolder, enabled = !state.busy) { Text("打开导出目录") }
+                Button(onClick = onExport, enabled = state.sources.isNotEmpty() && !state.busy) {
+                    Text(if (state.exported == null) "导出 JSON" else "再次导出 JSON")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportInfoDialog(state: WorkflowState, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("导入信息") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DetailField("文件", state.inputFile?.absolutePath ?: "尚未导入")
+                DetailField("导入时书源数", state.inputCount.toString())
+                DetailField("当前工作池", state.sources.size.toString())
+                DetailField("从工作池移除", state.removedCount.toString())
+                Text("阶段确认只修改本次内存工作集。原始导入文件不会被覆盖。", fontSize = 12.sp, color = Muted)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
     )
 }
 
-// ---------------------------------------------------------------- 报告
-
 @Composable
-private fun Report(state: AppState) {
-    val result = state.result
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Text("报告", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        if (result == null) {
-            Text("还没有跑过。回到工作台点「开始处理」。", fontSize = 13.sp, color = Muted)
-            return@Column
-        }
-
-        val dedup = result.dedup
-        Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("去重", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "共 ${dedup.total} 个源，归并为 ${dedup.groups.size} 组，建议保留 ${dedup.keepCount} 个",
-                    fontSize = 13.sp,
+private fun SettingsDialog(state: WorkflowState, onDismiss: () -> Unit, onChooseFolder: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("处理设置") },
+        text = {
+            Column(
+                Modifier.widthIn(max = 520.dp).heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedTextField(
+                    value = state.keyword,
+                    onValueChange = { state.keyword = it },
+                    label = { Text("校验关键词") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
                 )
-                if (dedup.groups.isNotEmpty()) {
-                    Text(
-                        "按「完全重复 → 指纹重复 → 高相似」三层逐步合并；不会自动删任何源，保留哪个由你决定。",
-                        fontSize = 12.sp,
-                        color = Muted,
-                    )
+                OutlinedTextField(
+                    value = state.concurrency.toString(),
+                    onValueChange = { it.toIntOrNull()?.let { value -> state.concurrency = value.coerceIn(1, 2000) } },
+                    label = { Text("并发数（1–2000）") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = state.timeoutSeconds.toString(),
+                    onValueChange = { it.toIntOrNull()?.let { value -> state.timeoutSeconds = value.coerceIn(1, 300) } },
+                    label = { Text("单源超时秒数（1–300）") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = state.proxy,
+                    onValueChange = { state.proxy = it },
+                    label = { Text("代理地址（可选）") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = state.skipProbe, onCheckedChange = { state.skipProbe = it })
+                    Spacer(Modifier.width(8.dp))
+                    Text("跳过真实校验", fontSize = 12.sp)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = state.withToc, onCheckedChange = { state.withToc = it })
+                    Spacer(Modifier.width(8.dp))
+                    Text("校验时继续检查目录（更慢）", fontSize = 12.sp)
+                }
+                OutlinedTextField(
+                    value = state.exportDir,
+                    onValueChange = { state.exportDir = it },
+                    label = { Text("导出目录") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedButton(onClick = onChooseFolder, modifier = Modifier.fillMaxWidth()) { Text("选择导出目录") }
+                OutlinedTextField(
+                    value = state.directUrl,
+                    onValueChange = { state.directUrl = it },
+                    label = { Text("已有 JSON 的 HTTP(S) 直链（可选）") },
+                    supportingText = { Text("工具不会上传文件；此项只用于生成 Legado 导入链接。") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } },
+    )
+}
+
+@Composable
+private fun ReportDialog(state: WorkflowState, onDismiss: () -> Unit) {
+    val counts = state.sources.mapNotNull { it.probe?.status }.groupingBy { it }.eachCount()
+        .entries.sortedBy { it.key.severity }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("本次处理报告") },
+        text = {
+            Column(
+                Modifier.widthIn(max = 520.dp).heightIn(max = 500.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DetailField("导入书源", state.inputCount.toString())
+                DetailField("当前工作池", state.sources.size.toString())
+                DetailField("重复组", state.duplicateGroups.size.toString())
+                DetailField("已从工作池移除", state.removedCount.toString())
+                DetailField("待删除标记", state.sources.count { it.deleteMarked }.toString())
+                HorizontalDivider(color = Line)
+                Text("校验分类", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                if (counts.isEmpty()) Text("尚无校验结果", color = Muted, fontSize = 12.sp)
+                counts.forEach { (status, count) ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(status.label, Modifier.weight(1f), fontSize = 12.sp, color = statusColor(status))
+                        Text(count.toString(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                state.exported?.let {
+                    HorizontalDivider(color = Line)
+                    DetailField("最近导出", it.file.toAbsolutePath().toString())
+                    DetailField("导出数量", it.count.toString())
                 }
             }
-        }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+    )
+}
 
-        if (!state.skipProbe) {
-            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("校验", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    val stat = result.probeResults.values.groupingBy { it.status }.eachCount()
-                        .entries.sortedBy { it.key.severity }
-                    val total = result.probeResults.size.coerceAtLeast(1)
-                    stat.forEach { (status, count) ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.width(84.dp)) { StatusChip(status) }
-                            Box(
-                                Modifier
-                                    .weight(1f)
-                                    .height(8.dp)
-                                    .background(Color(0xFFF1F5F9), RoundedCornerShape(4.dp)),
-                            ) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth(count.toFloat() / total)
-                                        .fillMaxHeight()
-                                        .background(
-                                            when {
-                                                status.severity <= 0 -> Ok
-                                                status.severity == 1 -> Warn
-                                                else -> Bad
-                                            },
-                                            RoundedCornerShape(4.dp),
-                                        ),
+@Composable
+private fun CompareGroupDialog(
+    state: WorkflowState,
+    group: DuplicateGroupUi,
+    onDismiss: () -> Unit,
+) {
+    val candidates = group.sourceIds.mapNotNull { id -> state.sources.firstOrNull { it.id == id } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("对比重复组 ${group.number}") },
+        text = {
+            Column(
+                Modifier.widthIn(max = 760.dp).heightIn(max = 580.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("${group.kind.label} · 相似度 ${(group.similarity * 100).toInt()}%", fontSize = 12.sp, color = Muted)
+                candidates.forEach { source ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = if (source.deleteMarked) Color(0xFFFFF7ED) else SoftBlue),
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(source.doc.name.ifBlank { "（未命名）" }, Modifier.weight(1f), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Checkbox(
+                                    checked = !source.deleteMarked,
+                                    onCheckedChange = { keep -> toggleDeleteMark(state, source.id, marked = !keep) },
+                                    enabled = !state.busy,
                                 )
+                                Text(if (source.deleteMarked) "待删除" else "保留", fontSize = 11.sp, color = if (source.deleteMarked) Bad else Ok)
                             }
-                            Text(
-                                "$count",
-                                Modifier.width(52.dp),
-                                fontSize = 12.sp,
-                                color = Muted,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("整理与导出", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text("${result.organize.pools.size} 个分组，${result.organize.sources.size} 个源", fontSize = 13.sp)
-                result.exported?.let { exported ->
-                    Text("已导出 ${exported.count} 个源 → ${exported.file.toAbsolutePath()}", fontSize = 13.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        TextButton(onClick = {
-                            runCatching { Desktop.getDesktop().open(exported.file.parent.toFile()) }
-                        }) { Text("打开所在目录") }
-                        TextButton(onClick = {
-                            // 复制路径比「打开目录」更快：用户常常要把它粘到别处。
-                            runCatching {
-                                Toolkit.getDefaultToolkit().systemClipboard
-                                    .setContents(StringSelection(exported.file.toAbsolutePath().toString()), null)
+                            Text(source.doc.url, fontSize = 11.sp, color = Muted)
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("类型 ${source.doc.type}", fontSize = 11.sp, color = Muted)
+                                Text("分组 ${source.doc.group.ifBlank { "未分组" }}", fontSize = 11.sp, color = Muted)
+                                Text("规则字段 ${source.doc.ruleCompleteness}", fontSize = 11.sp, color = Muted)
                             }
-                        }) { Text("复制路径") }
-                    }
-                }
-                // 直链：只有填了地址才出现。没地址时给二维码只会误导人（QR 也装不下整份书源）。
-                val direct = DirectLink.let { link ->
-                    state.directUrl.takeIf { DirectLink.isUsable(it) }?.let {
-                        runCatching { link.forSourceUrl(it) }.getOrNull()
-                    }
-                }
-                if (direct != null) {
-                    HorizontalDivider(color = Color(0xFFF1F5F9))
-                    Text("一键导入链接（手机上用 Legado 打开）", fontSize = 12.sp, color = Muted)
-                    Text(direct, fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = Color(0xFF111827))
-                    TextButton(onClick = {
-                        runCatching {
-                            Toolkit.getDefaultToolkit().systemClipboard
-                                .setContents(StringSelection(direct), null)
+                            Text("系统建议：${if (source.id == group.suggestedKeepId) "保留" else "删除"}", fontSize = 11.sp, color = Muted)
                         }
-                    }) { Text("复制导入链接") }
-                }
-            }
-        }
-
-        // 失败明细：这是这个工具最该给出的东西——不是「失败 37 个」，
-        // 而是「这 37 个各自因为什么失败」。按严重度、再按名称排，方便成批外理。
-        val problems = result.probeResults.entries
-            .filter { it.value.status.severity > 0 }
-            .sortedWith(compareBy({ it.value.status.severity }, { state.docs.getOrNull(it.key)?.name ?: "" }))
-        if (problems.isNotEmpty()) {
-            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("失败明细 · ${problems.size} 个", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "同一状态往往对应同一种修法：超时→降并发或换关键词；网络不通→源站己挂或需要代理；" +
-                            "需要浏览器→只能去 App 里手验。",
-                        fontSize = 12.sp,
-                        color = Muted,
-                    )
-                    HorizontalDivider(color = Color(0xFFF1F5F9))
-                    // 只列前 200 个：几千个源全展开会让页面卡住，而人一次也看不过来。
-                    problems.take(200).forEach { (index, probe) ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.width(96.dp)) { StatusChip(probe.status) }
-                            Text(
-                                state.docs.getOrNull(index)?.name ?: "（未命名）",
-                                Modifier.weight(1f),
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                            )
-                            Text(
-                                probe.detail?.takeIf { it.isNotBlank() } ?: "—",
-                                Modifier.weight(1.4f),
-                                fontSize = 11.sp,
-                                color = Muted,
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                    if (problems.size > 200) {
-                        Text("还有 ${problems.size - 200} 个未列出；导出后可用于外部分析。", fontSize = 12.sp, color = Muted)
                     }
                 }
             }
-        }
-    }
-}
-
-// ---------------------------------------------------------------- 设置
-
-@Composable
-private fun Settings(state: AppState) {
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Text("设置", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        Text("改动即时生效，开始处理时读当前值。", fontSize = 12.sp, color = Muted)
-
-        OutlinedTextField(
-            value = state.keyword,
-            onValueChange = { state.keyword = it },
-            label = { Text("校验关键词（找一本书来验证源可用）") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = state.concurrency.toString(),
-            onValueChange = { text -> text.toIntOrNull()?.let { state.concurrency = it.coerceIn(1, 2000) } },
-            label = { Text("并发数（1–2000，默认 100）") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = state.timeoutSeconds.toString(),
-            onValueChange = { text -> text.toIntOrNull()?.let { state.timeoutSeconds = it.coerceIn(5, 120) } },
-            label = { Text("单个书源超时（秒，5–120）") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = state.proxy,
-            onValueChange = { state.proxy = it },
-            label = { Text("代理（可空，如 http://127.0.0.1:7890）") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        ToggleRow("跳过校验（只做去重与整理，秒级完成）", state.skipProbe) { state.skipProbe = it }
-        ToggleRow("校验时连目录一起验（更准，慢 2~3 倍）", state.withToc) { state.withToc = it }
-
-        HorizontalDivider(color = Line)
-        Text("导出", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = state.exportDir,
-                onValueChange = { state.exportDir = it },
-                label = { Text("导出目录") },
-                singleLine = true,
-                modifier = Modifier.weight(1f),
-            )
-            OutlinedButton(onClick = {
-                // AWT 的 FileDialog 在 Windows 上没有「只选目录」模式，所以这里用 Swing 的选择器。
-                val chooser = JFileChooser(File(state.exportDir).takeIf { it.isDirectory })
-                    .apply {
-                        fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                        dialogTitle = "选导出目录"
-                    }
-                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                    state.exportDir = chooser.selectedFile.absolutePath
-                }
-            }) { Text("选择…") }
-        }
-        Text(
-            "默认放在「文档\\legado-tidy」。导出文件名带时间戳，不会覆盖上一次的结果。",
-            fontSize = 12.sp,
-            color = Muted,
-        )
-
-        OutlinedTextField(
-            value = state.directUrl,
-            onValueChange = { state.directUrl = it },
-            label = { Text("直链地址（可空）：导出文件上传后的公开 URL") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Text(
-            "填了才会在报告页出现「一键导入链接」（legado://import/auto?src=…）。" +
-                "工具不会帮你上传文件——那需要公网服务或局域网监听，前者超出本项目范围，后者被" +
-                "「不做局域网 HTTP」这条约束排除了。本地文件导入始终可用，不需要这一栏。",
-            fontSize = 12.sp,
-            color = Muted,
-        )
-
-        HorizontalDivider(color = Line)
-        Text(
-            "细则：并发越高越快，但超时会快速变多——源站点自己扛不住，不是你网络的问题。" +
-                "想看清慢在哪，先把并发降到 50 以下再跑一次。",
-            fontSize = 12.sp,
-            color = Muted,
-        )
-    }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("完成对比") } },
+    )
 }
 
 @Composable
-private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable { onChange(!checked) }.padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, Modifier.weight(1f), fontSize = 13.sp)
-        Switch(checked = checked, onCheckedChange = onChange)
+private fun EditSourceDialog(
+    source: WorkflowSource,
+    preview: PreviewSource?,
+    onDismiss: () -> Unit,
+    onSave: (String, String, String, Int, Boolean) -> Unit,
+) {
+    val previewMode = preview != null
+    var name by remember(source.id, previewMode, preview?.name) {
+        mutableStateOf(preview?.name ?: source.doc.name)
     }
+    var url by remember(source.id) { mutableStateOf(source.doc.url) }
+    var group by remember(source.id, previewMode, preview?.group) {
+        mutableStateOf(preview?.group ?: source.doc.group)
+    }
+    var type by remember(source.id) { mutableStateOf(source.doc.type.toString()) }
+    var enabled by remember(source.id) { mutableStateOf(source.doc.enabled) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (previewMode) "编辑整理预览" else "编辑书源") },
+        text = {
+            Column(
+                Modifier.widthIn(max = 500.dp).heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("源名") }, modifier = Modifier.fillMaxWidth())
+                if (!previewMode) {
+                    OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text("URL") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = type, onValueChange = { type = it }, label = { Text("类型（数字）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(checked = enabled, onCheckedChange = { enabled = it })
+                        Spacer(Modifier.width(8.dp))
+                        Text("启用书源", fontSize = 12.sp)
+                    }
+                }
+                OutlinedTextField(value = group, onValueChange = { group = it }, label = { Text("分组") }, modifier = Modifier.fillMaxWidth())
+                if (previewMode) {
+                    Text("这里只编辑预览值；点击「确认整理并进入导出」后才会应用。", fontSize = 11.sp, color = Muted)
+                } else {
+                    Text("只修改已填写的字段，其余未知 JSON 字段会原样保留。", fontSize = 11.sp, color = Muted)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onSave(name, url, group, type.toIntOrNull() ?: source.doc.type, enabled)
+            }) { Text("保存") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
 }
 
-// ---------------------------------------------------------------- 事件 → 状态
-
-private fun apply(state: AppState, event: PipelineEvent) {
-    when (event) {
-        is PipelineEvent.Log -> state.log(event.message)
-        is PipelineEvent.PhaseStarted -> {
-            state.phase = event.phase
-            state.done = 0
-            state.total = 0
-            state.ok = 0
-            state.failed = 0
-            state.log("== ${event.phase.label} ==")
+private fun buildSourceRows(state: WorkflowState): List<SourceListRow> {
+    val rows = ArrayList<SourceListRow>(state.sources.size + state.duplicateGroups.size)
+    val sourceById = state.sources.associateBy { it.id }
+    if (state.stage == WorkflowStage.DEDUP_REVIEW) {
+        val grouped = HashSet<Int>()
+        state.duplicateGroups.forEach { group ->
+            val members = group.sourceIds.mapNotNull { sourceById[it] }
+            if (members.isNotEmpty()) {
+                rows += SourceListRow.GroupHeader(group)
+                members.forEach { member ->
+                    rows += SourceListRow.SourceEntry(member)
+                    grouped += member.id
+                }
+            }
         }
-        is PipelineEvent.Progress -> {
-            state.done = event.done
-            state.total = event.total
-            state.ok = event.ok
-            state.failed = event.failed
-        }
-        is PipelineEvent.PhaseFinished -> {
-            val seconds = "%.1f".format(event.elapsedMs / 1000.0)
-            state.notes[event.phase] = "${event.note}（${seconds}s）"
-            state.log("${event.phase.label} 完成：${event.note}（${seconds}s）")
-        }
-        is PipelineEvent.Failed -> state.log("失败：${event.message}")
+        state.sources.filterNot { it.id in grouped }.forEach { rows += SourceListRow.SourceEntry(it) }
+    } else {
+        val order = if (
+            state.stage == WorkflowStage.ORGANIZE_REVIEW &&
+            state.preview != null &&
+            state.previewOrder.isNotEmpty()
+        ) state.previewOrder.mapNotNull { sourceById[it] } else state.sources.toList()
+        order.forEach { rows += SourceListRow.SourceEntry(it) }
     }
+    return rows
 }
 
+private fun commitMarkedDeletions(state: WorkflowState): Boolean {
+    val marked = state.sources.count { it.deleteMarked }
+    if (marked == 0) {
+        state.notice = "没有待删除的书源需要移除。"
+        return state.sources.isNotEmpty()
+    }
+    if (marked >= state.sources.size) {
+        state.error = "当前所有书源都被标记为删除。请至少保留一项，或修改删除标记后再进入下一阶段。"
+        return false
+    }
+    state.sources.removeAll { it.deleteMarked }
+    state.removedCount += marked
+    state.sources.indices.forEach { index ->
+        state.sources[index] = state.sources[index].copy(deleteMarked = false, duplicateGroup = null)
+    }
+    if (state.selectedId !in state.sources.map { it.id }) state.selectedId = state.sources.firstOrNull()?.id
+    state.notice = "已将 ${marked} 个标记项从当前工作池移除；导入文件未修改。"
+    return state.sources.isNotEmpty()
+}
+
+private fun toggleDeleteMark(state: WorkflowState, id: Int, marked: Boolean? = null) {
+    val index = state.sources.indexOfFirst { it.id == id }
+    if (index < 0 || state.busy || state.stage == WorkflowStage.EXPORT) return
+    val old = state.sources[index]
+    val value = marked ?: !old.deleteMarked
+    state.sources[index] = old.copy(
+        deleteMarked = value,
+        suggestion = if (value) "用户标记删除" else "用户决定保留",
+    )
+}
+
+private fun updateSource(state: WorkflowState, id: Int, transform: (WorkflowSource) -> WorkflowSource) {
+    val index = state.sources.indexOfFirst { it.id == id }
+    if (index >= 0) state.sources[index] = transform(state.sources[index])
+}
+
+private fun editedDocument(
+    doc: BookSourceDoc,
+    name: String,
+    url: String,
+    group: String,
+    type: Int,
+    enabled: Boolean,
+): BookSourceDoc {
+    val raw = doc.raw.deepCopy()
+    if (name != doc.name) raw.addProperty(SourceField.NAME, name)
+    if (url != doc.url) raw.addProperty(SourceField.URL, url)
+    if (group != doc.group) raw.addProperty(SourceField.GROUP, group)
+    if (type != doc.type) raw.addProperty(SourceField.TYPE, type)
+    if (enabled != doc.enabled) raw.addProperty(SourceField.ENABLED, enabled)
+    return BookSourceDoc(raw)
+}
+
+private fun statusColor(status: ProbeStatus?): Color = when (status) {
+    ProbeStatus.OK -> Ok
+    ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> Warn
+    ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS, ProbeStatus.ERROR -> Bad
+    else -> Muted
+}
+
+private fun rawString(source: WorkflowSource, key: String): String {
+    val value = source.doc.raw.get(key) ?: return ""
+    if (value.isJsonNull) return ""
+    return if (value.isJsonPrimitive) value.asString else value.toString()
+}
+
+private fun defaultExportDir(): String {
+    val home = File(System.getProperty("user.home"))
+    val documents = File(home, "Documents")
+    val base = if (documents.isDirectory) documents else home
+    return File(base, "legado-tidy").absolutePath
+}
