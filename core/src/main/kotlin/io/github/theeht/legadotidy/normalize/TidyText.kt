@@ -21,7 +21,7 @@ object TidyText {
         RegexOption.IGNORE_CASE,
     )
     private val AD_SUFFIX = Regex(
-        "(?:\\s*[-_|｜·・—–]\\s*)?(?:官方推荐|广告|推广|营销|福利|加群|QQ群|公众号|备用站|新站|永久免费|免广告|免费阅读|官方|推荐)+\\s*$",
+        "(?:\\s*[-_|｜·・—–]\\s*(?:官方推荐|广告|推广|营销|福利|加群|QQ群|公众号|备用站|新站|永久免费|免广告|免费阅读|官方|推荐)+|(?:永久免费|免广告|官方推荐))\\s*$",
         RegexOption.IGNORE_CASE,
     )
     private val NAME_SEPARATORS = Regex("\\s*([|｜])\\s*")
