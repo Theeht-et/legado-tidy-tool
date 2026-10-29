@@ -681,9 +681,18 @@ fun TidyApp() {
                                     else -> next
                                 }
                                 if (state.preview != null) {
+                                    state.sources.indices.forEach { index ->
+                                        val source = state.sources[index]
+                                        if (source.suggestion == "禁用书源，建议删除") {
+                                            state.sources[index] = source.copy(
+                                                deleteMarked = false,
+                                                suggestion = if (source.probe?.status == ProbeStatus.OK) "建议保留" else "建议复核",
+                                            )
+                                        }
+                                    }
                                     state.preview = null
                                     state.previewOrder = emptyList()
-                                    state.notice = "整理规则已变化，请重新生成预览。"
+                                    state.notice = "整理规则已变化，自动删除标记已撤销；请重新生成预览。"
                                 }
                             },
                             modifier = Modifier.weight(1f).fillMaxHeight(),
