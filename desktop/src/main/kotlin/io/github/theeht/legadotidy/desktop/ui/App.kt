@@ -487,6 +487,15 @@ fun TidyApp() {
         state.error = null
         val snapshot = state.sources.toList()
         val preview = state.preview.orEmpty()
+        val outputDir = Path.of(state.exportDir)
+        val outputName = nextSafeExportFileName(state.inputFile, File(state.exportDir), Exporter.defaultFileName())
+        val exportConfig = ExportConfig(
+            applyCleanNames = state.applyCleanNames,
+            applyGroupAndOrder = state.applyGroups || state.applyOrder,
+            pretty = true,
+            applyGroups = state.applyGroups,
+            applyOrder = state.applyOrder,
+        )
         activeJob = scope.launch {
             try {
                 val raws = snapshot.map { it.doc.raw }
@@ -504,15 +513,9 @@ fun TidyApp() {
                     Exporter.write(
                         raws = raws,
                         organized = organized,
-                        dir = Path.of(state.exportDir),
-                        fileName = Exporter.defaultFileName(),
-                        config = ExportConfig(
-                            applyCleanNames = state.applyCleanNames,
-                            applyGroupAndOrder = state.applyGroups || state.applyOrder,
-                            pretty = true,
-                            applyGroups = state.applyGroups,
-                            applyOrder = state.applyOrder,
-                        ),
+                        dir = outputDir,
+                        fileName = outputName,
+                        config = exportConfig,
                     )
                 }
                 state.exported = result
