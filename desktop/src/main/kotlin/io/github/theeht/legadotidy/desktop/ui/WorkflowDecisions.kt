@@ -51,10 +51,7 @@ internal fun <T> stableIdsAtIndexes(
     idOf: (T) -> Int,
 ): List<Int> = indexes.mapNotNull { index -> items.getOrNull(index)?.let(idOf) }.distinct()
 
-/**
- * Pick a fresh output name, never overwriting the imported input or an existing export.
- * The base name normally comes from [io.github.theeht.legadotidy.export.Exporter.defaultFileName].
- */
+/** Resolve a nonblank user-provided directory without silently using the process working directory. */
 internal fun resolveExportDirectory(directory: String): Result<Path> = runCatching {
     require(directory.isNotBlank()) { "导出目录不能为空" }
     Path.of(directory).toAbsolutePath().normalize()
