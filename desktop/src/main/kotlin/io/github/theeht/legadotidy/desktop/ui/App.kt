@@ -383,6 +383,18 @@ fun TidyApp() {
     }
 
     fun confirmDedupAndValidate() {
+        val emptyDuplicateGroup = state.duplicateGroups.firstOrNull { group ->
+            group.sourceIds.isNotEmpty() && group.sourceIds.all { id ->
+                state.sources.firstOrNull { it.id == id }?.deleteMarked == true
+            }
+        }
+        if (emptyDuplicateGroup != null) {
+            state.error = "重复组 ${emptyDuplicateGroup.number} 的候选项全部被标记为删除。每组至少需要保留一项，或确认它们并不重复后取消相应标记。"
+            state.selectedId = emptyDuplicateGroup.sourceIds.firstOrNull { id ->
+                state.sources.firstOrNull { it.id == id }?.deleteMarked == true
+            }
+            return
+        }
         if (!commitMarkedDeletions(state)) return
         state.stage = WorkflowStage.PROBE_REVIEW
         state.sourceFilter = "全部"
