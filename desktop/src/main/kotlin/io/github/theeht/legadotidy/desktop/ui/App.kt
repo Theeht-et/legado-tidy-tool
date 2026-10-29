@@ -1134,7 +1134,6 @@ private fun SourceListPanel(
                     state = state,
                     onRuleChange = onRuleChange,
                     onGeneratePreview = onGeneratePreview,
-                    onGeneratePreview = onGeneratePreview,
                     markDisabledForDeletion = markDisabledForDeletion,
                     onMarkDisabledChange = onMarkDisabledChange,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
