@@ -1034,7 +1034,10 @@ private fun DetailPanel(
                     enabled = !state.busy && state.stage != WorkflowStage.EXPORT,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(if (preview != null && state.stage == WorkflowStage.ORGANIZE_REVIEW) "编辑整理结果" else "编辑书源") }
-                if (state.stage != WorkflowStage.EXPORT && !state.busy) {
+                if (
+                    (state.stage == WorkflowStage.DEDUP_REVIEW || state.stage == WorkflowStage.PROBE_REVIEW) &&
+                    !state.busy
+                ) {
                     Button(onClick = { onToggleDelete(source.id) }, modifier = Modifier.fillMaxWidth()) {
                         Text(if (source.deleteMarked) "撤销删除标记" else "标记为删除")
                     }
