@@ -1,6 +1,7 @@
 package io.github.theeht.legadotidy.desktop.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -743,7 +744,7 @@ fun TidyApp() {
 @Composable
 private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 18.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().background(Color.White).border(width = 1.dp, color = Line).padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -773,7 +774,7 @@ private fun Stepper(stage: WorkflowStage) {
             val current = item == stage
             val complete = item.ordinal < stage.ordinal
             Card(
-                Modifier.weight(1f),
+                Modifier.weight(1f).border(1.dp, if (current) Color(0xFFB8CCFF) else Line, RoundedCornerShape(12.dp)),
                 colors = CardDefaults.cardColors(
                     containerColor = if (current) SoftBlue else if (complete) SoftSlate else Color.White,
                 ),
@@ -804,7 +805,7 @@ private fun KpiRow(state: WorkflowState) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         values.forEach { (label, value) ->
             Card(
-                Modifier.weight(1f),
+                Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(12.dp)),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
@@ -822,7 +823,7 @@ private fun OrganizeRulePanel(
     state: WorkflowState,
     onRuleChange: (OrganizeRule, Boolean) -> Unit,
 ) {
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Card(Modifier.border(1.dp, Line, RoundedCornerShape(12.dp)), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("整理规则（未勾选的规则不会执行）", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -861,7 +862,7 @@ private fun SourceListPanel(
     onCompare: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(modifier, colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
+    Card(modifier.border(1.dp, Line, RoundedCornerShape(12.dp)), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
         Column(Modifier.fillMaxSize().padding(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) {
