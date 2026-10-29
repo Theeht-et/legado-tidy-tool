@@ -2,7 +2,6 @@ package io.github.theeht.legadotidy.engine
 
 import com.google.gson.Gson
 import io.github.theeht.legadotidy.model.BookSourceDoc
-import io.github.theeht.legadotidy.model.SourceField
 import io.github.theeht.legadotidy.probe.ProbeDepth
 import io.github.theeht.legadotidy.probe.ProbeEngine
 import io.github.theeht.legadotidy.probe.ProbeOptions
@@ -49,16 +48,19 @@ class LegadoProbeEngine(
     private val gson: Gson = GSON,
 ) : ProbeEngine {
 
+    private data class StaticVerdict(val status: ProbeStatus, val detail: String)
+
     override suspend fun probe(index: Int, source: BookSourceDoc, options: ProbeOptions): ProbeResult {
         val started = System.currentTimeMillis()
 
         // 1. 静态可判的，别浪费一次网络请求。
         //    这些不是「源坏了」，是「当前 headless 环境跑不通」，统一标记 UNSUPPORTED。
-        staticVerdict(source)?.let { status ->
+        staticVerdict(source)?.let { verdict ->
             return ProbeResult(
                 index = index,
-                status = status,
+                status = verdict.status,
                 elapsedMs = System.currentTimeMillis() - started,
+                detail = verdict.detail,
             )
         }
 
@@ -134,44 +136,51 @@ class LegadoProbeEngine(
      * 8% 需要浏览器渲染、0.75% 需要人工介入）。这里只认最硬的信号，
      * 宁可放过（让它去跑一次、然后失败），也不误杀。
      *
-     * 所有命中统一归类为 `UNSUPPORTED`，`detail` 记录具体原因，供导出/人工处理参考。
+     * 所有命中统一归类为 `UNSUPPORTED`，detail 记录具体原因，供导出/人工处理参考。
      */
-    private fun staticVerdict(source: BookSourceDoc): ProbeStatus? {
+    private fun staticVerdict(source: BookSourceDoc): StaticVerdict? {
         // 无搜索入口：不是「不支持」，是「没法校验」
         if (!source.canSearch) {
-            return ProbeStatus.NO_SEARCH_URL
+            return StaticVerdict(
+                ProbeStatus.NO_SEARCH_URL,
+                "缺少可用搜索入口：需要 searchUrl 与 ruleSearch.bookList，或提供 mainJs",
+            )
         }
 
-        // 收集所有可能声明不支持能力的规则文本
-        // 使用 behaviorFields() 动态获取所有非空行为字段（含 ruleToc.chapterUrl、ruleBookInfo.tocUrl、ruleContent.webJs 等）
+        // 收集所有可能声明不支持能力的规则文本。
+        // behaviorFields() 动态覆盖实际出现的规则字段（含 chapterUrl、tocUrl、webJs、header 等）。
         val rules = source.behaviorFields()
             .values
             .joinToString("\n") { it }
             .lowercase()
 
-        // --- 需浏览器渲染类（参考 UnsupportedDetector.BROWSER_PATTERNS）---
-        // webView 以各种形式出现：URL 选项 webView、java.webView、webViewGetSource 等
+        // 需浏览器渲染类：webView 选项、java.webView、webViewGetSource、webJs。
         if (rules.contains("webview") || rules.contains("webjs")) {
-            return ProbeStatus.UNSUPPORTED
+            return StaticVerdict(ProbeStatus.UNSUPPORTED, "webView/webJs 需要浏览器渲染，当前环境不支持")
         }
 
-        // --- 需人工介入类（参考 UnsupportedDetector.NEEDS_HUMAN）---
-        // getVerificationCode / startBrowser* / showBrowser
-        if (rules.contains("getverificationcode")
-            || rules.contains("startbrowser")
-            || rules.contains("showbrowser")) {
-            return ProbeStatus.UNSUPPORTED
+        // 需人工介入类：验证码或交互式浏览器。
+        if (rules.contains("getverificationcode")) {
+            return StaticVerdict(ProbeStatus.UNSUPPORTED, "getVerificationCode 需要人工完成验证码")
+        }
+        if (rules.contains("startbrowser")) {
+            return StaticVerdict(ProbeStatus.UNSUPPORTED, "startBrowser 需要人工介入浏览器")
+        }
+        if (rules.contains("showbrowser")) {
+            return StaticVerdict(ProbeStatus.UNSUPPORTED, "showBrowser 需要交互式浏览器")
         }
 
-        // --- 播放器 / 外部跳转类（headless 无对应实现）---
-        if (rules.contains("openvideoplayer") || rules.contains("openurl")) {
-            return ProbeStatus.UNSUPPORTED
+        // 播放器 / 外部跳转类（headless 无对应实现）。
+        if (rules.contains("openvideoplayer")) {
+            return StaticVerdict(ProbeStatus.UNSUPPORTED, "openVideoPlayer 需要播放器支持")
+        }
+        if (rules.contains("openurl")) {
+            return StaticVerdict(ProbeStatus.UNSUPPORTED, "openUrl 需要外部应用或页面跳转")
         }
 
-        // --- 登录需求 ---
-        // loginUrl 非空且 loginCheckJs 非空 → 需登录，headless 无法完成
+        // 登录需求：两项同时存在才静态拦截，避免误判只有检查脚本的书源。
         if (source.loginUrl.isNotBlank() && source.loginCheckJs.isNotBlank()) {
-            return ProbeStatus.UNSUPPORTED
+            return StaticVerdict(ProbeStatus.UNSUPPORTED, "loginUrl 与 loginCheckJs 表明书源需要登录")
         }
 
         return null // 静态看不出问题，交给运行时跑一次
@@ -180,7 +189,7 @@ class LegadoProbeEngine(
     private fun classify(e: Throwable): Pair<ProbeStatus, Int?> {
         val msg = e.message?.lowercase() ?: ""
 
-        // 运行时也可能抛出这些（Rhino 抛 UnsupportedOperationException，或 JS 里显式 throw）
+        // 运行时也可能抛出这些（Rhino 抛 UnsupportedOperationException，或 JS 里显式 throw）。
         // 顺序很重要：Timeout 是 IOException 的子类，必须先判。
         if (msg.contains("webview") || msg.contains("webjs")
             || msg.contains("getverificationcode") || msg.contains("startbrowser")
