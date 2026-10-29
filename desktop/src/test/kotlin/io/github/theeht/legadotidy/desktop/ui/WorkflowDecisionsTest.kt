@@ -65,6 +65,16 @@ class WorkflowDecisionsTest {
     }
 
     @Test
+    fun `空导出目录不会退化为程序当前目录`() {
+        assertTrue(resolveExportDirectory("  ").isFailure)
+    }
+
+    @Test
+    fun `有效导出目录会规范为绝对路径`() {
+        assertTrue(resolveExportDirectory(".").getOrThrow().isAbsolute)
+    }
+
+    @Test
     fun `导出文件名不会覆盖输入或之前的导出`(@TempDir dir: Path) {
         val input = File(dir.toFile(), "sources.json")
         input.writeText("original")
