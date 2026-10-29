@@ -890,12 +890,13 @@ private fun Stepper(stage: WorkflowStage) {
                     horizontalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
                     Box(Modifier.size(28.dp).clip(RoundedCornerShape(9.dp)).background(badgeColor), contentAlignment = Alignment.Center) {
-                        Text(if (complete) "✓" else "${index + 1}", color = badgeTextColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("${index + 1}", color = badgeTextColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text(item.label, fontWeight = if (current) FontWeight.SemiBold else FontWeight.Medium, color = if (current) Primary else if (complete) BodyText else Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(item.help, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
+                    if (complete) Text("✓", color = Ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -908,7 +909,7 @@ private fun KpiRow(state: WorkflowState) {
     val passed = state.sources.count { it.probe?.status == ProbeStatus.OK }
     val hasProbeResult = state.sources.any { it.probe != null }
     val values = listOf(
-        Triple("当前书源池", state.sources.size.toString(), "原始 ${state.inputCount} · 已移出 ${state.removedCount}"),
+        Triple("当前书源池", state.sources.size.toString(), if (state.removedCount == 0) "当前导入文件" else "原始 ${state.inputCount} · 已移出 ${state.removedCount}"),
         Triple("重复组", state.duplicateGroups.size.toString(), "已标记系统建议保留项与删除项"),
         Triple("校验通过", if (hasProbeResult) passed.toString() else "—", "校验阶段完成后显示"),
         Triple("待处理标记", state.sources.count { it.deleteMarked }.toString(), "进入下一阶段时才实际移出书源池"),
@@ -1147,13 +1148,16 @@ private fun SourceListPanel(
                         items(rows, key = { it.key }) { row ->
                             when (row) {
                                 is SourceListRow.GroupHeader -> {
+                                    val markedCount = row.group.sourceIds.count { id ->
+                                        state.sources.firstOrNull { it.id == id }?.deleteMarked == true
+                                    }
                                     Row(
                                         Modifier.fillMaxWidth().background(Color(0xFFF1F5FF)).padding(horizontal = 12.dp, vertical = 7.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                             Text("重复组 ${row.group.number} · ${row.group.kind.label}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3156A7))
-                                            Text("${row.group.sourceIds.size} 个候选 · 相似度 ${(row.group.similarity * 100).toInt()}%", fontSize = 10.sp, color = Muted)
+                                            Text("${row.group.sourceIds.size} 个候选 · 已标记 ${markedCount} 个删除", fontSize = 10.sp, color = Muted)
                                         }
                                         OutlinedButton(
                                             onClick = { onCompare(row.group.number) },
@@ -1315,8 +1319,32 @@ private fun DetailPanel(
                             )
                         }
                     }
-                    if (preview != null && state.stage == WorkflowStage.ORGANIZE_REVIEW) {
-                        Text("这里只显示整理预览值；确认前不会写回工作池。", fontSize = 10.sp, color = Muted)
+                    if (preview != null) {
+                        HorizontalDivider(color = Line)
+                        Text("整理预览", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Column(
+                                Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(Color(0xFFFFF1F1)).padding(9.dp),
+                                verticalArrangement = Arrangement.spacedBy(5.dp),
+                            ) {
+                                Text("修改前", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Bad)
+                                Text(source.doc.name.ifBlank { "（未命名）" }, fontSize = 10.sp, color = BodyText, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                Text(source.doc.group.ifBlank { "未分组" }, fontSize = 9.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                            Column(
+                                Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(Color(0xFFEAF8F0)).padding(9.dp),
+                                verticalArrangement = Arrangement.spacedBy(5.dp),
+                            ) {
+                                Text("规则结果", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Ok)
+                                Text(preview.name.ifBlank { "（未命名）" }, fontSize = 10.sp, color = BodyText, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                Text(preview.group.ifBlank { "未分组" }, fontSize = 9.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                        Text("仅已勾选的规则生效；确认进入导出阶段后，标记删除项才会移出当前书源池。", fontSize = 10.sp, color = Muted)
                     }
                     OutlinedButton(
                         onClick = { onEdit(source.id) },
@@ -1396,7 +1424,7 @@ private fun BottomActions(
         }
         when (state.stage) {
             WorkflowStage.IMPORT -> {
-                OutlinedButton(onClick = onShowImportInfo, enabled = state.inputFile != null && !state.busy, colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)) {
+                OutlinedButton(onClick = onShowImportInfo, enabled = state.inputFile != null && !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF263652), contentColor = Color.White)) {
                     Text("查看导入信息")
                 }
                 Button(colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C86F5), contentColor = Color.White), onClick = onStartDedup, enabled = state.sources.isNotEmpty() && !state.busy) {
