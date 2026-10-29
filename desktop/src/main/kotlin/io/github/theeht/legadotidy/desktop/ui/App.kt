@@ -458,7 +458,7 @@ fun TidyApp() {
                 if (state.markDisabledForDeletion) {
                     state.sources.indices.forEach { sourceIndex ->
                         val source = state.sources[sourceIndex]
-                        if (!source.doc.enabled && source.suggestion != "用户决定保留") {
+                        if (!source.doc.enabled && !source.deleteMarked && source.suggestion != "用户决定保留") {
                             state.sources[sourceIndex] = source.copy(
                                 deleteMarked = true,
                                 suggestion = "禁用书源，建议删除",
