@@ -1,6 +1,5 @@
 package io.github.theeht.legadotidy.model
 
-import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 
@@ -83,6 +82,7 @@ class BookSourceDoc(val raw: JsonObject) {
 
     val searchUrl: String = raw.str(SourceField.SEARCH_URL)
     val loginUrl: String = raw.str(SourceField.LOGIN_URL)
+    val loginCheckJs: String = raw.str(SourceField.LOGIN_CHECK_JS)
     val header: String = raw.str(SourceField.HEADER)
     val exploreUrl: String = raw.str(SourceField.EXPLORE_URL)
     val mainJs: String = raw.str(SourceField.MAIN_JS)
