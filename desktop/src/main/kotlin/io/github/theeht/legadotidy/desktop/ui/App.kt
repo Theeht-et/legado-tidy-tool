@@ -1140,6 +1140,8 @@ private fun SourceListPanel(
                 )
                 Spacer(Modifier.height(7.dp))
             }
+            Column(Modifier.weight(1f).fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                Column(Modifier.width(1180.dp).fillMaxHeight()) {
             TableHeader()
             HorizontalDivider(color = Line)
             if (state.sources.isEmpty()) {
@@ -1186,6 +1188,8 @@ private fun SourceListPanel(
                             HorizontalDivider(color = Color(0xFFEDF0F5))
                         }
                     }
+                }
+            }
                 }
             }
         }
