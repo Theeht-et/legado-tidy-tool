@@ -56,6 +56,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import io.github.theeht.legadotidy.dedup.DedupKind
 import io.github.theeht.legadotidy.dedup.DedupReport
 import io.github.theeht.legadotidy.dedup.Deduper
@@ -1589,12 +1591,7 @@ private fun ReportDialog(state: WorkflowState, onDismiss: () -> Unit) {
                     DetailField("导出数量", it.count.toString())
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
-    )
-}
-
-@Composable
+    @Composable
 private fun CompareGroupDialog(
     state: WorkflowState,
     group: DuplicateGroupUi,
@@ -1615,83 +1612,141 @@ private fun CompareGroupDialog(
         "jsLib" to "JS 库",
         "loginUrl" to "登录入口",
     )
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text("对比重复组 ${group.number}") },
-        text = {
-            Column(
-                Modifier.widthIn(max = 760.dp).heightIn(max = 580.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text("${group.kind.label} · 相似度 ${(group.similarity * 100).toInt()}%", fontSize = 12.sp, color = Muted)
-                Text("横向比较候选的基础信息与关键规则；勾选表示保留，不勾选表示待删除。", fontSize = 11.sp, color = Muted)
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 1080.dp).heightIn(max = 760.dp),
+            shape = RoundedCornerShape(15.dp),
+            color = Color.White,
+            shadowElevation = 24.dp,
+        ) {
+            Column(Modifier.fillMaxWidth()) {
                 Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.Top,
+                    Modifier.fillMaxWidth().padding(horizontal = 21.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    candidates.forEach { source ->
-                        Card(
-                            Modifier.width(300.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (source.deleteMarked) SoftAmber else SoftBlue,
-                            ),
-                        ) {
-                            Column(
-                                Modifier.fillMaxWidth().padding(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(5.dp),
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("对比重复组 \${group.number}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
+                        Text(
+                            "\${group.kind.label} · 相似度 \${(group.similarity * 100).toInt()}% · \${candidates.size} 个候选",
+                            fontSize = 11.sp,
+                            color = Muted,
+                        )
+                    }
+                    TextButton(onClick = onDismiss) { Text("×", fontSize = 20.sp, color = Muted) }
+                }
+                HorizontalDivider(color = Line)
+                Column(
+                    Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp),
+                ) {
+                    Text("横向比较基础信息与关键规则；勾选表示保留，不勾选表示待删除。每组至少保留一项。", fontSize = 11.sp, color = Muted)
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        candidates.forEach { source ->
+                            val recommended = source.id == group.suggestedKeepId
+                            val isPreferred = recommended && !source.deleteMarked
+                            Card(
+                                Modifier.width(300.dp).border(
+                                    1.dp,
+                                    if (isPreferred) Color(0xFFB8D9CB) else Line,
+                                    RoundedCornerShape(11.dp),
+                                ),
+                                shape = RoundedCornerShape(11.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = when {
+                                        isPreferred -> Color(0xFFFBFFFD)
+                                        source.deleteMarked -> SoftAmber
+                                        else -> Color.White
+                                    },
+                                ),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(
-                                        checked = !source.deleteMarked,
-                                        onCheckedChange = { keep -> toggleDeleteMark(state, source.id, marked = !keep) },
-                                        enabled = !state.busy,
-                                    )
-                                    Column(Modifier.weight(1f)) {
-                                        Text(
-                                            source.doc.name.ifBlank { "（未命名）" },
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
+                                Column(
+                                    Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = !source.deleteMarked,
+                                            onCheckedChange = { keep -> toggleDeleteMark(state, source.id, marked = !keep) },
+                                            enabled = !state.busy,
                                         )
-                                        Text(
-                                            if (source.deleteMarked) "待删除" else "保留",
-                                            fontSize = 10.sp,
-                                            color = if (source.deleteMarked) Bad else Ok,
-                                        )
-                                    }
-                                }
-                                DetailField("URL", source.doc.url)
-                                DetailField("类型 / 分组", "${source.doc.type} / ${source.doc.group.ifBlank { "未分组" }}")
-                                DetailField("启用状态 / 规则字段", "${if (source.doc.enabled) "启用" else "禁用"} / ${source.doc.ruleCompleteness}")
-                                Text("关键规则", fontSize = 10.sp, color = Muted, fontWeight = FontWeight.SemiBold)
-                                compareFields.forEach { (key, label) ->
-                                    val value = rawString(source, key)
-                                    if (value.isNotBlank()) {
-                                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                            Text(label, fontSize = 9.sp, color = Muted)
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                             Text(
-                                                value,
-                                                fontSize = 10.sp,
-                                                color = BodyText,
-                                                maxLines = 3,
+                                                source.doc.name.ifBlank { "（未命名）" },
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Ink,
+                                                maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis,
+                                            )
+                                            Text(
+                                                when {
+                                                    source.deleteMarked -> "待删除"
+                                                    recommended -> "系统推荐保留"
+                                                    else -> "候选书源"
+                                                },
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = when {
+                                                    source.deleteMarked -> Bad
+                                                    recommended -> Ok
+                                                    else -> Muted
+                                                },
                                             )
                                         }
                                     }
+                                    HorizontalDivider(color = Line)
+                                    DetailField("URL", source.doc.url)
+                                    DetailField("类型 / 分组", "\${source.doc.type} / \${source.doc.group.ifBlank { "未分组" }}")
+                                    DetailField("启用 / 规则字段", "\${if (source.doc.enabled) "启用" else "禁用"} / \${source.doc.ruleCompleteness}")
+                                    Text("关键规则", fontSize = 10.sp, color = Muted, fontWeight = FontWeight.SemiBold)
+                                    compareFields.forEach { (key, label) ->
+                                        val value = rawString(source, key)
+                                        if (value.isNotBlank()) {
+                                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                Text(label, fontSize = 9.sp, color = Muted)
+                                                Text(
+                                                    value,
+                                                    fontSize = 10.sp,
+                                                    color = BodyText,
+                                                    maxLines = 3,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                            }
+                                        }
+                                    }
+                                    HorizontalDivider(color = Line)
+                                    Text(
+                                        "系统建议：\${if (recommended) "保留" else "删除"}",
+                                        fontSize = 10.sp,
+                                        color = if (recommended) Ok else Muted,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
                                 }
-                                Text(
-                                    "系统建议：${if (source.id == group.suggestedKeepId) "保留" else "删除"}",
-                                    fontSize = 10.sp,
-                                    color = Muted,
-                                )
                             }
                         }
                     }
                 }
+                HorizontalDivider(color = Line)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
+                ) {
+                    OutlinedButton(onClick = onDismiss) { Text("完成对比") }
+                }
             }
-        },
+        }
+    }
+}
+
+  },
         confirmButton = { TextButton(onClick = onDismiss) { Text("完成对比") } },
     )
 }
