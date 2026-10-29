@@ -40,7 +40,7 @@ class LegadoProbeEngineTest {
     )
 
     @Test
-    fun `ruleToc.chapterUrl 带 webView 选项归类为 UNSUPPORTED`() = assertUnsupported(
+    fun `目录章节 URL 带 webView 选项归类为 UNSUPPORTED`() = assertUnsupported(
         """
         {
           "bookSourceName": "webView-toc-chapterUrl",
@@ -53,7 +53,7 @@ class LegadoProbeEngineTest {
     )
 
     @Test
-    fun `ruleBookInfo.tocUrl 带 webView 选项归类为 UNSUPPORTED`() = assertUnsupported(
+    fun `书籍信息中的目录 URL 带 webView 选项归类为 UNSUPPORTED`() = assertUnsupported(
         """
         {
           "bookSourceName": "webView-bookInfo-tocUrl",
@@ -66,7 +66,7 @@ class LegadoProbeEngineTest {
     )
 
     @Test
-    fun `ruleContent.webJs 声明归类为 UNSUPPORTED`() = assertUnsupported(
+    fun `正文规则中的 webJs 声明归类为 UNSUPPORTED`() = assertUnsupported(
         """
         {
           "bookSourceName": "webJs-content",
@@ -104,7 +104,7 @@ class LegadoProbeEngineTest {
     )
 
     @Test
-    fun `java.webView 调用归类为 UNSUPPORTED`() = assertUnsupported(
+    fun `Java webView 调用归类为 UNSUPPORTED`() = assertUnsupported(
         """
         {
           "bookSourceName": "java-webView",
