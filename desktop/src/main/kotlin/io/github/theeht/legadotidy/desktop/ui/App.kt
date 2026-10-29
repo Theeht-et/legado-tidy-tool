@@ -90,20 +90,41 @@ import java.io.File
 import java.nio.file.Path
 import javax.swing.JFileChooser
 
-private val Primary = Color(0xFF2563EB)
-private val Ok = Color(0xFF15803D)
-private val Warn = Color(0xFFB45309)
-private val Bad = Color(0xFFB91C1C)
-private val Muted = Color(0xFF6B7280)
-private val Line = Color(0xFFE5E7EB)
-private val Canvas = Color(0xFFF8FAFC)
-private val SoftBlue = Color(0xFFEFF4FF)
+private val Primary = Color(0xFF356AE6)
+private val Ok = Color(0xFF16845B)
+private val Warn = Color(0xFFB7791F)
+private val Bad = Color(0xFFC43C48)
+private val Muted = Color(0xFF748096)
+private val Line = Color(0xFFE5E9F0)
+private val Canvas = Color(0xFFF5F7FA)
+private val SoftBlue = Color(0xFFEDF3FF)
+
+private val Ink = Color(0xFF172033)
+private val BodyText = Color(0xFF344054)
+private val SoftGreen = Color(0xFFE8F7F0)
+private val SoftAmber = Color(0xFFFFF5DF)
+private val SoftRed = Color(0xFFFFF0F0)
+private val SoftNeutral = Color(0xFFF7F9FC)
+private val SoftSlate = Color(0xFFF1F4F8)
 
 private val LightColors = lightColorScheme(
     primary = Primary,
     onPrimary = Color.White,
+    primaryContainer = SoftBlue,
+    onPrimaryContainer = Ink,
+    secondary = Ok,
+    onSecondary = Color.White,
+    tertiary = Warn,
+    error = Bad,
+    onError = Color.White,
     surface = Color.White,
+    surfaceVariant = SoftNeutral,
+    onSurface = Ink,
+    onSurfaceVariant = Muted,
     background = Canvas,
+    onBackground = Ink,
+    outline = Line,
+    outlineVariant = Line,
 )
 
 private enum class WorkflowStage(val label: String, val help: String) {
@@ -558,7 +579,7 @@ fun TidyApp() {
                         }
                     }
                     state.error?.let {
-                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2))) {
+                        Card(colors = CardDefaults.cardColors(containerColor = SoftRed)) {
                             Text(it, Modifier.fillMaxWidth().padding(10.dp), color = Bad, fontSize = 13.sp)
                         }
                     }
@@ -754,7 +775,7 @@ private fun Stepper(stage: WorkflowStage) {
             Card(
                 Modifier.weight(1f),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (current) SoftBlue else if (complete) Color(0xFFF1F5F9) else Color.White,
+                    containerColor = if (current) SoftBlue else if (complete) SoftSlate else Color.White,
                 ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
@@ -762,7 +783,7 @@ private fun Stepper(stage: WorkflowStage) {
                     Text(
                         "${index + 1}. ${item.label}",
                         fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (current) Primary else if (complete) Color(0xFF374151) else Muted,
+                        color = if (current) Primary else if (complete) BodyText else Muted,
                         fontSize = 13.sp,
                     )
                     Text(item.help, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -789,7 +810,7 @@ private fun KpiRow(state: WorkflowState) {
             ) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
                     Text(label, color = Muted, fontSize = 11.sp)
-                    Text(value, color = Color(0xFF111827), fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                    Text(value, color = Ink, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -874,7 +895,7 @@ private fun SourceListPanel(
             if (state.sources.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("尚未导入书源", fontSize = 16.sp, color = Color(0xFF374151))
+                        Text("尚未导入书源", fontSize = 16.sp, color = BodyText)
                         Text("点击右上角「导入书源」选择 JSON 文件。", fontSize = 12.sp, color = Muted)
                     }
                 }
@@ -885,7 +906,7 @@ private fun SourceListPanel(
                         when (row) {
                             is SourceListRow.GroupHeader -> {
                                 Row(
-                                    Modifier.fillMaxWidth().background(Color(0xFFF1F5F9)).padding(horizontal = 6.dp, vertical = 5.dp),
+                                    Modifier.fillMaxWidth().background(SoftSlate).padding(horizontal = 6.dp, vertical = 5.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Column(Modifier.weight(1f)) {
@@ -893,7 +914,7 @@ private fun SourceListPanel(
                                             "重复组 ${row.group.number} · ${row.group.kind.label}",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = Color(0xFF334155),
+                                            color = BodyText,
                                         )
                                         Text(
                                             "${row.group.sourceIds.size} 个候选 · 相似度 ${(row.group.similarity * 100).toInt()}%",
@@ -914,7 +935,7 @@ private fun SourceListPanel(
                                 onEdit = onEdit,
                             )
                         }
-                        HorizontalDivider(color = Color(0xFFF1F5F9))
+                        HorizontalDivider(color = SoftSlate)
                     }
                 }
             }
@@ -925,7 +946,7 @@ private fun SourceListPanel(
 @Composable
 private fun TableHeader() {
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFFFAFAFA)).padding(vertical = 7.dp),
+        Modifier.fillMaxWidth().background(SoftNeutral).padding(vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("源名 / URL", Modifier.weight(2.2f), fontSize = 10.sp, color = Muted)
@@ -964,7 +985,7 @@ private fun SourceRowItem(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(2.2f).padding(end = 5.dp)) {
-            Text(name.ifBlank { "（未命名）" }, fontSize = 11.sp, color = Color(0xFF111827), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(name.ifBlank { "（未命名）" }, fontSize = 11.sp, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(source.doc.url, fontSize = 9.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text(source.doc.type.toString(), Modifier.weight(0.55f), fontSize = 10.sp, color = Muted, maxLines = 1)
@@ -1012,7 +1033,7 @@ private fun DetailPanel(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text("书源详情", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text(preview?.name ?: source.doc.name.ifBlank { "（未命名）" }, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF111827))
+                Text(preview?.name ?: source.doc.name.ifBlank { "（未命名）" }, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                 Text(source.doc.url, fontSize = 11.sp, color = Muted)
                 HorizontalDivider(color = Line)
                 DetailField("类型", source.doc.type.toString())
@@ -1024,10 +1045,10 @@ private fun DetailPanel(
                 source.probe?.httpCode?.let { DetailField("HTTP 状态码", it.toString()) }
                 if (!source.probe?.detail.isNullOrBlank()) {
                     Text("校验详情", fontSize = 11.sp, color = Muted, fontWeight = FontWeight.SemiBold)
-                    Text(source.probe?.detail.orEmpty(), fontSize = 11.sp, color = Color(0xFF374151))
+                    Text(source.probe?.detail.orEmpty(), fontSize = 11.sp, color = BodyText)
                 }
                 Text("系统建议", fontSize = 11.sp, color = Muted, fontWeight = FontWeight.SemiBold)
-                Text(if (source.deleteMarked) "标记为待删除" else source.suggestion, fontSize = 12.sp, color = if (source.deleteMarked) Bad else Color(0xFF374151))
+                Text(if (source.deleteMarked) "标记为待删除" else source.suggestion, fontSize = 12.sp, color = if (source.deleteMarked) Bad else BodyText)
                 if (preview != null && state.stage == WorkflowStage.ORGANIZE_REVIEW) {
                     Text("整理预览可通过「编辑」修改；当前显示的值不会在确认前写入工作集。", fontSize = 10.sp, color = Muted)
                 }
@@ -1054,7 +1075,7 @@ private fun DetailPanel(
 private fun DetailField(label: String, value: String) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(label, fontSize = 10.sp, color = Muted)
-        Text(value.ifBlank { "—" }, fontSize = 12.sp, color = Color(0xFF111827))
+        Text(value.ifBlank { "—" }, fontSize = 12.sp, color = Ink)
     }
 }
 
@@ -1306,7 +1327,7 @@ private fun CompareGroupDialog(
                         Card(
                             Modifier.width(300.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (source.deleteMarked) Color(0xFFFFF7ED) else SoftBlue,
+                                containerColor = if (source.deleteMarked) SoftAmber else SoftBlue,
                             ),
                         ) {
                             Column(
@@ -1346,7 +1367,7 @@ private fun CompareGroupDialog(
                                             Text(
                                                 value,
                                                 fontSize = 10.sp,
-                                                color = Color(0xFF374151),
+                                                color = BodyText,
                                                 maxLines = 3,
                                                 overflow = TextOverflow.Ellipsis,
                                             )
