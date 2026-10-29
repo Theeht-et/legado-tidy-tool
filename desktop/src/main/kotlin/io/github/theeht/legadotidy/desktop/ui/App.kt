@@ -1174,7 +1174,7 @@ private fun DetailPanel(
                                 when {
                                     source.deleteMarked -> "该书源会在确认进入下一阶段时从当前工作池移除。"
                                     source.probe?.status == ProbeStatus.OK -> "校验成功；仍可根据规则完整度与重复候选情况人工判断。"
-                                    source.probe?.status in setOf(ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR) -> "网络或服务响应异常不代表书源一定失效，建议人工复核。"
+                                    source.probe?.status?.let { it == ProbeStatus.TIMEOUT || it == ProbeStatus.NETWORK || it == ProbeStatus.HTTP_ERROR } == true -> "网络或服务响应异常不代表书源一定失效，建议人工复核。"
                                     else -> "系统建议仅供审核参考，确认阶段前可以修改标记。"
                                 },
                                 fontSize = 10.sp,
