@@ -1,10 +1,8 @@
 package io.github.theeht.legadotidy.engine
 
-import io.github.theeht.legadotidy.model.BookSourceDoc
-import io.github.theeht.legadotidy.probe.ProbeOptions
-import io.github.theeht.legadotidy.probe.ProbeStatus
 import com.google.gson.JsonParser
-import kotlinx.coroutines.runBlocking
+import io.github.theeht.legadotidy.model.BookSourceDoc
+import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -14,285 +12,259 @@ import kotlin.test.assertTrue
 class LegadoProbeEngineTest {
 
     private val engine = LegadoProbeEngine()
-    private val options = ProbeOptions(timeoutMs = 5000)
 
     private fun doc(json: String) = BookSourceDoc(JsonParser.parseString(json).asJsonObject)
 
-    private suspend fun probe(source: BookSourceDoc): ProbeResult =
-        engine.probe(0, source, options)
-
-    @Test
-    fun `无 searchUrl 的源归类为 NO_SEARCH_URL`() = runBlocking {
-        val source = doc("""{"bookSourceName": "no-search"}""")
-        val result = probe(source)
-        assertEquals(ProbeStatus.NO_SEARCH_URL, result.status)
+    private fun assertUnsupported(json: String, expectedDetail: String) {
+        val verdict = assertNotNull(engine.staticVerdict(doc(json)))
+        assertEquals(ProbeStatus.UNSUPPORTED, verdict.status)
+        assertTrue(verdict.detail.contains(expectedDetail, ignoreCase = true), verdict.detail)
     }
 
     @Test
-    fun `ruleSearch.webView 在 URL 选项中出现 → UNSUPPORTED`() = runBlocking {
-        val source = doc("""
-            {
-              "bookSourceName": "webView-url-option",
-              "searchUrl": "https://example.com/search",
-              "ruleSearch": {"bookList": "div.book", "chapterUrl": "href##$##,{'webView': true}"}
-            }
-        """)
-        val result = probe(source)
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status)
-        assertTrue(result.detail!!.contains("webview", ignoreCase = true))
+    fun `无 searchUrl 的源归类为 NO_SEARCH_URL`() {
+        val verdict = assertNotNull(engine.staticVerdict(doc("""{"bookSourceName": "no-search"}""")))
+        assertEquals(ProbeStatus.NO_SEARCH_URL, verdict.status)
     }
 
     @Test
-    fun `ruleToc.chapterUrl 带 webView 选项 → UNSUPPORTED`() = runBlocking {
-        val source = doc("""
-            {
-              "bookSourceName": "webView-toc-chapterUrl",
-              "searchUrl": "https://example.com/search",
-              "ruleSearch": {"bookList": "div.book"},
-              "ruleToc": {"chapterUrl": "href##$##,{'webView': true}"}
-            }
-        """)
-        val result = probe(source)
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status)
-        assertTrue(result.detail!!.contains("webview", ignoreCase = true))
-    }
+    fun `ruleSearch 中的 webView URL 选项归类为 UNSUPPORTED`() = assertUnsupported(
+        """
+        {
+          "bookSourceName": "webView-url-option",
+          "searchUrl": "https://example.com/search",
+          "ruleSearch": {"bookList": "div.book", "chapterUrl": "href##$##,{'webView': true}"}
+        }
+        """,
+        "webview",
+    )
 
     @Test
-    fun `ruleBookInfo.tocUrl 带 webView 选项 → UNSUPPORTED`() = runBlocking {
-        val source = doc("""
-            {
-              "bookSourceName": "webView-bookInfo-tocUrl",
-              "searchUrl": "https://example.com/search",
-              "ruleSearch": {"bookList": "div.book"},
-              "ruleBookInfo": {"tocUrl": "@get:{t}##$##,{'webView': true}"}
-            }
-        """)
-        val result = probe(source)
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status)
-        assertTrue(result.detail!!.contains("webview", ignoreCase = true))
-    }
+    fun `ruleToc.chapterUrl 带 webView 选项归类为 UNSUPPORTED`() = assertUnsupported(
+        """
+        {
+          "bookSourceName": "webView-toc-chapterUrl",
+          "searchUrl": "https://example.com/search",
+          "ruleSearch": {"bookList": "div.book"},
+          "ruleToc": {"chapterUrl": "href##$##,{'webView': true}"}
+        }
+        """,
+        "webview",
+    )
 
     @Test
-    fun `ruleContent.webJs 声明 → UNSUPPORTED`() = runBlocking {
-        val source = doc("""
-            {
-              "bookSourceName": "webJs-content",
-              "searchUrl": "https://example.com/search",
-              "ruleSearch": {"bookList": "div.book"},
-              "ruleContent": {"webJs": "{'webView': true}"}
-            }
-        """)
-        val result = probe(source)
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status)
-        assertTrue(result.detail!!.contains("webview", ignoreCase = true))
-    }
+    fun `ruleBookInfo.tocUrl 带 webView 选项归类为 UNSUPPORTED`() = assertUnsupported(
+        """
+        {
+          "bookSourceName": "webView-bookInfo-tocUrl",
+          "searchUrl": "https://example.com/search",
+          "ruleSearch": {"bookList": "div.book"},
+          "ruleBookInfo": {"tocUrl": "@get:{t}##$##,{'webView': true}"}
+        }
+        """,
+        "webview",
+    )
 
     @Test
-    fun `header 中嵌入 webView 块 → UNSUPPORTED`() = runBlocking {
-        val source = doc("""
-            {
-              "bookSourceName": "webView-header",
-              "searchUrl": "https://example.com/search",
-              "ruleSearch": {"bookList": "div.book"},
-              "header": "{\"webView\": true}"
-            }
-        """)
-        val result = probe(source)
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status)
-        assertTrue(result.detail!!.contains("webview", ignoreCase = true))
-    }
+    fun `ruleContent.webJs 声明归类为 UNSUPPORTED`() = assertUnsupported(
+        """
+        {
+          "bookSourceName": "webJs-content",
+          "searchUrl": "https://example.com/search",
+          "ruleSearch": {"bookList": "div.book"},
+          "ruleContent": {"webJs": "{'webView': true}"}
+        }
+        """,
+        "webview",
+    )
 
     @Test
-    fun `ruleSearch 结果 URL 带 webView → UNSUPPORTED`() = runBlocking {
-        val source = doc("""
-            {
-              "bookSourceName": "webView-search-result",
-              "searchUrl": "https://example.com/search",
-              "ruleSearch": {"bookList": "div.book", "bookUrl": "href##$##,{'webView': true}"}
-            }
-        """)
-        val result = probe(source)
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status)
-        assertTrue(result.detail!!.contains("webview", ignoreCase = true))
-    }
+    fun `header 中嵌入 webView 配置归类为 UNSUPPORTED`() = assertUnsupported(
+        """
+        {
+          "bookSourceName": "webView-header",
+          "searchUrl": "https://example.com/search",
+          "ruleSearch": {"bookList": "div.book"},
+          "header": "{\\"webView\\": true}"
+        }
+        """,
+        "webview",
+    )
 
     @Test
-    fun `java.webView 调用 → UNSUPPORTED`() = runBlocking {
-        val source = doc("""
-            {
-              "bookSourceName": "java-webView",
-              "searchUrl": "https://example.com/search",
-              "ruleSearch": {"bookList": "div.book"},
-              "ruleContent": {"content": "java.webView(null, url, 'document.body.innerHTML')"}
-            }
-        """)
-        val result = probe(source)
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status)
-        assertTrue(result.detail!!.contains("webview", ignoreCase = true))
-    }
+    fun `搜索结果 bookUrl 使用 webView 归类为 UNSUPPORTED`() = assertUnsupported(
+        """
+        {
+          "bookSourceName": "webView-search-result",
+          "searchUrl": "https://example.com/search",
+          "ruleSearch": {"bookList": "div.book", "bookUrl": "href##$##,{'webView': true}"}
+        }
+        """,
+        "webview",
+    )
 
     @Test
-    fun `getVerificationCode 验证码 → UNSUPPORTED`() = runBlocking {
-        val source = doc("""
-            {
-              "bookSourceName": "verification-code",
-              "searchUrl": "https://example.com/search",
-              "ruleSearch": {"bookList": "div.book"},
-              "ruleContent": {"content": "getVerificationCode(imgUrl)"}
-            }
-        """)
-        val result = probe(source)
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status)
-        assertTrue(result.detail!!.contains("verificationcode", ignoreCase = true))
-    }
+    fun `java.webView 调用归类为 UNSUPPORTED`() = assertUnsupported(
+        """
+        {
+          "bookSourceName": "java-webView",
+          "searchUrl": "https://example.com/search",
+          "ruleSearch": {"bookList": "div.book"},
+          "ruleContent": {"content": "java.webView(null, url, 'document.body.innerHTML')"}
+        }
+        """,
+        "webview",
+    )
 
     @Test
-    fun `startBrowserAwait → UNSUPPORTED`() = runBlocking {
-        val source = doc("""
-            {
-              "bookSourceName": "startBrowserAwait",
-              "searchUrl": "https://example.com/search",
-              "ruleSearch": {"bookList": "div.book"},
-              "ruleContent": {"content": "startBrowserAwait('https://example.com/login', '登录')"}
-            }
-        """)
-        val result = probe(source)
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status)
-        assertTrue(result.detail!!.contains("startbrowser", ignoreCase = true))
-    }
+    fun `getVerificationCode 验证码归类为 UNSUPPORTED`() = assertUnsupported(
+        """
+        {
+          "bookSourceName": "verification-code",
+          "searchUrl": "https://example.com/search",
+          "ruleSearch": {"bookList": "div.book"},
+          "ruleContent": {"content": "getVerificationCode(imgUrl)"}
+        }
+        """,
+        "verificationcode",
+    )
 
     @Test
-    fun `startBrowser → UNSUPPORTED`() = runBlocking {
-        val source = doc("""
-            {
-              "bookSourceName": "startBrowser",
-              "searchUrl": "https://example.com/search",
-              "ruleSearch": {"bookList": "div.book"},
-              "ruleContent": {"content": "startBrowser('https://example.com/login', '登录')"}
-            }
-        """)
-        val result = probe(source)
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status)
-        assertTrue(result.detail!!.contains("startbrowser", ignoreCase = true))
-    }
+    fun `startBrowserAwait 归类为 UNSUPPORTED`() = assertUnsupported(
+        """
+        {
+          "bookSourceName": "startBrowserAwait",
+          "searchUrl": "https://example.com/search",
+          "ruleSearch": {"bookList": "div.book"},
+          "ruleContent": {"content": "startBrowserAwait('https://example.com/login', '登录')"}
+        }
+        """,
+        "startbrowser",
+    )
 
     @Test
-    fun `showBrowser → UNSUPPORTED`() = runBlocking {
-        val source = doc("""
-            {
-              "bookSourceName": "showBrowser",
-              "searchUrl": "https://example.com/search",
-              "ruleSearch": {"bookList": "div.book"},
-              "ruleContent": {"content": "showBrowser('https://example.com/login')"}
-            }
-        """)
-        val result = probe(source)
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status)
-        assertTrue(result.detail!!.contains("showbrowser", ignoreCase = true))
-    }
+    fun `startBrowser 归类为 UNSUPPORTED`() = assertUnsupported(
+        """
+        {
+          "bookSourceName": "startBrowser",
+          "searchUrl": "https://example.com/search",
+          "ruleSearch": {"bookList": "div.book"},
+          "ruleContent": {"content": "startBrowser('https://example.com/login', '登录')"}
+        }
+        """,
+        "startbrowser",
+    )
 
     @Test
-    fun `openVideoPlayer 播放器 → UNSUPPORTED`() = runBlocking {
-        val source = doc("""
-            {
-              "bookSourceName": "openVideoPlayer",
-              "searchUrl": "https://example.com/search",
-              "ruleSearch": {"bookList": "div.book"},
-              "ruleContent": {"content": "openVideoPlayer('https://example.com/video.mp4', '视频')"}
-            }
-        """)
-        val result = probe(source)
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status)
-        assertTrue(result.detail!!.contains("openvideoplayer", ignoreCase = true))
-    }
+    fun `showBrowser 归类为 UNSUPPORTED`() = assertUnsupported(
+        """
+        {
+          "bookSourceName": "showBrowser",
+          "searchUrl": "https://example.com/search",
+          "ruleSearch": {"bookList": "div.book"},
+          "ruleContent": {"content": "showBrowser('https://example.com/login')"}
+        }
+        """,
+        "showbrowser",
+    )
 
     @Test
-    fun `openUrl 外部跳转 → UNSUPPORTED`() = runBlocking {
-        val source = doc("""
-            {
-              "bookSourceName": "openUrl",
-              "searchUrl": "https://example.com/search",
-              "ruleSearch": {"bookList": "div.book"},
-              "ruleContent": {"content": "openUrl('https://example.com/app')"}
-            }
-        """)
-        val result = probe(source)
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status)
-        assertTrue(result.detail!!.contains("openurl", ignoreCase = true))
-    }
+    fun `openVideoPlayer 播放器归类为 UNSUPPORTED`() = assertUnsupported(
+        """
+        {
+          "bookSourceName": "openVideoPlayer",
+          "searchUrl": "https://example.com/search",
+          "ruleSearch": {"bookList": "div.book"},
+          "ruleContent": {"content": "openVideoPlayer('https://example.com/video.mp4', '视频')"}
+        }
+        """,
+        "openvideoplayer",
+    )
 
     @Test
-    fun `loginUrl + loginCheckJs 登录需求 → UNSUPPORTED`() = runBlocking {
-        val source = doc("""
-            {
-              "bookSourceName": "need-login",
-              "searchUrl": "https://example.com/search",
-              "ruleSearch": {"bookList": "div.book"},
-              "loginUrl": "https://example.com/login",
-              "loginCheckJs": "return document.cookie.includes('token')"
-            }
-        """)
-        val result = probe(source)
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status)
-        assertTrue(result.detail!!.contains("login", ignoreCase = true))
-    }
+    fun `openUrl 外部跳转归类为 UNSUPPORTED`() = assertUnsupported(
+        """
+        {
+          "bookSourceName": "openUrl",
+          "searchUrl": "https://example.com/search",
+          "ruleSearch": {"bookList": "div.book"},
+          "ruleContent": {"content": "openUrl('https://example.com/app')"}
+        }
+        """,
+        "openurl",
+    )
 
     @Test
-    fun `loginUrl 为空但有 loginCheckJs → 不拦截（交给运行时）`() = runBlocking {
-        val source = doc("""
+    fun `loginUrl 与 loginCheckJs 同时存在时归类为 UNSUPPORTED`() = assertUnsupported(
+        """
+        {
+          "bookSourceName": "need-login",
+          "searchUrl": "https://example.com/search",
+          "ruleSearch": {"bookList": "div.book"},
+          "loginUrl": "https://example.com/login",
+          "loginCheckJs": "return document.cookie.includes('token')"
+        }
+        """,
+        "login",
+    )
+
+    @Test
+    fun `只有 loginCheckJs 没有 loginUrl 时不静态拦截`() {
+        val source = doc(
+            """
             {
               "bookSourceName": "loginCheckJs-only",
               "searchUrl": "https://example.com/search",
               "ruleSearch": {"bookList": "div.book"},
               "loginCheckJs": "return document.cookie.includes('token')"
             }
-        """)
-        val result = probe(source)
-        // 静态阶段不拦截，运行时跑一次
-        assertNull(result.status?.let { if (it == ProbeStatus.UNSUPPORTED) it else null })
+            """,
+        )
+        assertNull(engine.staticVerdict(source))
     }
 
     @Test
-    fun `只有 @js: 但无 webView/验证码 → 不拦截（Rhino 能跑）`() = runBlocking {
-        val source = doc("""
+    fun `只有 @js 且没有不支持信号时不静态拦截`() {
+        val source = doc(
+            """
             {
               "bookSourceName": "js-only",
               "searchUrl": "https://example.com/search",
               "ruleSearch": {"bookList": "div.book"},
               "ruleContent": {"content": "@js: return document.body.innerText"}
             }
-        """)
-        val result = probe(source)
-        // 静态阶段不拦截 @js:，交给 Rhino 跑
-        assertNull(result.status?.let { if (it == ProbeStatus.UNSUPPORTED) it else null })
+            """,
+        )
+        assertNull(engine.staticVerdict(source))
     }
 
     @Test
-    fun `正常源（无不支持信号） → 静态通过，交给运行时`() = runBlocking {
-        val source = doc("""
+    fun `普通源没有静态不支持信号`() {
+        val source = doc(
+            """
             {
               "bookSourceName": "normal",
               "searchUrl": "https://example.com/search",
               "ruleSearch": {"bookList": "div.book", "name": "h2"},
               "ruleContent": {"content": "article.content"}
             }
-        """)
-        val result = probe(source)
-        // 静态阶段返回 null，进入运行时（这里会因为网络失败归 NETWORK/ERROR，但不是 UNSUPPORTED）
-        assertTrue(result.status != ProbeStatus.UNSUPPORTED)
+            """,
+        )
+        assertNull(engine.staticVerdict(source))
     }
 
     @Test
-    fun `JS 书源（mainJs 非空）且无不支持信号 → 静态通过`() = runBlocking {
-        val source = doc("""
+    fun `mainJs 书源允许进入运行时校验`() {
+        val source = doc(
+            """
             {
               "bookSourceName": "js-source",
               "mainJs": "function searchBook(key) { return [{name: key, author: '', url: '', cover: '', kind: '', lastChapter: '', intro: ''}]; }",
               "ruleSearch": {"bookList": "div.book"}
             }
-        """)
-        val result = probe(source)
-        assertTrue(result.status != ProbeStatus.UNSUPPORTED)
-        assertTrue(source.canSearch) // mainJs 非空即可搜索
+            """,
+        )
+        assertTrue(source.canSearch)
+        assertNull(engine.staticVerdict(source))
     }
 }
