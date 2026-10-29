@@ -241,7 +241,7 @@ fun TidyApp() {
                     DuplicateGroupUi(
                         number = index + 1,
                         kind = group.kind,
-                        sourceIds = group.members.mapNotNull { snapshot.getOrNull(it)?.id },
+                        sourceIds = stableIdsAtIndexes(snapshot, group.members) { it.id },
                         suggestedKeepId = snapshot[group.keep].id,
                         similarity = group.similarity,
                     )
@@ -1391,22 +1391,22 @@ private fun visibleSourceCount(state: WorkflowState): Int {
 }
 
 private fun commitMarkedDeletions(state: WorkflowState): Boolean {
-    val marked = state.sources.count { it.deleteMarked }
-    if (marked == 0) {
-        state.notice = "没有待删除的书源需要移除。"
-        return state.sources.isNotEmpty()
-    }
-    if (marked >= state.sources.size) {
+    val plan = planMarkedDeletions(state.sources.toList()) { it.deleteMarked }
+    if (plan.allItemsMarked) {
         state.error = "当前所有书源都被标记为删除。请至少保留一项，或修改删除标记后再进入下一阶段。"
         return false
     }
-    state.sources.removeAll { it.deleteMarked }
-    state.removedCount += marked
-    state.sources.indices.forEach { index ->
-        state.sources[index] = state.sources[index].copy(deleteMarked = false, duplicateGroup = null)
+    if (plan.removedCount == 0) {
+        state.notice = "没有待删除的书源需要移除。"
+        return plan.canAdvance
     }
-    if (state.selectedId == null || state.sources.none { it.id == state.selectedId }) state.selectedId = state.sources.firstOrNull()?.id
-    state.notice = "已将 ${marked} 个标记项从当前工作池移除；导入文件未修改。"
+    if (!plan.canAdvance) return false
+
+    state.sources.clear()
+    state.sources.addAll(plan.retained.map { it.copy(deleteMarked = false, duplicateGroup = null) })
+    state.removedCount += plan.removedCount
+    state.selectedId = resolveSelectedId(state.selectedId, state.sources) { it.id }
+    state.notice = "已将 ${plan.removedCount} 个标记项从当前工作池移除；导入文件未修改。"
     return state.sources.isNotEmpty()
 }
 
