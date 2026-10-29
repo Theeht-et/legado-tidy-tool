@@ -1539,6 +1539,11 @@ private fun BottomActions(
 private fun ImportInfoDialog(state: WorkflowState, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(14.dp),
+        containerColor = Color.White,
+        titleContentColor = Ink,
+        textContentColor = BodyText,
+        tonalElevation = 8.dp,
         title = { Text("导入信息") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1557,11 +1562,16 @@ private fun ImportInfoDialog(state: WorkflowState, onDismiss: () -> Unit) {
 private fun SettingsDialog(state: WorkflowState, onDismiss: () -> Unit, onChooseFolder: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(14.dp),
+        containerColor = Color.White,
+        titleContentColor = Ink,
+        textContentColor = BodyText,
+        tonalElevation = 8.dp,
         title = { Text("处理设置") },
         text = {
             Column(
-                Modifier.widthIn(max = 520.dp).heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                Modifier.widthIn(max = 540.dp).heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 OutlinedTextField(
                     value = state.keyword,
@@ -1627,10 +1637,15 @@ private fun ReportDialog(state: WorkflowState, onDismiss: () -> Unit) {
         .entries.sortedBy { it.key.severity }
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(14.dp),
+        containerColor = Color.White,
+        titleContentColor = Ink,
+        textContentColor = BodyText,
+        tonalElevation = 8.dp,
         title = { Text("本次处理报告") },
         text = {
             Column(
-                Modifier.widthIn(max = 520.dp).heightIn(max = 500.dp).verticalScroll(rememberScrollState()),
+                Modifier.widthIn(max = 540.dp).heightIn(max = 500.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 DetailField("导入书源", state.inputCount.toString())
@@ -1707,7 +1722,7 @@ private fun CompareGroupDialog(
         ) {
             Column(Modifier.fillMaxWidth()) {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 21.dp, vertical = 16.dp),
+                    Modifier.fillMaxWidth().background(SoftNeutral).padding(horizontal = 18.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -1748,13 +1763,18 @@ private fun CompareGroupDialog(
                                         else -> Color.White
                                     },
                                 ),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                             ) {
                                 Column(
-                                    Modifier.fillMaxWidth().padding(12.dp),
+                                    Modifier.fillMaxWidth().padding(bottom = 10.dp),
                                     verticalArrangement = Arrangement.spacedBy(7.dp),
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Row(
+                                        Modifier.fillMaxWidth()
+                                            .background(if (isPreferred) SoftGreen else if (source.deleteMarked) SoftAmber else SoftNeutral)
+                                            .padding(end = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
                                         Checkbox(
                                             checked = !source.deleteMarked,
                                             onCheckedChange = { keep -> toggleDeleteMark(state, source.id, marked = !keep) },
@@ -1786,6 +1806,10 @@ private fun CompareGroupDialog(
                                         }
                                     }
                                     HorizontalDivider(color = Line)
+                                    Column(
+                                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
+                                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                                    ) {
                                     DetailField("URL", source.doc.url)
                                     DetailField("类型 / 分组", "${source.doc.type} / ${source.doc.group.ifBlank { "未分组" }}")
                                     DetailField("启用 / 规则字段", "${if (source.isDisabledForDisplay()) "禁用" else "启用"} / ${source.doc.ruleCompleteness}")
@@ -1812,6 +1836,7 @@ private fun CompareGroupDialog(
                                         color = if (recommended) Ok else Muted,
                                         fontWeight = FontWeight.SemiBold,
                                     )
+                                    }
                                 }
                             }
                         }
@@ -1819,7 +1844,7 @@ private fun CompareGroupDialog(
                 }
                 HorizontalDivider(color = Line)
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                    Modifier.fillMaxWidth().background(SoftNeutral).padding(horizontal = 18.dp, vertical = 10.dp),
                     horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
                 ) {
                     OutlinedButton(onClick = onDismiss) { Text("完成对比") }
@@ -1849,6 +1874,11 @@ private fun EditSourceDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(14.dp),
+        containerColor = Color.White,
+        titleContentColor = Ink,
+        textContentColor = BodyText,
+        tonalElevation = 8.dp,
         title = { Text(if (previewMode) "编辑整理预览" else "编辑书源") },
         text = {
             Column(
