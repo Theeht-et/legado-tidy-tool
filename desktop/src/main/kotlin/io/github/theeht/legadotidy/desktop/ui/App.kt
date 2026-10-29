@@ -1202,7 +1202,7 @@ private fun SourceListPanel(
                                 }
                                 is SourceListRow.SourceEntry -> SourceRowItem(state = state, source = row.source, onDetail = onDetail, onEdit = onEdit)
                             }
-                            HorizontalDivider(color = Color(0xFFEDF0F5))
+                            HorizontalDivider(color = Line)
                         }
                     }
                 }
@@ -1217,16 +1217,16 @@ private fun SourceListPanel(
 @Composable
 private fun TableHeader() {
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFFFBFCFE)).padding(horizontal = 12.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().background(SoftSlate).padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("源名 / URL", Modifier.weight(2.2f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Muted)
-        Text("类型", Modifier.weight(0.55f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Muted)
-        Text("分组", Modifier.weight(0.8f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Muted)
-        Text("状态", Modifier.weight(1.15f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Muted)
-        Text("耗时", Modifier.weight(0.65f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Muted)
-        Text("建议", Modifier.weight(0.9f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Muted)
-        Text("操作", Modifier.width(92.dp), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Muted)
+        Text("源名 / URL", Modifier.weight(2.2f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("类型", Modifier.weight(0.55f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("分组", Modifier.weight(0.8f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("状态", Modifier.weight(1.15f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("耗时", Modifier.weight(0.65f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("建议", Modifier.weight(0.9f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("操作", Modifier.width(92.dp), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BodyText)
     }
 }
 
@@ -1251,12 +1251,12 @@ private fun SourceRowItem(
     }
     Row(
         Modifier.fillMaxWidth().background(if (selected) Color(0xFFF0F5FF) else Color.White)
-            .clickable { onDetail(source.id) }.padding(horizontal = 12.dp, vertical = 9.dp),
+            .clickable { onDetail(source.id) }.padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(2.2f).padding(end = 7.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(name.ifBlank { "（未命名）" }, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(source.doc.url, fontSize = 9.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(source.doc.url, fontSize = 10.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         SmallChip(source.doc.type.toString(), SoftSlate, Color(0xFF57647A), Modifier.weight(0.55f))
         Text(group.ifBlank { "—" }, Modifier.weight(0.8f), fontSize = 10.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
