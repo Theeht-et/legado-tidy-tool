@@ -322,6 +322,7 @@ fun TidyApp() {
                                         suggestion = when {
                                             deleteByDefault -> "建议删除"
                                             result.status == ProbeStatus.OK -> "建议保留"
+                                            result.status == ProbeStatus.SKIPPED -> "跳过校验"
                                             else -> "建议复核"
                                         },
                                     )
@@ -588,6 +589,16 @@ fun TidyApp() {
                         runCatching { if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(dir) }
                             .onFailure { state.error = "无法打开目录：${it.message}" }
                     },
+                    onCopyImportLink = {
+                        try {
+                            val link = DirectLink.forSourceUrl(state.directUrl)
+                            Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(link), null)
+                            state.notice = "已复制 Legado 一键导入链接。"
+                            state.error = null
+                        } catch (e: Exception) {
+                            state.error = "无法生成导入链接：${e.message ?: e::class.java.simpleName}"
+                        }
+                    },
                 )
             }
         }
@@ -660,7 +671,7 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
         }
         Spacer(Modifier.weight(1f))
         if (state.busy) {
-            LinearProgressIndicator(Modifier.width(72.dp).height(4.dp))
+            LinearProgressIndicator(progress = { 0.65f }, modifier = Modifier.width(72.dp).height(4.dp))
             Spacer(Modifier.width(12.dp))
         }
         OutlinedButton(onClick = onImport, enabled = !state.busy) { Text("导入书源") }
@@ -986,6 +997,7 @@ private fun BottomActions(
     onConfirmOrganize: () -> Unit,
     onExport: () -> Unit,
     onOpenFolder: () -> Unit,
+    onCopyImportLink: () -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 18.dp, vertical = 11.dp),
@@ -1045,6 +1057,9 @@ private fun BottomActions(
                 }
             }
             WorkflowStage.EXPORT -> {
+                if (DirectLink.isUsable(state.directUrl)) {
+                    OutlinedButton(onClick = onCopyImportLink, enabled = !state.busy) { Text("复制导入链接") }
+                }
                 OutlinedButton(onClick = onOpenFolder, enabled = !state.busy) { Text("打开导出目录") }
                 Button(onClick = onExport, enabled = state.sources.isNotEmpty() && !state.busy) {
                     Text(if (state.exported == null) "导出 JSON" else "再次导出 JSON")
@@ -1318,7 +1333,7 @@ private fun commitMarkedDeletions(state: WorkflowState): Boolean {
     state.sources.indices.forEach { index ->
         state.sources[index] = state.sources[index].copy(deleteMarked = false, duplicateGroup = null)
     }
-    if (state.selectedId !in state.sources.map { it.id }) state.selectedId = state.sources.firstOrNull()?.id
+    if (state.selectedId == null || state.sources.none { it.id == state.selectedId }) state.selectedId = state.sources.firstOrNull()?.id
     state.notice = "已将 ${marked} 个标记项从当前工作池移除；导入文件未修改。"
     return state.sources.isNotEmpty()
 }
