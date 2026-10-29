@@ -55,6 +55,15 @@ internal fun <T> stableIdsAtIndexes(
  * Pick a fresh output name, never overwriting the imported input or an existing export.
  * The base name normally comes from [io.github.theeht.legadotidy.export.Exporter.defaultFileName].
  */
+internal fun resolveExportDirectory(directory: String): Result<Path> = runCatching {
+    require(directory.isNotBlank()) { "导出目录不能为空" }
+    Path.of(directory).toAbsolutePath().normalize()
+}
+
+/**
+ * Pick a fresh output name, never overwriting the imported input or an existing export.
+ * The base name normally comes from [io.github.theeht.legadotidy.export.Exporter.defaultFileName].
+ */
 internal fun nextSafeExportFileName(
     inputFile: File?,
     exportDir: File,
