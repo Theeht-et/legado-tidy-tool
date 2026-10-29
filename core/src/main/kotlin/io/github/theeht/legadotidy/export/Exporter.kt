@@ -27,10 +27,10 @@ data class ExportConfig(
     /** 向后兼容开关：旧调用同时控制分组与排序。 */
     val applyGroupAndOrder: Boolean = true,
     val pretty: Boolean = true,
-    /** 是否写回 `bookSourceGroup`。默认继承旧的组合开关。 */
-    val applyGroups: Boolean = applyGroupAndOrder,
-    /** 是否写回 `customOrder`。默认继承旧的组合开关。 */
-    val applyOrder: Boolean = applyGroupAndOrder,
+    /** 是否写回 `bookSourceGroup`；null 表示继承旧的组合开关。 */
+    val applyGroups: Boolean? = null,
+    /** 是否写回 `customOrder`；null 表示继承旧的组合开关。 */
+    val applyOrder: Boolean? = null,
 )
 
 data class ExportResult(
@@ -62,10 +62,10 @@ object Exporter {
             if (config.applyCleanNames && org.name.isNotEmpty()) {
                 copy.addProperty(SourceField.NAME, org.name)
             }
-            if (config.applyGroups) {
+            if (config.applyGroups ?: config.applyGroupAndOrder) {
                 copy.addProperty(SourceField.GROUP, org.group)
             }
-            if (config.applyOrder) {
+            if (config.applyOrder ?: config.applyGroupAndOrder) {
                 copy.addProperty(SourceField.CUSTOM_ORDER, org.rank)
             }
             copy
