@@ -284,7 +284,9 @@ fun TidyApp() {
         state.error = null
         state.total = state.sources.size
         state.completed = state.sources.count { it.probe != null }
-        state.notice = if (state.skipProbe) "按设置跳过真实校验。" else "正在使用 Legado 引擎校验书源。"
+        val skipProbe = state.skipProbe
+        val concurrency = state.concurrency.coerceIn(1, 2000)
+        state.notice = if (skipProbe) "按设置跳过真实校验。" else "正在使用 Legado 引擎校验书源。"
         val snapshot = state.sources.toList()
         val pending = snapshot.filter { it.probe == null }
         val options = ProbeOptions(
@@ -295,13 +297,13 @@ fun TidyApp() {
         )
         activeJob = scope.launch {
             try {
-                val gate = Semaphore(state.concurrency.coerceIn(1, 2000))
+                val gate = Semaphore(concurrency)
                 val probeEngine = LegadoProbeEngine()
                 coroutineScope {
                     pending.map { source ->
                         async(Dispatchers.IO) {
                             val index = snapshot.indexOfFirst { it.id == source.id }
-                            val result = if (state.skipProbe) {
+                            val result = if (skipProbe) {
                                 ProbeResult(index, ProbeStatus.SKIPPED, detail = "按设置跳过校验")
                             } else {
                                 try {
@@ -714,7 +716,7 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
         OutlinedButton(onClick = onImport, enabled = !state.busy) { Text("导入书源") }
         Spacer(Modifier.width(8.dp))
         TextButton(onClick = { state.showReport = true }) { Text("报告") }
-        TextButton(onClick = { state.showSettings = true }) { Text("设置") }
+        TextButton(onClick = { state.showSettings = true }, enabled = !state.busy) { Text("设置") }
     }
 }
 
