@@ -455,9 +455,24 @@ fun TidyApp() {
                         )
                     }
                 }
+                if (state.markDisabledForDeletion) {
+                    state.sources.indices.forEach { sourceIndex ->
+                        val source = state.sources[sourceIndex]
+                        if (!source.doc.enabled && source.suggestion != "用户决定保留") {
+                            state.sources[sourceIndex] = source.copy(
+                                deleteMarked = true,
+                                suggestion = "禁用书源，建议删除",
+                            )
+                        }
+                    }
+                }
                 state.preview = previewRows
                 state.previewOrder = orderedIds
-                state.notice = "整理预览已生成。请检查新名称、分组和顺序，再确认应用。"
+                state.notice = if (state.markDisabledForDeletion) {
+                    "整理预览已生成；禁用书源已标记为待删除，请复核后确认。"
+                } else {
+                    "整理预览已生成。请检查新名称、分组和顺序，再确认应用。"
+                }
             } catch (e: CancellationException) {
                 state.error = "整理预览已取消。"
             } catch (e: Throwable) {
@@ -622,18 +637,18 @@ fun TidyApp() {
                             markDisabledForDeletion = state.markDisabledForDeletion,
                             onMarkDisabledChange = { checked ->
                                 state.markDisabledForDeletion = checked
-                                state.sources.indices.forEach { index ->
-                                    val source = state.sources[index]
-                                    if (checked && !source.doc.enabled && source.suggestion != "用户决定保留") {
-                                        state.sources[index] = source.copy(deleteMarked = true, suggestion = "禁用书源，建议删除")
-                                    } else if (!checked && source.suggestion == "禁用书源，建议删除") {
-                                        state.sources[index] = source.copy(
-                                            deleteMarked = false,
-                                            suggestion = if (source.probe?.status == ProbeStatus.OK) "建议保留" else "建议复核",
-                                        )
+                                if (!checked) {
+                                    state.sources.indices.forEach { index ->
+                                        val source = state.sources[index]
+                                        if (source.suggestion == "禁用书源，建议删除") {
+                                            state.sources[index] = source.copy(
+                                                deleteMarked = false,
+                                                suggestion = if (source.probe?.status == ProbeStatus.OK) "建议保留" else "建议复核",
+                                            )
+                                        }
                                     }
                                 }
-                                state.notice = if (checked) "已标记禁用书源为待删除；可在确认整理前逐项撤销。" else "已取消禁用书源删除规则。"
+                                state.notice = if (checked) "已选择在生成整理预览时标记禁用书源；可逐项撤销。" else "已取消禁用书源删除规则。"
                                 state.preview = null
                                 state.previewOrder = emptyList()
                             },
