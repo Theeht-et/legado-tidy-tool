@@ -1116,49 +1116,87 @@ private fun DetailPanel(
     modifier: Modifier = Modifier,
 ) {
     val source = state.sources.firstOrNull { it.id == state.selectedId }
-    Card(modifier, colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
+    Card(
+        modifier.border(1.dp, Line, RoundedCornerShape(14.dp)),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
         if (source == null) {
             Box(Modifier.fillMaxSize().padding(18.dp), contentAlignment = Alignment.Center) {
-                Text("选择一条书源查看详情。", fontSize = 13.sp, color = Muted)
+                Text("选择一条书源查看详情。", fontSize = 12.sp, color = Muted)
             }
         } else {
             val preview = state.preview?.get(source.id).takeIf { state.stage == WorkflowStage.ORGANIZE_REVIEW || state.stage == WorkflowStage.EXPORT }
-            Column(
-                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text("书源详情", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text(preview?.name ?: source.doc.name.ifBlank { "（未命名）" }, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                Text(source.doc.url, fontSize = 11.sp, color = Muted)
-                HorizontalDivider(color = Line)
-                DetailField("类型", source.doc.type.toString())
-                DetailField("分组", preview?.group ?: source.doc.group.ifBlank { "未分组" })
-                DetailField("启用状态", if (source.doc.enabled) "启用" else "禁用")
-                DetailField("规则字段数量", source.doc.ruleCompleteness.toString())
-                DetailField("校验状态", source.probe?.status?.label ?: "尚未校验")
-                DetailField("响应耗时", source.probe?.let { "${it.elapsedMs} ms" } ?: "—")
-                source.probe?.httpCode?.let { DetailField("HTTP 状态码", it.toString()) }
-                if (!source.probe?.detail.isNullOrBlank()) {
-                    Text("校验详情", fontSize = 11.sp, color = Muted, fontWeight = FontWeight.SemiBold)
-                    Text(source.probe?.detail.orEmpty(), fontSize = 11.sp, color = BodyText)
-                }
-                Text("系统建议", fontSize = 11.sp, color = Muted, fontWeight = FontWeight.SemiBold)
-                Text(if (source.deleteMarked) "标记为待删除" else source.suggestion, fontSize = 12.sp, color = if (source.deleteMarked) Bad else BodyText)
-                if (preview != null && state.stage == WorkflowStage.ORGANIZE_REVIEW) {
-                    Text("整理预览可通过「编辑」修改；当前显示的值不会在确认前写入工作集。", fontSize = 10.sp, color = Muted)
-                }
-                Spacer(Modifier.height(4.dp))
-                OutlinedButton(
-                    onClick = { onEdit(source.id) },
-                    enabled = !state.busy && state.stage != WorkflowStage.EXPORT,
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (preview != null && state.stage == WorkflowStage.ORGANIZE_REVIEW) "编辑整理结果" else "编辑书源") }
-                if (
-                    (state.stage == WorkflowStage.DEDUP_REVIEW || state.stage == WorkflowStage.PROBE_REVIEW) &&
-                    !state.busy
+            Column(Modifier.fillMaxSize()) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
-                    Button(onClick = { onToggleDelete(source.id) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (source.deleteMarked) "撤销删除标记" else "标记为删除")
+                    Text("SOURCE #\${(source.id + 1).toString().padStart(3, '0')} · \${state.stage.label}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Primary)
+                    Text(preview?.name ?: source.doc.name.ifBlank { "（未命名）" }, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Text(source.doc.url, fontSize = 10.sp, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+                HorizontalDivider(color = Line)
+                Column(
+                    Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text("基本信息", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    DetailField("类型", source.doc.type.toString())
+                    DetailField("源分组", preview?.group ?: source.doc.group.ifBlank { "未分组" })
+                    DetailField("启用状态", if (source.doc.enabled) "启用" else "禁用")
+                    DetailField("规则字段", source.doc.ruleCompleteness.toString())
+                    DetailField("校验状态", source.probe?.status?.label ?: "尚未校验")
+                    DetailField("响应耗时", source.probe?.let { "\${it.elapsedMs} ms" } ?: "—")
+                    source.probe?.httpCode?.let { DetailField("HTTP 状态码", it.toString()) }
+                    if (!source.probe?.detail.isNullOrBlank()) {
+                        HorizontalDivider(color = Line)
+                        Text("校验详情", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink)
+                        Text(source.probe?.detail.orEmpty(), fontSize = 11.sp, color = BodyText, lineHeight = 17.sp)
+                    }
+                    HorizontalDivider(color = Line)
+                    Text("本阶段建议", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (source.deleteMarked) SoftRed else SoftNeutral,
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(11.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                if (source.deleteMarked) "标记为待删除" else source.suggestion,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (source.deleteMarked) Bad else BodyText,
+                            )
+                            Text(
+                                when {
+                                    source.deleteMarked -> "该书源会在确认进入下一阶段时从当前工作池移除。"
+                                    source.probe?.status == ProbeStatus.OK -> "校验成功；仍可根据规则完整度与重复候选情况人工判断。"
+                                    source.probe?.status in setOf(ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR) -> "网络或服务响应异常不代表书源一定失效，建议人工复核。"
+                                    else -> "系统建议仅供审核参考，确认阶段前可以修改标记。"
+                                },
+                                fontSize = 10.sp,
+                                color = Muted,
+                                lineHeight = 15.sp,
+                            )
+                        }
+                    }
+                    if (preview != null && state.stage == WorkflowStage.ORGANIZE_REVIEW) {
+                        Text("这里只显示整理预览值；确认前不会写回工作池。", fontSize = 10.sp, color = Muted)
+                    }
+                    OutlinedButton(
+                        onClick = { onEdit(source.id) },
+                        enabled = !state.busy && state.stage != WorkflowStage.EXPORT,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (preview != null && state.stage == WorkflowStage.ORGANIZE_REVIEW) "编辑整理结果" else "编辑书源") }
+                    if ((state.stage == WorkflowStage.DEDUP_REVIEW || state.stage == WorkflowStage.PROBE_REVIEW) && !state.busy) {
+                        OutlinedButton(
+                            onClick = { onToggleDelete(source.id) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = if (source.deleteMarked) Ok else Bad),
+                        ) { Text(if (source.deleteMarked) "撤销删除标记" else "标记为删除") }
                     }
                 }
             }
@@ -1166,13 +1204,19 @@ private fun DetailPanel(
     }
 }
 
+
 @Composable
 private fun DetailField(label: String, value: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(label, fontSize = 10.sp, color = Muted)
-        Text(value.ifBlank { "—" }, fontSize = 12.sp, color = Ink)
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(label, Modifier.width(82.dp), fontSize = 10.sp, color = Muted)
+        Text(value.ifBlank { "—" }, Modifier.weight(1f), fontSize = 11.sp, color = Ink)
     }
 }
+
 
 @Composable
 private fun BottomActions(
@@ -1213,7 +1257,7 @@ private fun BottomActions(
                     WorkflowStage.EXPORT -> "只导出已确认的当前工作池，不覆盖导入文件"
                 },
                 fontSize = 10.sp,
-                color = Muted,
+                color = Color(0xFFC4CDDD),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
