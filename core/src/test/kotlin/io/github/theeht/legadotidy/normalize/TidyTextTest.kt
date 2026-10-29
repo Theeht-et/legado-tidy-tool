@@ -49,4 +49,17 @@ class TidyTextTest {
         assertEquals("a.com", TidyText.host("https://a.com:8080/x?y=1"))
         assertFalse(TidyText.host("").isNotEmpty())
     }
+
+    @Test
+    fun `广告清理只移除常见宣传尾缀和括号内容`() {
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源（官方推荐） - 广告"))
+        assertEquals("站点", TidyText.removeAdvertisingWords("站点 · 福利"))
+        assertEquals("推荐书源", TidyText.removeAdvertisingWords("推荐书源"))
+    }
+
+    @Test
+    fun `名称标点整理合并多余分隔符并规范空格`() {
+        assertEquals("星河书源 | 官方", TidyText.normalizeNamePunctuation(" 星河书源  ||   官方 "))
+    }
+
 }
