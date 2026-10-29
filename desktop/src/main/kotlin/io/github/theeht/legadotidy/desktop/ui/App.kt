@@ -295,6 +295,7 @@ fun TidyApp() {
         activeJob = scope.launch {
             try {
                 val gate = Semaphore(state.concurrency.coerceIn(1, 2000))
+                val probeEngine = LegadoProbeEngine()
                 coroutineScope {
                     pending.map { source ->
                         async(Dispatchers.IO) {
