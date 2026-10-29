@@ -18,6 +18,10 @@ dependencies {
 
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
+
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.launcher)
 }
 
 compose.desktop {
