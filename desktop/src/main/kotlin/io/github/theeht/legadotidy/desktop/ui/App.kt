@@ -1760,11 +1760,6 @@ private fun CompareGroupDialog(
     }
 }
 
-  },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("完成对比") } },
-    )
-}
-
 @Composable
 private fun EditSourceDialog(
     source: WorkflowSource,
