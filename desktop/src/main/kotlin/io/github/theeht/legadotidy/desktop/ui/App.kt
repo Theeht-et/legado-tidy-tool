@@ -672,6 +672,7 @@ fun TidyApp() {
                                 state.preview = null
                                 state.previewOrder = emptyList()
                             },
+                            onGeneratePreview = ::generateOrganizePreview,
                             onRuleChange = { rule, checked ->
                                 val next = if (checked) state.selectedRules + rule else state.selectedRules - rule
                                 state.selectedRules = when (rule) {
@@ -938,6 +939,7 @@ private fun KpiRow(state: WorkflowState) {
 private fun OrganizeRulePanel(
     state: WorkflowState,
     onRuleChange: (OrganizeRule, Boolean) -> Unit,
+    onGeneratePreview: () -> Unit,
     markDisabledForDeletion: Boolean,
     onMarkDisabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -1005,6 +1007,15 @@ private fun OrganizeRulePanel(
                 )
             }
             Text("「保留原有分组」与「按书源类型重新分组」互斥；响应时间排序使用本轮校验耗时。", fontSize = 10.sp, color = Muted)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("默认建议：清理名称装饰与广告词，规范标点，保留现有分组。", Modifier.weight(1f).padding(end = 8.dp), fontSize = 9.sp, color = Muted)
+                Button(
+                    onClick = onGeneratePreview,
+                    enabled = state.sources.isNotEmpty() && !state.busy,
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 7.dp),
+                ) { Text("按所选规则生成预览", fontSize = 10.sp) }
+            }
         }
     }
 }
@@ -1047,6 +1058,7 @@ private fun SourceListPanel(
     onEdit: (Int) -> Unit,
     onCompare: (Int) -> Unit,
     onRuleChange: (OrganizeRule, Boolean) -> Unit,
+    onGeneratePreview: () -> Unit,
     markDisabledForDeletion: Boolean,
     onMarkDisabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -1121,6 +1133,7 @@ private fun SourceListPanel(
                 OrganizeRulePanel(
                     state = state,
                     onRuleChange = onRuleChange,
+                    onGeneratePreview = onGeneratePreview,
                     markDisabledForDeletion = markDisabledForDeletion,
                     onMarkDisabledChange = onMarkDisabledChange,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
@@ -1283,6 +1296,7 @@ private fun DetailPanel(
                     DetailField("类型", source.doc.type.toString())
                     DetailField("源分组", preview?.group ?: source.doc.group.ifBlank { "未分组" })
                     DetailField("启用状态", if (source.doc.enabled) "启用" else "禁用")
+                    DetailField("搜索规则", if (source.doc.canSearch) "已配置 / 待引擎确认" else "未发现常规搜索规则")
                     DetailField("规则字段", source.doc.ruleCompleteness.toString())
                     DetailField("校验状态", source.probe?.status?.label ?: "尚未校验")
                     DetailField("响应耗时", source.probe?.let { "\${it.elapsedMs} ms" } ?: "—")
