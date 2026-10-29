@@ -453,6 +453,19 @@ fun TidyApp() {
             OrganizeRule.REGROUP_BY_TYPE in rules ||
             preview.values.any { it.groupEdited }
         state.applyOrder = OrganizeRule.SORT_BY_RESPONSE_TIME in rules
+
+        // Manual group edits can change which group a source belongs to. Recalculate
+        // per-group ranks in the exact final preview order before writing customOrder.
+        val rankedPreview = preview.toMutableMap()
+        val rankByGroup = HashMap<String, Int>()
+        state.previewOrder.forEach { id ->
+            val row = rankedPreview[id] ?: return@forEach
+            val rank = rankByGroup[row.group] ?: 0
+            rankByGroup[row.group] = rank + 1
+            rankedPreview[id] = row.copy(rank = rank)
+        }
+        state.preview = rankedPreview
+
         val byId = state.sources.associateBy { it.id }
         val ordered = state.previewOrder.mapNotNull { byId[it] }
         if (ordered.isEmpty()) {
