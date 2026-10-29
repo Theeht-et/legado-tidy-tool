@@ -735,7 +735,7 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
         }
         Spacer(Modifier.weight(1f))
         if (state.busy) {
-            LinearProgressIndicator(progress = { 0.65f }, modifier = Modifier.width(72.dp).height(4.dp))
+            LinearProgressIndicator(modifier = Modifier.width(72.dp).height(4.dp))
             Spacer(Modifier.width(12.dp))
         }
         OutlinedButton(onClick = onImport, enabled = !state.busy) { Text("导入书源") }
