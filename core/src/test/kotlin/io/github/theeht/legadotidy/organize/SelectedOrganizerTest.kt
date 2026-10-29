@@ -1,0 +1,77 @@
+package io.github.theeht.legadotidy.organize
+
+import com.google.gson.JsonParser
+import io.github.theeht.legadotidy.model.BookSourceDoc
+import io.github.theeht.legadotidy.probe.ProbeResult
+import io.github.theeht.legadotidy.probe.ProbeStatus
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class SelectedOrganizerTest {
+
+    @Test
+    fun `只执行用户选中的名称规则且保留未选择的字段`() {
+        val source = doc(
+            """{"bookSourceName":"📚 星河书源 - 官方推荐","bookSourceUrl":"https://example.test","bookSourceType":1,"bookSourceGroup":"原分组"}"""
+        )
+
+        val report = Organizer.run(
+            sources = listOf(source),
+            results = emptyMap(),
+            config = OrganizeConfig(selectedRules = setOf(OrganizeRule.CLEAN_DECORATIONS)),
+        )
+
+        assertEquals("星河书源 - 官方推荐", report.sources.single().name)
+        assertEquals("原分组", report.sources.single().group)
+    }
+
+    @Test
+    fun `广告清理类型重分组和响应时间排序可组合`() {
+        val slower = doc(
+            """{"bookSourceName":"星河书源 - 官方推荐","bookSourceUrl":"https://slow.test","bookSourceType":1,"bookSourceGroup":"旧分组"}"""
+        )
+        val faster = doc(
+            """{"bookSourceName":"银河书源 · 福利","bookSourceUrl":"https://fast.test","bookSourceType":1,"bookSourceGroup":"另一个旧分组"}"""
+        )
+        val results = mapOf(
+            0 to ProbeResult(0, ProbeStatus.OK, elapsedMs = 300),
+            1 to ProbeResult(1, ProbeStatus.OK, elapsedMs = 100),
+        )
+
+        val report = Organizer.run(
+            sources = listOf(slower, faster),
+            results = results,
+            config = OrganizeConfig(
+                selectedRules = setOf(
+                    OrganizeRule.REMOVE_ADVERTISING_WORDS,
+                    OrganizeRule.REGROUP_BY_TYPE,
+                    OrganizeRule.SORT_BY_RESPONSE_TIME,
+                ),
+            ),
+        )
+
+        assertEquals(listOf(1, 0), report.sources.map { it.index })
+        assertEquals(listOf("银河书源", "星河书源"), report.sources.map { it.name })
+        assertEquals(listOf("音频", "音频"), report.sources.map { it.group })
+        assertEquals(listOf(0, 1), report.sources.map { it.rank })
+    }
+
+    @Test
+    fun `显式空规则不清洗名称也不自动补分组`() {
+        val source = doc(
+            """{"bookSourceName":"📚 原始 名称","bookSourceUrl":"https://example.test","bookSourceType":0,"bookSourceGroup":""}"""
+        )
+
+        val report = Organizer.run(
+            sources = listOf(source),
+            results = emptyMap(),
+            config = OrganizeConfig(selectedRules = emptySet()),
+        )
+
+        assertEquals("📚 原始 名称", report.sources.single().name)
+        assertEquals("", report.sources.single().group)
+    }
+
+    private fun doc(json: String): BookSourceDoc =
+        BookSourceDoc(JsonParser.parseString(json).asJsonObject)
+}
