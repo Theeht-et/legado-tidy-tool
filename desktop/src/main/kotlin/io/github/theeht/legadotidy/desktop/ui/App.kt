@@ -955,19 +955,31 @@ private fun OrganizeRulePanel(
                     verticalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
                     Text("分组规则", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(
-                            selected = OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules,
-                            onClick = { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
-                        )
-                        Text("保留原有", fontSize = 10.sp, color = BodyText)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(
-                            selected = OrganizeRule.REGROUP_BY_TYPE in state.selectedRules,
-                            onClick = { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
-                        )
-                        Text("按类型重分", fontSize = 10.sp, color = BodyText)
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            Modifier.weight(1f).clip(RoundedCornerShape(7.dp))
+                                .background(if (OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules) SoftBlue else Color.Transparent)
+                                .clickable { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules,
+                                onClick = { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
+                            )
+                            Text("保留原有", fontSize = 9.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Row(
+                            Modifier.weight(1f).clip(RoundedCornerShape(7.dp))
+                                .background(if (OrganizeRule.REGROUP_BY_TYPE in state.selectedRules) SoftBlue else Color.Transparent)
+                                .clickable { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = OrganizeRule.REGROUP_BY_TYPE in state.selectedRules,
+                                onClick = { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
+                            )
+                            Text("按类型", fontSize = 9.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
                 RuleCheckbox(
