@@ -168,7 +168,11 @@ private data class PreviewSource(
 )
 
 private sealed class SourceListRow(val key: String) {
-    data class GroupHeader(val group: DuplicateGroupUi) : SourceListRow("group-${group.number}")
+    data class GroupHeader(
+        val group: DuplicateGroupUi,
+        val visibleCount: Int,
+        val visibleMarkedCount: Int,
+    ) : SourceListRow("group-${group.number}")
     data class SourceEntry(val source: WorkflowSource) : SourceListRow("source-${source.id}")
 }
 
@@ -236,6 +240,8 @@ fun TidyApp() {
             }
             state.sources.clear()
             state.sources.addAll(docs.mapIndexed { index, raw -> WorkflowSource(index, BookSourceDoc(raw)) })
+            editingId = null
+            comparingGroup = null
             state.inputFile = selectedFile
             state.inputCount = docs.size
             state.selectedId = state.sources.firstOrNull()?.id
@@ -570,12 +576,20 @@ fun TidyApp() {
 
     fun exportFile() {
         if (state.busy || state.sources.isEmpty()) return
-        state.busy = true
         state.error = null
+        val outputDir = resolveExportDirectory(state.exportDir).getOrElse { error ->
+            state.error = "导出目录无效：${error.message ?: error::class.java.simpleName}"
+            return
+        }
+        val outputName = runCatching {
+            nextSafeExportFileName(state.inputFile, outputDir.toFile(), Exporter.defaultFileName())
+        }.getOrElse { error ->
+            state.error = "无法检查导出文件名：${error.message ?: error::class.java.simpleName}"
+            return
+        }
+        state.busy = true
         val snapshot = state.sources.toList()
         val preview = state.preview.orEmpty()
-        val outputDir = Path.of(state.exportDir)
-        val outputName = nextSafeExportFileName(state.inputFile, File(state.exportDir), Exporter.defaultFileName())
         val exportConfig = ExportConfig(
             applyCleanNames = state.applyCleanNames,
             applyGroupAndOrder = state.applyGroups || state.applyOrder,
@@ -1182,8 +1196,10 @@ private fun SourceListPanel(
                         items(rows, key = { it.key }) { row ->
                             when (row) {
                                 is SourceListRow.GroupHeader -> {
-                                    val markedCount = row.group.sourceIds.count { id ->
-                                        state.sources.firstOrNull { it.id == id }?.deleteMarked == true
+                                    val countLabel = if (row.visibleCount == row.group.sourceIds.size) {
+                                        "${row.visibleCount} 个候选"
+                                    } else {
+                                        "当前显示 ${row.visibleCount}/${row.group.sourceIds.size} 个候选"
                                     }
                                     Row(
                                         Modifier.fillMaxWidth().background(Color(0xFFF1F5FF)).padding(horizontal = 12.dp, vertical = 7.dp),
@@ -1191,7 +1207,7 @@ private fun SourceListPanel(
                                     ) {
                                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                             Text("重复组 ${row.group.number} · ${row.group.kind.label}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3156A7))
-                                            Text("${row.group.sourceIds.size} 个候选 · 已标记 ${markedCount} 个删除", fontSize = 10.sp, color = Muted)
+                                            Text("$countLabel · 当前显示项中待删除 ${row.visibleMarkedCount} 个", fontSize = 10.sp, color = Muted)
                                         }
                                         OutlinedButton(
                                             onClick = { onCompare(row.group.number) },
@@ -1986,7 +2002,11 @@ private fun buildSourceRows(state: WorkflowState): List<SourceListRow> {
         state.duplicateGroups.forEach { group ->
             val members = group.sourceIds.mapNotNull { sourceById[it] }.filter(::matches)
             if (members.isNotEmpty()) {
-                rows += SourceListRow.GroupHeader(group)
+                rows += SourceListRow.GroupHeader(
+                    group = group,
+                    visibleCount = members.size,
+                    visibleMarkedCount = members.count { it.deleteMarked },
+                )
                 members.forEach { member ->
                     rows += SourceListRow.SourceEntry(member)
                     grouped += member.id
