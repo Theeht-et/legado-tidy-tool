@@ -96,22 +96,22 @@ import java.io.File
 import java.nio.file.Path
 import javax.swing.JFileChooser
 
-private val Primary = Color(0xFF356AE6)
+private val Primary = Color(0xFF3565C9)
 private val Ok = Color(0xFF16845B)
-private val Warn = Color(0xFFB7791F)
+private val Warn = Color(0xFF9A6417)
 private val Bad = Color(0xFFC43C48)
 private val Muted = Color(0xFF748096)
-private val Line = Color(0xFFE5E9F0)
-private val Canvas = Color(0xFFF5F7FA)
-private val SoftBlue = Color(0xFFEDF3FF)
+private val Line = Color(0xFFD9E0E9)
+private val Canvas = Color(0xFFF1F3F6)
+private val SoftBlue = Color(0xFFEAF0FB)
 
-private val Ink = Color(0xFF172033)
+private val Ink = Color(0xFF24344D)
 private val BodyText = Color(0xFF344054)
 private val SoftGreen = Color(0xFFE8F7F0)
 private val SoftAmber = Color(0xFFFFF5DF)
 private val SoftRed = Color(0xFFFFF0F0)
 private val SoftNeutral = Color(0xFFF7F9FC)
-private val SoftSlate = Color(0xFFF1F4F8)
+private val SoftSlate = Color(0xFFE8EDF4)
 
 private val LightColors = lightColorScheme(
     primary = Primary,
@@ -622,9 +622,10 @@ fun TidyApp() {
         Surface(Modifier.fillMaxSize(), color = Canvas) {
             Column(Modifier.fillMaxSize()) {
                 TopBar(state, onImport = ::importFile)
+                HorizontalDivider(color = Line)
                 Column(
-                    Modifier.weight(1f).fillMaxWidth().padding(horizontal = 26.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    Modifier.weight(1f).fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Stepper(state.stage)
                     KpiRow(state)
@@ -647,7 +648,7 @@ fun TidyApp() {
                     }
                     Row(
                         Modifier.weight(1f).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         SourceListPanel(
                             state = state,
@@ -838,7 +839,7 @@ fun TidyApp() {
 @Composable
 private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 26.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 22.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -876,7 +877,11 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
             }
         }
         if (state.busy) LinearProgressIndicator(modifier = Modifier.width(52.dp).height(4.dp))
-        OutlinedButton(onClick = onImport, enabled = !state.busy) { Text("导入 JSON") }
+        Button(
+            onClick = onImport,
+            enabled = !state.busy,
+            colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
+        ) { Text("导入 JSON") }
         OutlinedButton(onClick = { state.showSettings = true }, enabled = !state.busy) { Text("⚙ 校验设置") }
         OutlinedButton(onClick = { state.showReport = true }) { Text("报告") }
     }
@@ -892,9 +897,9 @@ private fun Stepper(stage: WorkflowStage) {
             val badgeColor = when { current -> Primary; complete -> SoftGreen; else -> SoftSlate }
             val badgeTextColor = when { current -> Color.White; complete -> Ok; else -> Muted }
             Card(
-                Modifier.weight(1f).border(1.dp, if (current) Color(0xFF91B0FF) else Line, RoundedCornerShape(12.dp)),
+                Modifier.weight(1f).border(1.dp, if (current) Color(0xFF9FB6E8) else Line, RoundedCornerShape(10.dp)),
                 colors = CardDefaults.cardColors(containerColor = if (current) SoftBlue else Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             ) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -929,14 +934,14 @@ private fun KpiRow(state: WorkflowState) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         values.forEach { (label, value, hint) ->
             Card(
-                Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(12.dp)),
+                Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(10.dp)),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             ) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(label, color = Muted, fontSize = 11.sp)
-                    Text(value, color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    Text(hint, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Column(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(label, color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Text(value, color = Ink, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                    Text(hint, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -1072,10 +1077,10 @@ private fun SourceListPanel(
     onMarkDisabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(modifier.border(1.dp, Line, RoundedCornerShape(14.dp)), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(modifier.border(1.dp, Line, RoundedCornerShape(12.dp)), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                Modifier.fillMaxWidth().background(SoftNeutral).padding(horizontal = 14.dp, vertical = 11.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -1284,9 +1289,9 @@ private fun DetailPanel(
 ) {
     val source = state.sources.firstOrNull { it.id == state.selectedId }
     Card(
-        modifier.border(1.dp, Line, RoundedCornerShape(14.dp)),
+        modifier.border(1.dp, Line, RoundedCornerShape(12.dp)),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
     ) {
         if (source == null) {
             Box(Modifier.fillMaxSize().padding(18.dp), contentAlignment = Alignment.Center) {
@@ -1296,7 +1301,7 @@ private fun DetailPanel(
             val preview = state.preview?.get(source.id).takeIf { state.stage == WorkflowStage.ORGANIZE_REVIEW || state.stage == WorkflowStage.EXPORT }
             Column(Modifier.fillMaxSize()) {
                 Column(
-                    Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 16.dp),
+                    Modifier.fillMaxWidth().background(SoftNeutral).padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     Text("SOURCE #${(source.id + 1).toString().padStart(3, '0')} · ${state.stage.label}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Primary)
@@ -1431,9 +1436,10 @@ private fun BottomActions(
     onCopyImportLink: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 26.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(13.dp)).background(Color(0xFF17233A))
-            .padding(horizontal = 17.dp, vertical = 13.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 7.dp)
+            .border(1.dp, Line, RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(12.dp)).background(Color.White)
+            .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -1444,7 +1450,7 @@ private fun BottomActions(
                 WorkflowStage.PROBE_REVIEW -> "复核校验结果"
                 WorkflowStage.ORGANIZE_REVIEW -> "预览整理规则"
                 WorkflowStage.EXPORT -> "生成 JSON"
-            }, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
             Text(
                 when (state.stage) {
                     WorkflowStage.IMPORT -> "开始后自动生成去重建议"
@@ -1454,36 +1460,36 @@ private fun BottomActions(
                     WorkflowStage.EXPORT -> "只导出已确认的当前工作池，不覆盖导入文件"
                 },
                 fontSize = 10.sp,
-                color = Color(0xFFC4CDDD),
+                color = Muted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         when (state.stage) {
             WorkflowStage.IMPORT -> {
-                OutlinedButton(onClick = onShowImportInfo, enabled = state.inputFile != null && !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF263652), contentColor = Color.White)) {
+                OutlinedButton(onClick = onShowImportInfo, enabled = state.inputFile != null && !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText)) {
                     Text("查看导入信息")
                 }
-                Button(colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C86F5), contentColor = Color.White), onClick = onStartDedup, enabled = state.sources.isNotEmpty() && !state.busy) {
+                Button(colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White), onClick = onStartDedup, enabled = state.sources.isNotEmpty() && !state.busy) {
                     Text("开始去重")
                 }
             }
             WorkflowStage.DEDUP_REVIEW -> {
-                Button(colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C86F5), contentColor = Color.White), onClick = onConfirmDedup, enabled = state.sources.isNotEmpty() && !state.busy) {
+                Button(colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White), onClick = onConfirmDedup, enabled = state.sources.isNotEmpty() && !state.busy) {
                     Text("确认去重并进入校验")
                 }
             }
             WorkflowStage.PROBE_REVIEW -> {
                 OutlinedButton(
                     onClick = { state.sourceFilter = "异常 / 复核" },
-                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF263652), contentColor = Color.White),
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText),
                 ) { Text("查看异常项") }
                 if (state.busy) {
-                    OutlinedButton(onClick = onStop, colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF263652), contentColor = Color.White)) { Text("停止校验") }
+                    OutlinedButton(onClick = onStop, colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText)) { Text("停止校验") }
                 } else if (state.sources.any { it.probe == null }) {
-                    Button(colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C86F5), contentColor = Color.White), onClick = onContinueValidation) { Text("继续校验") }
+                    Button(colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White), onClick = onContinueValidation) { Text("继续校验") }
                 } else {
-                    Button(colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C86F5), contentColor = Color.White), onClick = onConfirmValidation, enabled = state.sources.isNotEmpty()) {
+                    Button(colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White), onClick = onConfirmValidation, enabled = state.sources.isNotEmpty()) {
                         Text("确认校验并进入整理")
                     }
                 }
@@ -1492,10 +1498,10 @@ private fun BottomActions(
                 if (state.preview == null) {
                     OutlinedButton(
                         onClick = { state.sourceFilter = "待删除" },
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF263652), contentColor = Color.White),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText),
                     ) { Text("查看待删除项") }
                     Button(
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C86F5), contentColor = Color.White),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
                         onClick = onGeneratePreview,
                         enabled = state.sources.isNotEmpty() && !state.busy,
                     ) { Text("生成整理预览") }
@@ -1503,10 +1509,10 @@ private fun BottomActions(
                     OutlinedButton(
                         onClick = onGeneratePreview,
                         enabled = !state.busy,
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF263652), contentColor = Color.White),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText),
                     ) { Text("重新生成预览") }
                     Button(
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C86F5), contentColor = Color.White),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
                         onClick = onConfirmOrganize,
                         enabled = !state.busy,
                     ) { Text("确认整理并进入导出") }
@@ -1515,13 +1521,13 @@ private fun BottomActions(
             WorkflowStage.EXPORT -> {
                 OutlinedButton(
                     onClick = { state.showReport = true },
-                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF263652), contentColor = Color.White),
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText),
                 ) { Text("查看最终清单") }
                 if (DirectLink.isUsable(state.directUrl)) {
-                    OutlinedButton(onClick = onCopyImportLink, enabled = !state.busy, colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)) { Text("复制导入链接") }
+                    OutlinedButton(onClick = onCopyImportLink, enabled = !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText)) { Text("复制导入链接") }
                 }
-                OutlinedButton(onClick = onOpenFolder, enabled = !state.busy, colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)) { Text("打开导出目录") }
-                Button(colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5C86F5), contentColor = Color.White), onClick = onExport, enabled = state.sources.isNotEmpty() && !state.busy) {
+                OutlinedButton(onClick = onOpenFolder, enabled = !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText)) { Text("打开导出目录") }
+                Button(colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White), onClick = onExport, enabled = state.sources.isNotEmpty() && !state.busy) {
                     Text(if (state.exported == null) "导出 JSON" else "再次导出 JSON")
                 }
             }
