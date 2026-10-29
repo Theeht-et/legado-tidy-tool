@@ -4,6 +4,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.io.TempDir
+import java.io.File
+import java.nio.file.Path
 
 class WorkflowDecisionsTest {
 
@@ -60,4 +63,19 @@ class WorkflowDecisionsTest {
         assertEquals(0, plan.removedCount)
         assertEquals(original, plan.retained)
     }
+
+    @Test
+    fun `导出文件名不会覆盖输入或之前的导出`(@TempDir dir: Path) {
+        val input = File(dir.toFile(), "sources.json")
+        input.writeText("original")
+
+        val first = nextSafeExportFileName(input, dir.toFile(), "sources.json")
+        assertEquals("sources-cleaned.json", first)
+        File(dir.toFile(), first).writeText("first export")
+
+        val second = nextSafeExportFileName(input, dir.toFile(), "sources.json")
+        assertEquals("sources-cleaned-2.json", second)
+        assertEquals("original", input.readText())
+    }
+
 }
