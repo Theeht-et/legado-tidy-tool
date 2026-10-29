@@ -34,6 +34,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -402,7 +403,12 @@ fun TidyApp() {
         }
         state.stage = WorkflowStage.ORGANIZE_REVIEW
         state.sourceFilter = "全部"
-        state.selectedRules = emptySet()
+        state.selectedRules = setOf(
+            OrganizeRule.CLEAN_DECORATIONS,
+            OrganizeRule.REMOVE_ADVERTISING_WORDS,
+            OrganizeRule.NORMALIZE_PUNCTUATION,
+            OrganizeRule.KEEP_ORIGINAL_GROUPS,
+        )
         state.markDisabledForDeletion = false
         state.preview = null
         state.previewOrder = emptyList()
@@ -931,21 +937,45 @@ private fun OrganizeRulePanel(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OrganizeRule.entries.take(3).forEach { rule -> RuleCheckbox(rule, rule in state.selectedRules, onRuleChange, Modifier.weight(1f)) }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OrganizeRule.entries.drop(3).forEach { rule -> RuleCheckbox(rule, rule in state.selectedRules, onRuleChange, Modifier.weight(1f)) }
-            }
-            Row(
-                Modifier.fillMaxWidth()
-                    .border(1.dp, if (markDisabledForDeletion) Color(0xFFF0C8CC) else Line, RoundedCornerShape(9.dp))
-                    .background(if (markDisabledForDeletion) SoftRed else Color.White, RoundedCornerShape(9.dp))
-                    .padding(horizontal = 5.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Checkbox(checked = markDisabledForDeletion, onCheckedChange = onMarkDisabledChange)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("标记已禁用书源为删除", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                    Text("只添加待删除标记；进入导出阶段前仍可手动撤销。", fontSize = 9.sp, color = Muted)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                Row(
+                    Modifier.weight(1f).border(1.dp, if (markDisabledForDeletion) Color(0xFFF0C8CC) else Line, RoundedCornerShape(9.dp))
+                        .background(if (markDisabledForDeletion) SoftRed else Color.White, RoundedCornerShape(9.dp))
+                        .padding(horizontal = 4.dp, vertical = 5.dp).heightIn(min = 58.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = markDisabledForDeletion, onCheckedChange = onMarkDisabledChange)
+                    Column(Modifier.weight(1f).padding(end = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("标记已禁用书源为删除", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text("只添加待删除标记；进入导出阶段前可撤销。", fontSize = 9.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
                 }
+                Column(
+                    Modifier.weight(1.15f).border(1.dp, Line, RoundedCornerShape(9.dp)).background(Color.White, RoundedCornerShape(9.dp)).padding(7.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text("分组规则", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules,
+                            onClick = { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
+                        )
+                        Text("保留原有", fontSize = 10.sp, color = BodyText)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = OrganizeRule.REGROUP_BY_TYPE in state.selectedRules,
+                            onClick = { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
+                        )
+                        Text("按类型重分", fontSize = 10.sp, color = BodyText)
+                    }
+                }
+                RuleCheckbox(
+                    OrganizeRule.SORT_BY_RESPONSE_TIME,
+                    OrganizeRule.SORT_BY_RESPONSE_TIME in state.selectedRules,
+                    onRuleChange,
+                    Modifier.weight(1f),
+                )
             }
             Text("「保留原有分组」与「按书源类型重新分组」互斥；响应时间排序使用本轮校验耗时。", fontSize = 10.sp, color = Muted)
         }
