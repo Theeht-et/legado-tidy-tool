@@ -199,6 +199,7 @@ private class WorkflowState {
     var directUrl by mutableStateOf("")
 
     var selectedRules by mutableStateOf<Set<OrganizeRule>>(emptySet())
+    var markDisabledForDeletion by mutableStateOf(false)
     var applyCleanNames by mutableStateOf(false)
     var applyGroups by mutableStateOf(false)
     var applyOrder by mutableStateOf(false)
@@ -237,7 +238,7 @@ fun TidyApp() {
             state.selectedId = state.sources.firstOrNull()?.id
             state.filterQuery = ""
             state.stage = WorkflowStage.IMPORT
-                state.sourceFilter = "全部"
+            state.sourceFilter = "全部"
             state.duplicateGroups = emptyList()
             state.duplicateReport = null
             state.preview = null
@@ -383,7 +384,7 @@ fun TidyApp() {
     fun confirmDedupAndValidate() {
         if (!commitMarkedDeletions(state)) return
         state.stage = WorkflowStage.PROBE_REVIEW
-                state.sourceFilter = "全部"
+        state.sourceFilter = "全部"
         state.sources.indices.forEach { index ->
             state.sources[index] = state.sources[index].copy(duplicateGroup = null, probe = null)
         }
@@ -400,8 +401,9 @@ fun TidyApp() {
             state.sources[index] = state.sources[index].copy(duplicateGroup = null)
         }
         state.stage = WorkflowStage.ORGANIZE_REVIEW
-                state.sourceFilter = "全部"
+        state.sourceFilter = "全部"
         state.selectedRules = emptySet()
+        state.markDisabledForDeletion = false
         state.preview = null
         state.previewOrder = emptyList()
         state.error = null
@@ -496,19 +498,39 @@ fun TidyApp() {
         state.preview = rankedPreview
 
         val byId = state.sources.associateBy { it.id }
-        val ordered = state.previewOrder.mapNotNull { byId[it] }
+        val allOrdered = state.previewOrder.mapNotNull { byId[it] }
+        if (allOrdered.isEmpty()) {
+            state.error = "整理结果为空，无法进入导出。"
+            return
+        }
+        val deletionPlan = planMarkedDeletions(allOrdered) { it.deleteMarked }
+        if (deletionPlan.allItemsMarked) {
+            state.error = "当前所有书源都被标记为删除。请至少保留一项，或修改删除标记后再进入导出。"
+            return
+        }
+        val ordered = deletionPlan.retained
         if (ordered.isEmpty()) {
             state.error = "整理结果为空，无法进入导出。"
             return
         }
+        state.removedCount += deletionPlan.removedCount
+        val retainedIds = ordered.map { it.id }.toSet()
+        state.preview = rankedPreview.filterKeys { it in retainedIds }
+        state.previewOrder = ordered.map { it.id }
         state.sources.clear()
         state.sources.addAll(ordered.map { it.copy(deleteMarked = false, duplicateGroup = null) })
         state.stage = WorkflowStage.EXPORT
-                state.sourceFilter = "全部"
+        state.sourceFilter = "全部"
         state.selectedId = state.sources.firstOrNull()?.id
         state.exported = null
         state.error = null
-        state.notice = "整理结果已确认。导出时只写入已勾选或手动修改的字段。"
+        state.notice = if (deletionPlan.removedCount > 0) {
+            "整理结果已确认，并将 " + deletionPlan.removedCount + " 个标记项从当前工作池移除。导出时只写入已确认或手动修改的字段。"
+        } else {
+            "整理结果已确认。导出时只写入已确认或手动修改的字段。"
+        }
+
+
     }
 
     fun exportFile() {
@@ -597,6 +619,24 @@ fun TidyApp() {
                             onDetail = { state.selectedId = it },
                             onEdit = { editingId = it },
                             onCompare = { comparingGroup = it },
+                            markDisabledForDeletion = state.markDisabledForDeletion,
+                            onMarkDisabledChange = { checked ->
+                                state.markDisabledForDeletion = checked
+                                state.sources.indices.forEach { index ->
+                                    val source = state.sources[index]
+                                    if (checked && !source.doc.enabled && source.suggestion != "用户决定保留") {
+                                        state.sources[index] = source.copy(deleteMarked = true, suggestion = "禁用书源，建议删除")
+                                    } else if (!checked && source.suggestion == "禁用书源，建议删除") {
+                                        state.sources[index] = source.copy(
+                                            deleteMarked = false,
+                                            suggestion = if (source.probe?.status == ProbeStatus.OK) "建议保留" else "建议复核",
+                                        )
+                                    }
+                                }
+                                state.notice = if (checked) "已标记禁用书源为待删除；可在确认整理前逐项撤销。" else "已取消禁用书源删除规则。"
+                                state.preview = null
+                                state.previewOrder = emptyList()
+                            },
                             onRuleChange = { rule, checked ->
                                 val next = if (checked) state.selectedRules + rule else state.selectedRules - rule
                                 state.selectedRules = when (rule) {
@@ -716,7 +756,7 @@ fun TidyApp() {
                             // These fields influence candidate grouping or keep scoring. Invalidate
                             // old recommendations instead of letting stale groups delete the wrong source.
                             state.stage = WorkflowStage.IMPORT
-                state.sourceFilter = "全部"
+                            state.sourceFilter = "全部"
                             state.duplicateGroups = emptyList()
                             state.duplicateReport = null
                             state.sources.indices.forEach { index ->
@@ -736,7 +776,7 @@ fun TidyApp() {
                             state.total = state.sources.size
                             if (state.stage == WorkflowStage.ORGANIZE_REVIEW) {
                                 state.stage = WorkflowStage.PROBE_REVIEW
-                state.sourceFilter = "全部"
+                                state.sourceFilter = "全部"
                                 state.preview = null
                                 state.previewOrder = emptyList()
                             }
@@ -862,6 +902,8 @@ private fun KpiRow(state: WorkflowState) {
 private fun OrganizeRulePanel(
     state: WorkflowState,
     onRuleChange: (OrganizeRule, Boolean) -> Unit,
+    markDisabledForDeletion: Boolean,
+    onMarkDisabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(modifier.border(1.dp, Color(0xFFDCE5FB), RoundedCornerShape(11.dp)), colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FBFF)), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
@@ -876,6 +918,19 @@ private fun OrganizeRulePanel(
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OrganizeRule.entries.drop(3).forEach { rule -> RuleCheckbox(rule, rule in state.selectedRules, onRuleChange, Modifier.weight(1f)) }
+            }
+            Row(
+                Modifier.fillMaxWidth()
+                    .border(1.dp, if (markDisabledForDeletion) Color(0xFFF0C8CC) else Line, RoundedCornerShape(9.dp))
+                    .background(if (markDisabledForDeletion) SoftRed else Color.White, RoundedCornerShape(9.dp))
+                    .padding(horizontal = 5.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = markDisabledForDeletion, onCheckedChange = onMarkDisabledChange)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("标记已禁用书源为删除", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                    Text("只添加待删除标记；进入导出阶段前仍可手动撤销。", fontSize = 9.sp, color = Muted)
+                }
             }
             Text("「保留原有分组」与「按书源类型重新分组」互斥；响应时间排序使用本轮校验耗时。", fontSize = 10.sp, color = Muted)
         }
@@ -920,6 +975,8 @@ private fun SourceListPanel(
     onEdit: (Int) -> Unit,
     onCompare: (Int) -> Unit,
     onRuleChange: (OrganizeRule, Boolean) -> Unit,
+    markDisabledForDeletion: Boolean,
+    onMarkDisabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(modifier.border(1.dp, Line, RoundedCornerShape(14.dp)), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
@@ -989,7 +1046,13 @@ private fun SourceListPanel(
                 }
             }
             if (state.stage == WorkflowStage.ORGANIZE_REVIEW) {
-                OrganizeRulePanel(state = state, onRuleChange = onRuleChange, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp))
+                OrganizeRulePanel(
+                    state = state,
+                    onRuleChange = onRuleChange,
+                    markDisabledForDeletion = markDisabledForDeletion,
+                    onMarkDisabledChange = onMarkDisabledChange,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                )
                 Spacer(Modifier.height(7.dp))
             }
             TableHeader()
@@ -1191,7 +1254,7 @@ private fun DetailPanel(
                         enabled = !state.busy && state.stage != WorkflowStage.EXPORT,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(if (preview != null && state.stage == WorkflowStage.ORGANIZE_REVIEW) "编辑整理结果" else "编辑书源") }
-                    if ((state.stage == WorkflowStage.DEDUP_REVIEW || state.stage == WorkflowStage.PROBE_REVIEW) && !state.busy) {
+                    if ((state.stage == WorkflowStage.DEDUP_REVIEW || state.stage == WorkflowStage.PROBE_REVIEW || state.stage == WorkflowStage.ORGANIZE_REVIEW) && !state.busy) {
                         OutlinedButton(
                             onClick = { onToggleDelete(source.id) },
                             modifier = Modifier.fillMaxWidth(),
