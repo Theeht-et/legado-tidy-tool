@@ -60,6 +60,7 @@ object Organizer {
     ): OrganizeReport {
         val collator = Collator.getInstance(Locale.CHINA)
         val selected = config.selectedRules
+        val rules = selected.orEmpty()
         val explicitRules = selected != null
 
         val statusOf = sources.indices.associateWith { results[it]?.status ?: ProbeStatus.SKIPPED }
@@ -68,13 +69,13 @@ object Organizer {
                 TidyText.display(doc.name, config.maxNameLength)
             } else {
                 var name = doc.name
-                if (OrganizeRule.CLEAN_DECORATIONS in selected!!) {
+                if (OrganizeRule.CLEAN_DECORATIONS in rules) {
                     name = TidyText.display(name, config.maxNameLength)
                 }
-                if (OrganizeRule.REMOVE_ADVERTISING_WORDS in selected) {
+                if (OrganizeRule.REMOVE_ADVERTISING_WORDS in rules) {
                     name = TidyText.removeAdvertisingWords(name)
                 }
-                if (OrganizeRule.NORMALIZE_PUNCTUATION in selected) {
+                if (OrganizeRule.NORMALIZE_PUNCTUATION in rules) {
                     name = TidyText.normalizeNamePunctuation(name)
                 }
                 name
@@ -82,7 +83,7 @@ object Organizer {
         }
         val groupOf = sources.map { doc ->
             if (!explicitRules) resolveGroup(doc, config)
-            else if (OrganizeRule.REGROUP_BY_TYPE in selected!!) {
+            else if (OrganizeRule.REGROUP_BY_TYPE in rules) {
                 config.typeNames[doc.type] ?: config.unknownGroup
             } else {
                 // GUI 未勾选重新分组时严格保留原分组，不为未分组源偷偷填默认组。
@@ -104,7 +105,7 @@ object Organizer {
                         val byName = collator.compare(nameOf[a], nameOf[b])
                         if (byName != 0) byName else sources[a].url.compareTo(sources[b].url)
                     }
-                } else if (OrganizeRule.SORT_BY_RESPONSE_TIME in selected!!) {
+                } else if (OrganizeRule.SORT_BY_RESPONSE_TIME in rules) {
                     val elapsedA = results[a]?.takeIf { it.status != ProbeStatus.SKIPPED }?.elapsedMs ?: Long.MAX_VALUE
                     val elapsedB = results[b]?.takeIf { it.status != ProbeStatus.SKIPPED }?.elapsedMs ?: Long.MAX_VALUE
                     val byElapsed = elapsedA.compareTo(elapsedB)
