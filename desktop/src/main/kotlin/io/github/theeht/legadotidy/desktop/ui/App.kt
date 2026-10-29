@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -1242,6 +1243,20 @@ private fun CompareGroupDialog(
     onDismiss: () -> Unit,
 ) {
     val candidates = group.sourceIds.mapNotNull { id -> state.sources.firstOrNull { it.id == id } }
+    val compareFields = listOf(
+        "searchUrl" to "搜索入口",
+        "exploreUrl" to "发现入口",
+        "mainJs" to "主脚本",
+        "ruleSearch" to "搜索规则",
+        "ruleExplore" to "发现规则",
+        "ruleBookInfo" to "详情规则",
+        "ruleToc" to "目录规则",
+        "ruleContent" to "正文规则",
+        "ruleReview" to "书评规则",
+        "header" to "请求头",
+        "jsLib" to "JS 库",
+        "loginUrl" to "登录入口",
+    )
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("对比重复组 ${group.number}") },
@@ -1251,27 +1266,69 @@ private fun CompareGroupDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("${group.kind.label} · 相似度 ${(group.similarity * 100).toInt()}%", fontSize = 12.sp, color = Muted)
-                candidates.forEach { source ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = if (source.deleteMarked) Color(0xFFFFF7ED) else SoftBlue),
-                    ) {
-                        Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(source.doc.name.ifBlank { "（未命名）" }, Modifier.weight(1f), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                Checkbox(
-                                    checked = !source.deleteMarked,
-                                    onCheckedChange = { keep -> toggleDeleteMark(state, source.id, marked = !keep) },
-                                    enabled = !state.busy,
+                Text("横向比较候选的基础信息与关键规则；勾选表示保留，不勾选表示待删除。", fontSize = 11.sp, color = Muted)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    candidates.forEach { source ->
+                        Card(
+                            Modifier.width(300.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (source.deleteMarked) Color(0xFFFFF7ED) else SoftBlue,
+                            ),
+                        ) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(5.dp),
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(
+                                        checked = !source.deleteMarked,
+                                        onCheckedChange = { keep -> toggleDeleteMark(state, source.id, marked = !keep) },
+                                        enabled = !state.busy,
+                                    )
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            source.doc.name.ifBlank { "（未命名）" },
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            if (source.deleteMarked) "待删除" else "保留",
+                                            fontSize = 10.sp,
+                                            color = if (source.deleteMarked) Bad else Ok,
+                                        )
+                                    }
+                                }
+                                DetailField("URL", source.doc.url)
+                                DetailField("类型 / 分组", "${source.doc.type} / ${source.doc.group.ifBlank { "未分组" }}")
+                                DetailField("启用状态 / 规则字段", "${if (source.doc.enabled) "启用" else "禁用"} / ${source.doc.ruleCompleteness}")
+                                Text("关键规则", fontSize = 10.sp, color = Muted, fontWeight = FontWeight.SemiBold)
+                                compareFields.forEach { (key, label) ->
+                                    val value = rawString(source, key)
+                                    if (value.isNotBlank()) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                            Text(label, fontSize = 9.sp, color = Muted)
+                                            Text(
+                                                value,
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF374151),
+                                                maxLines = 3,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                    }
+                                }
+                                Text(
+                                    "系统建议：${if (source.id == group.suggestedKeepId) "保留" else "删除"}",
+                                    fontSize = 10.sp,
+                                    color = Muted,
                                 )
-                                Text(if (source.deleteMarked) "待删除" else "保留", fontSize = 11.sp, color = if (source.deleteMarked) Bad else Ok)
                             }
-                            Text(source.doc.url, fontSize = 11.sp, color = Muted)
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Text("类型 ${source.doc.type}", fontSize = 11.sp, color = Muted)
-                                Text("分组 ${source.doc.group.ifBlank { "未分组" }}", fontSize = 11.sp, color = Muted)
-                                Text("规则字段 ${source.doc.ruleCompleteness}", fontSize = 11.sp, color = Muted)
-                            }
-                            Text("系统建议：${if (source.id == group.suggestedKeepId) "保留" else "删除"}", fontSize = 11.sp, color = Muted)
                         }
                     }
                 }
