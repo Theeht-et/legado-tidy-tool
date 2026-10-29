@@ -48,7 +48,7 @@ class LegadoProbeEngine(
     private val gson: Gson = GSON,
 ) : ProbeEngine {
 
-    private data class StaticVerdict(val status: ProbeStatus, val detail: String)
+    internal data class StaticVerdict(val status: ProbeStatus, val detail: String)
 
     override suspend fun probe(index: Int, source: BookSourceDoc, options: ProbeOptions): ProbeResult {
         val started = System.currentTimeMillis()
@@ -138,7 +138,7 @@ class LegadoProbeEngine(
      *
      * 所有命中统一归类为 `UNSUPPORTED`，detail 记录具体原因，供导出/人工处理参考。
      */
-    private fun staticVerdict(source: BookSourceDoc): StaticVerdict? {
+    internal fun staticVerdict(source: BookSourceDoc): StaticVerdict? {
         // 无搜索入口：不是「不支持」，是「没法校验」
         if (!source.canSearch) {
             return StaticVerdict(
