@@ -1605,7 +1605,12 @@ private fun ReportDialog(state: WorkflowState, onDismiss: () -> Unit) {
                     DetailField("导出数量", it.count.toString())
                 }
             }
-    @Composable
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+    )
+}
+
+@Composable
 private fun CompareGroupDialog(
     state: WorkflowState,
     group: DuplicateGroupUi,
