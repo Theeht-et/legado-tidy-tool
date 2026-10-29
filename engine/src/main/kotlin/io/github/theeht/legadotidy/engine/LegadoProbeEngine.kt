@@ -2,6 +2,7 @@ package io.github.theeht.legadotidy.engine
 
 import com.google.gson.Gson
 import io.github.theeht.legadotidy.model.BookSourceDoc
+import io.github.theeht.legadotidy.model.SourceField
 import io.github.theeht.legadotidy.probe.ProbeDepth
 import io.github.theeht.legadotidy.probe.ProbeEngine
 import io.github.theeht.legadotidy.probe.ProbeOptions
@@ -52,10 +53,13 @@ class LegadoProbeEngine(
         val started = System.currentTimeMillis()
 
         // 1. 静态可判的，别浪费一次网络请求。
-        //    这些不是「源坏了」，是「本工具不可能用」，所以要单独分类：
-        //    用户看到「需要浏览器渲染」会去别处处理，看到「网络不通」只会白折腾。
+        //    这些不是「源坏了」，是「当前 headless 环境跑不通」，统一标记 UNSUPPORTED。
         staticVerdict(source)?.let { status ->
-            return ProbeResult(index, status, elapsedMs = System.currentTimeMillis() - started)
+            return ProbeResult(
+                index = index,
+                status = status,
+                elapsedMs = System.currentTimeMillis() - started,
+            )
         }
 
         // 2. 真跑。
@@ -124,40 +128,69 @@ class LegadoProbeEngine(
     }
 
     /**
-     * 静态判定：不花网络就能确定「本工具跑不了」的情况。
+     * 静态判定：不花网络就能确定「当前 headless 环境跑不通」的情况。
      *
-     * 判据来自参考项目的实测口径（2407 个真实源里，8% 需要浏览器、0.75% 需要人工）。
-     * 这里只认最硬的信号，宁可放过（让它去跑一次、然后失败），也不误杀。
+     * 判据参考 legado-tool-kotlin 的 `UnsupportedDetector` 实测口径（2407 个真实源里，
+     * 8% 需要浏览器渲染、0.75% 需要人工介入）。这里只认最硬的信号，
+     * 宁可放过（让它去跑一次、然后失败），也不误杀。
+     *
+     * 所有命中统一归类为 `UNSUPPORTED`，`detail` 记录具体原因，供导出/人工处理参考。
      */
     private fun staticVerdict(source: BookSourceDoc): ProbeStatus? {
+        // 无搜索入口：不是「不支持」，是「没法校验」
         if (!source.canSearch) {
-            // 没有 searchUrl 的源，本次校验根本没有入口。
-            // 它不是「坏源」——有的源只提供发现/探索，不提供搜索。
             return ProbeStatus.NO_SEARCH_URL
         }
 
-        val rules = buildString {
-            append(source.searchUrl)
-            for (k in listOf("bookList", "name", "author", "kind", "bookUrl", "coverUrl", "lastChapter")) {
-                append('\n').append(source.ruleSearch[k])
-            }
+        // 收集所有可能声明不支持能力的规则文本
+        // 使用 behaviorFields() 动态获取所有非空行为字段（含 ruleToc.chapterUrl、ruleBookInfo.tocUrl、ruleContent.webJs 等）
+        val rules = source.behaviorFields()
+            .values
+            .joinToString("\n") { it }
+            .lowercase()
+
+        // --- 需浏览器渲染类（参考 UnsupportedDetector.BROWSER_PATTERNS）---
+        // webView 以各种形式出现：URL 选项 webView、java.webView、webViewGetSource 等
+        if (rules.contains("webview") || rules.contains("webjs")) {
+            return ProbeStatus.UNSUPPORTED
         }
 
-        // webView / webJs：要求真实浏览器内核渲染，headless 下必然拿不到内容。
-        if (rules.contains("webView", ignoreCase = true) || rules.contains("webJs", ignoreCase = true)) {
-            return ProbeStatus.NEED_BROWSER
+        // --- 需人工介入类（参考 UnsupportedDetector.NEEDS_HUMAN）---
+        // getVerificationCode / startBrowser* / showBrowser
+        if (rules.contains("getverificationcode")
+            || rules.contains("startbrowser")
+            || rules.contains("showbrowser")) {
+            return ProbeStatus.UNSUPPORTED
         }
 
-        // 注意：这里**不能**因为出现 `@js:` 就判「跑不了」。
-        // Rhino 就是用来跑这些脚本的，真实源里九成以上都带 @js:。
-        // 真跑不动的情况交给运行时去暴露（会被 classify() 归成 NEED_JS / ERROR），
-        // 静态阶段只拦「再跑也没意义」的那几种。
-        return null
+        // --- 播放器 / 外部跳转类（headless 无对应实现）---
+        if (rules.contains("openvideoplayer") || rules.contains("openurl")) {
+            return ProbeStatus.UNSUPPORTED
+        }
+
+        // --- 登录需求 ---
+        // loginUrl 非空且 loginCheckJs 非空 → 需登录，headless 无法完成
+        if (source.loginUrl.isNotBlank() && source.loginCheckJs.isNotBlank()) {
+            return ProbeStatus.UNSUPPORTED
+        }
+
+        return null // 静态看不出问题，交给运行时跑一次
     }
 
     private fun classify(e: Throwable): Pair<ProbeStatus, Int?> {
+        val msg = e.message?.lowercase() ?: ""
+
+        // 运行时也可能抛出这些（Rhino 抛 UnsupportedOperationException，或 JS 里显式 throw）
         // 顺序很重要：Timeout 是 IOException 的子类，必须先判。
+        if (msg.contains("webview") || msg.contains("webjs")
+            || msg.contains("getverificationcode") || msg.contains("startbrowser")
+            || msg.contains("showbrowser") || msg.contains("openvideoplayer")
+            || msg.contains("openurl")) {
+            return ProbeStatus.UNSUPPORTED to null
+        }
+
         return when (e) {
+            is TimeoutCancellationException -> ProbeStatus.TIMEOUT to null
             is SocketTimeoutException -> ProbeStatus.TIMEOUT to null
             is UnknownHostException -> ProbeStatus.NETWORK to null
             is IOException -> ProbeStatus.NETWORK to null
