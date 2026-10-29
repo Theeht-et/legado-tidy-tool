@@ -7,6 +7,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# 同一 PR / 分支有新提交时，取消旧运行，只保留最新提交的构建。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 # contents: write 只为了让失败现场能推到 ci-artifacts 分支（见最后一步），
 # 正常构建不需要写权限。
 permissions:
