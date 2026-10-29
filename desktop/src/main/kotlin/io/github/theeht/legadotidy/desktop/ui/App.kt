@@ -672,7 +672,6 @@ fun TidyApp() {
                                 state.preview = null
                                 state.previewOrder = emptyList()
                             },
-                            onGeneratePreview = ::generateOrganizePreview,
                             onRuleChange = { rule, checked ->
                                 val next = if (checked) state.selectedRules + rule else state.selectedRules - rule
                                 state.selectedRules = when (rule) {
@@ -939,7 +938,6 @@ private fun KpiRow(state: WorkflowState) {
 private fun OrganizeRulePanel(
     state: WorkflowState,
     onRuleChange: (OrganizeRule, Boolean) -> Unit,
-    onGeneratePreview: () -> Unit,
     markDisabledForDeletion: Boolean,
     onMarkDisabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -1007,15 +1005,6 @@ private fun OrganizeRulePanel(
                 )
             }
             Text("「保留原有分组」与「按书源类型重新分组」互斥；响应时间排序使用本轮校验耗时。", fontSize = 10.sp, color = Muted)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("默认建议：清理名称装饰与广告词，规范标点，保留现有分组。", Modifier.weight(1f).padding(end = 8.dp), fontSize = 9.sp, color = Muted)
-                Button(
-                    onClick = onGeneratePreview,
-                    enabled = state.sources.isNotEmpty() && !state.busy,
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 7.dp),
-                ) { Text("按所选规则生成预览", fontSize = 10.sp) }
-            }
         }
     }
 }
@@ -1058,7 +1047,6 @@ private fun SourceListPanel(
     onEdit: (Int) -> Unit,
     onCompare: (Int) -> Unit,
     onRuleChange: (OrganizeRule, Boolean) -> Unit,
-    onGeneratePreview: () -> Unit,
     markDisabledForDeletion: Boolean,
     onMarkDisabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -1133,7 +1121,6 @@ private fun SourceListPanel(
                 OrganizeRulePanel(
                     state = state,
                     onRuleChange = onRuleChange,
-                    onGeneratePreview = onGeneratePreview,
                     markDisabledForDeletion = markDisabledForDeletion,
                     onMarkDisabledChange = onMarkDisabledChange,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
