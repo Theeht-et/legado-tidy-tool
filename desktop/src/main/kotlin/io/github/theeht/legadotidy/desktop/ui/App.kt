@@ -150,6 +150,7 @@ private class WorkflowState {
     var inputFile by mutableStateOf<File?>(null)
     var inputCount by mutableStateOf(0)
     var selectedId by mutableStateOf<Int?>(null)
+    var filterQuery by mutableStateOf("")
     var error by mutableStateOf<String?>(null)
     var notice by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
@@ -208,6 +209,7 @@ fun TidyApp() {
             state.inputFile = selectedFile
             state.inputCount = docs.size
             state.selectedId = state.sources.firstOrNull()?.id
+            state.filterQuery = ""
             state.stage = WorkflowStage.IMPORT
             state.duplicateGroups = emptyList()
             state.duplicateReport = null
@@ -301,7 +303,7 @@ fun TidyApp() {
                                 ProbeResult(index, ProbeStatus.SKIPPED, detail = "按设置跳过校验")
                             } else {
                                 try {
-                                    gate.withPermit { LegadoProbeEngine().probe(index, source.doc, options) }
+                                    gate.withPermit { probeEngine.probe(index, source.doc, options) }
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (e: Throwable) {
@@ -353,7 +355,6 @@ fun TidyApp() {
         state.sources.indices.forEach { index ->
             state.sources[index] = state.sources[index].copy(duplicateGroup = null, probe = null)
         }
-        state.duplicateGroups = state.duplicateGroups
         runValidation()
     }
 
@@ -448,7 +449,7 @@ fun TidyApp() {
         state.applyGroups = OrganizeRule.KEEP_ORIGINAL_GROUPS in rules ||
             OrganizeRule.REGROUP_BY_TYPE in rules ||
             preview.values.any { it.groupEdited }
-        state.applyOrder = state.applyGroups || OrganizeRule.SORT_BY_RESPONSE_TIME in rules
+        state.applyOrder = OrganizeRule.SORT_BY_RESPONSE_TIME in rules
         val byId = state.sources.associateBy { it.id }
         val ordered = state.previewOrder.mapNotNull { byId[it] }
         if (ordered.isEmpty()) {
@@ -778,8 +779,8 @@ private fun SourceListPanel(
 ) {
     Card(modifier, colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
         Column(Modifier.fillMaxSize().padding(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) {
                     Text("书源列表", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     Text(
                         when (state.stage) {
@@ -793,8 +794,15 @@ private fun SourceListPanel(
                         color = Muted,
                     )
                 }
-                Spacer(Modifier.weight(1f))
-                Text("${state.sources.size} 个", fontSize = 11.sp, color = Muted)
+                OutlinedTextField(
+                    value = state.filterQuery,
+                    onValueChange = { state.filterQuery = it },
+                    modifier = Modifier.width(230.dp),
+                    placeholder = { Text("搜索源名、URL、分组", fontSize = 11.sp) },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodySmall,
+                )
+                Text("${visibleSourceCount(state)} / ${state.sources.size}", fontSize = 11.sp, color = Muted)
             }
             Spacer(Modifier.height(8.dp))
             HorizontalDivider(color = Line)
@@ -1294,10 +1302,23 @@ private fun EditSourceDialog(
 private fun buildSourceRows(state: WorkflowState): List<SourceListRow> {
     val rows = ArrayList<SourceListRow>(state.sources.size + state.duplicateGroups.size)
     val sourceById = state.sources.associateBy { it.id }
+    val query = state.filterQuery.trim().lowercase()
+    fun matches(source: WorkflowSource): Boolean {
+        if (query.isEmpty()) return true
+        return listOf(
+            source.doc.name,
+            source.doc.url,
+            source.doc.group,
+            source.doc.type.toString(),
+            source.probe?.status?.label.orEmpty(),
+            source.suggestion,
+            source.probe?.detail.orEmpty(),
+        ).any { it.lowercase().contains(query) }
+    }
     if (state.stage == WorkflowStage.DEDUP_REVIEW) {
         val grouped = HashSet<Int>()
         state.duplicateGroups.forEach { group ->
-            val members = group.sourceIds.mapNotNull { sourceById[it] }
+            val members = group.sourceIds.mapNotNull { sourceById[it] }.filter(::matches)
             if (members.isNotEmpty()) {
                 rows += SourceListRow.GroupHeader(group)
                 members.forEach { member ->
@@ -1306,16 +1327,32 @@ private fun buildSourceRows(state: WorkflowState): List<SourceListRow> {
                 }
             }
         }
-        state.sources.filterNot { it.id in grouped }.forEach { rows += SourceListRow.SourceEntry(it) }
+        state.sources.filterNot { it.id in grouped }.filter(::matches).forEach { rows += SourceListRow.SourceEntry(it) }
     } else {
         val order = if (
             state.stage == WorkflowStage.ORGANIZE_REVIEW &&
             state.preview != null &&
             state.previewOrder.isNotEmpty()
         ) state.previewOrder.mapNotNull { sourceById[it] } else state.sources.toList()
-        order.forEach { rows += SourceListRow.SourceEntry(it) }
+        order.filter(::matches).forEach { rows += SourceListRow.SourceEntry(it) }
     }
     return rows
+}
+
+private fun visibleSourceCount(state: WorkflowState): Int {
+    val query = state.filterQuery.trim().lowercase()
+    if (query.isEmpty()) return state.sources.size
+    return state.sources.count { source ->
+        listOf(
+            source.doc.name,
+            source.doc.url,
+            source.doc.group,
+            source.doc.type.toString(),
+            source.probe?.status?.label.orEmpty(),
+            source.suggestion,
+            source.probe?.detail.orEmpty(),
+        ).any { it.lowercase().contains(query) }
+    }
 }
 
 private fun commitMarkedDeletions(state: WorkflowState): Boolean {
