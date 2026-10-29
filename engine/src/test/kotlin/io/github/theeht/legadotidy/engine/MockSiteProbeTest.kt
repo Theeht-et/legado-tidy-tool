@@ -176,6 +176,6 @@ class MockSiteProbeTest {
 
         val result = LegadoProbeEngine().probe(0, doc, options())
 
-        assertEquals(ProbeStatus.NEED_BROWSER, result.status)
+        assertEquals(ProbeStatus.UNSUPPORTED, result.status, "详情：${result.detail}")
     }
 }
