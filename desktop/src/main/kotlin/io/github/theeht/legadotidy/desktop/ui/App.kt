@@ -657,7 +657,8 @@ fun TidyApp() {
                         updateSource(state, id) { old ->
                             val edited = editedDocument(old.doc, name, url, group, type, enabled)
                             when {
-                                state.stage == WorkflowStage.PROBE_REVIEW && changedUrl -> old.copy(
+                                (state.stage == WorkflowStage.PROBE_REVIEW ||
+                                    state.stage == WorkflowStage.ORGANIZE_REVIEW) && changedUrl -> old.copy(
                                     doc = edited,
                                     probe = null,
                                     deleteMarked = false,
@@ -681,10 +682,18 @@ fun TidyApp() {
                                 )
                             }
                             state.notice = "源信息已修改，旧去重建议已重置。请重新开始去重。"
-                        } else if (state.stage == WorkflowStage.PROBE_REVIEW && changedUrl) {
+                        } else if (
+                            (state.stage == WorkflowStage.PROBE_REVIEW ||
+                                state.stage == WorkflowStage.ORGANIZE_REVIEW) && changedUrl
+                        ) {
                             state.completed = state.sources.count { it.probe != null }
                             state.total = state.sources.size
-                            state.notice = "URL 已修改，该书源需要重新校验。"
+                            if (state.stage == WorkflowStage.ORGANIZE_REVIEW) {
+                                state.stage = WorkflowStage.PROBE_REVIEW
+                                state.preview = null
+                                state.previewOrder = emptyList()
+                            }
+                            state.notice = "URL 已修改，该书源需要重新校验；已返回校验审核阶段。"
                         }
                     }
                     editingId = null
