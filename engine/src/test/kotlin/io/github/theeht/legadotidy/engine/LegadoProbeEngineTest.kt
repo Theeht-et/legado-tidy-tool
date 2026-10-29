@@ -85,7 +85,7 @@ class LegadoProbeEngineTest {
           "bookSourceName": "webView-header",
           "searchUrl": "https://example.com/search",
           "ruleSearch": {"bookList": "div.book"},
-          "header": "{\\"webView\\": true}"
+          "header": "{\"webView\": true}"
         }
         """,
         "webview",
