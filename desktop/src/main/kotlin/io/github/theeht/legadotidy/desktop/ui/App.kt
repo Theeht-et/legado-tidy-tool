@@ -1283,7 +1283,7 @@ private fun DetailPanel(
                     Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
-                    Text("SOURCE #\${(source.id + 1).toString().padStart(3, '0')} · \${state.stage.label}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Primary)
+                    Text("SOURCE #${(source.id + 1).toString().padStart(3, '0')} · ${state.stage.label}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Primary)
                     Text(preview?.name ?: source.doc.name.ifBlank { "（未命名）" }, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     Text(source.doc.url, fontSize = 10.sp, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
@@ -1299,7 +1299,7 @@ private fun DetailPanel(
                     DetailField("搜索规则", if (source.doc.canSearch) "已配置 / 待引擎确认" else "未发现常规搜索规则")
                     DetailField("规则字段", source.doc.ruleCompleteness.toString())
                     DetailField("校验状态", source.probe?.status?.label ?: "尚未校验")
-                    DetailField("响应耗时", source.probe?.let { "\${it.elapsedMs} ms" } ?: "—")
+                    DetailField("响应耗时", source.probe?.let { "${it.elapsedMs} ms" } ?: "—")
                     source.probe?.httpCode?.let { DetailField("HTTP 状态码", it.toString()) }
                     if (!source.probe?.detail.isNullOrBlank()) {
                         HorizontalDivider(color = Line)
@@ -1647,9 +1647,9 @@ private fun CompareGroupDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("对比重复组 \${group.number}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
+                        Text("对比重复组 ${group.number}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
                         Text(
-                            "\${group.kind.label} · 相似度 \${(group.similarity * 100).toInt()}% · \${candidates.size} 个候选",
+                            "${group.kind.label} · 相似度 ${(group.similarity * 100).toInt()}% · ${candidates.size} 个候选",
                             fontSize = 11.sp,
                             color = Muted,
                         )
@@ -1723,8 +1723,8 @@ private fun CompareGroupDialog(
                                     }
                                     HorizontalDivider(color = Line)
                                     DetailField("URL", source.doc.url)
-                                    DetailField("类型 / 分组", "\${source.doc.type} / \${source.doc.group.ifBlank { "未分组" }}")
-                                    DetailField("启用 / 规则字段", "\${if (source.doc.enabled) "启用" else "禁用"} / \${source.doc.ruleCompleteness}")
+                                    DetailField("类型 / 分组", "${source.doc.type} / ${source.doc.group.ifBlank { "未分组" }}")
+                                    DetailField("启用 / 规则字段", "${if (source.doc.enabled) "启用" else "禁用"} / ${source.doc.ruleCompleteness}")
                                     Text("关键规则", fontSize = 10.sp, color = Muted, fontWeight = FontWeight.SemiBold)
                                     compareFields.forEach { (key, label) ->
                                         val value = rawString(source, key)
@@ -1743,7 +1743,7 @@ private fun CompareGroupDialog(
                                     }
                                     HorizontalDivider(color = Line)
                                     Text(
-                                        "系统建议：\${if (recommended) "保留" else "删除"}",
+                                        "系统建议：${if (recommended) "保留" else "删除"}",
                                         fontSize = 10.sp,
                                         color = if (recommended) Ok else Muted,
                                         fontWeight = FontWeight.SemiBold,
