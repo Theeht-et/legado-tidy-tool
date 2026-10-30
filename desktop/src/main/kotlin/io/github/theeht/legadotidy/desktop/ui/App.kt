@@ -686,11 +686,7 @@ fun TidyApp() {
                         bottom = layout.bottomPadding,
                     ),
                 ) {
-                TopBar(
-                    state,
-                    onImport = ::importFile,
-                    modifier = Modifier.widthIn(max = 1600.dp).align(Alignment.CenterHorizontally),
-                )
+                TopBar(state, onImport = ::importFile)
                 Column(
                     Modifier.weight(1f).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -731,8 +727,7 @@ fun TidyApp() {
                                     state.notice = "整理规则已变化，请重新生成预览。"
                                 }
                             },
-                            modifier = Modifier.weight(1f).widthIn(max = 1600.dp)
-                                .fillMaxWidth().align(Alignment.CenterHorizontally),
+                            modifier = Modifier.weight(1f).fillMaxSize(),
                         )
                 }
                 BottomActions(
@@ -894,13 +889,9 @@ fun TidyApp() {
 }
 
 @Composable
-private fun TopBar(
-    state: WorkflowState,
-    onImport: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
     Row(
-        modifier.fillMaxWidth().padding(bottom = 8.dp),
+        Modifier.fillMaxWidth().padding(bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -910,7 +901,7 @@ private fun TopBar(
             horizontalArrangement = Arrangement.spacedBy(11.dp),
         ) {
             Box(
-                Modifier.size(34.dp).clip(RoundedCornerShape(10.dp))
+                Modifier.size(32.dp).clip(RoundedCornerShape(10.dp))
                     .background(Brush.linearGradient(listOf(Color(0xFF4779F4), Color(0xFF2D56C8)))),
                 contentAlignment = Alignment.Center,
             ) {
@@ -922,9 +913,8 @@ private fun TopBar(
             }
         }
         Row(
-            Modifier.widthIn(max = 440.dp).weight(1f, fill = false)
-                .border(1.dp, Line, RoundedCornerShape(10.dp))
-                .background(Color.White, RoundedCornerShape(8.dp)).padding(horizontal = 9.dp, vertical = 6.dp),
+            Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(10.dp))
+                .background(Color.White, RoundedCornerShape(8.dp)).padding(horizontal = 9.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -942,7 +932,6 @@ private fun TopBar(
                 )
             }
         }
-        Spacer(Modifier.weight(1f))
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -951,12 +940,12 @@ private fun TopBar(
             OutlinedButton(
                 onClick = onImport,
                 enabled = !state.busy,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 5.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 3.dp),
             ) { Text("导入 JSON", fontSize = 12.sp) }
             OutlinedButton(
                 onClick = { state.showSettings = true },
                 enabled = !state.busy,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 5.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 3.dp),
             ) { Text("⚙ 校验设置", fontSize = 12.sp) }
         }
     }
@@ -1049,8 +1038,8 @@ private fun OrganizeRulePanel(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("整理规则", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink)
@@ -1191,7 +1180,7 @@ private fun SourceListPanel(
     Card(modifier.border(1.dp, Line, RoundedCornerShape(14.dp)), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 11.dp, vertical = 7.dp),
+                Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 11.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -1203,7 +1192,7 @@ private fun SourceListPanel(
                     onValueChange = { state.filterQuery = it },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodySmall.copy(color = BodyText, fontSize = 11.sp),
-                    modifier = Modifier.width(190.dp).height(34.dp)
+                    modifier = Modifier.width(214.dp).height(30.dp)
                         .clip(RoundedCornerShape(8.dp)).border(1.dp, Line, RoundedCornerShape(8.dp))
                         .background(Color.White),
                     decorationBox = { innerTextField ->
@@ -1228,12 +1217,12 @@ private fun SourceListPanel(
                 OutlinedButton(
                     onClick = { state.filterQuery = "" },
                     enabled = state.filterQuery.isNotEmpty(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 11.dp, vertical = 7.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 11.dp, vertical = 4.dp),
                 ) { Text("清除", fontSize = 12.sp) }
             }
             HorizontalDivider(color = Line)
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(1.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1245,7 +1234,7 @@ private fun SourceListPanel(
                             .background(if (selected) SoftBlue else Color.Transparent)
                             .border(1.dp, if (selected) Color(0xFFD8E4FF) else Color.Transparent, RoundedCornerShape(7.dp))
                             .clickable { state.sourceFilter = label }
-                            .padding(horizontal = 7.dp, vertical = 5.dp),
+                            .padding(horizontal = 7.dp, vertical = 3.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text("$label $count", fontSize = 10.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) Primary else Muted, maxLines = 1)
@@ -1271,10 +1260,10 @@ private fun SourceListPanel(
                     onRuleChange = onRuleChange,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp),
                 )
-                Spacer(Modifier.height(7.dp))
+                Spacer(Modifier.height(4.dp))
             }
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                val tableWidth = maxOf(maxWidth, 960.dp)
+                val tableWidth = maxOf(maxWidth, 1040.dp)
                 Row(Modifier.fillMaxHeight().horizontalScroll(rememberScrollState())) {
                 Column(Modifier.width(tableWidth).fillMaxHeight()) {
             TableHeader()
@@ -1358,7 +1347,7 @@ private fun SourceListPanel(
 @Composable
 private fun TableHeader() {
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFFFBFCFE)).padding(horizontal = 9.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().background(Color(0xFFFBFCFE)).padding(horizontal = 9.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("源名", Modifier.weight(1.55f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
@@ -1417,7 +1406,7 @@ private fun SourceRowItem(
     }
     Row(
         Modifier.fillMaxWidth().background(if (selected) Color(0xFFF0F5FF) else Color.White)
-            .clickable { state.selectedId = source.id }.padding(horizontal = 9.dp, vertical = 6.dp),
+            .clickable { state.selectedId = source.id }.padding(horizontal = 9.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
