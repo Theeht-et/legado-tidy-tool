@@ -121,12 +121,9 @@ jobs:
       - name: 组装便携目录
         run: gradle :desktop:portable --console=plain
 
-      - name: 打包
-        shell: pwsh
-        run: Compress-Archive -Path desktop/build/portable/legado-tidy/* -DestinationPath legado-tidy-windows-x64.zip
-
+      # 直接上传便携目录；GitHub Artifact 本身会生成下载 ZIP，避免再嵌套一层 ZIP。
       - uses: actions/upload-artifact@v4
         with:
           name: legado-tidy-windows-x64
-          path: legado-tidy-windows-x64.zip
+          path: desktop/build/portable/legado-tidy/
           retention-days: 7
