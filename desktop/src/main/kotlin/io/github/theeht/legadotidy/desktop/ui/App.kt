@@ -130,8 +130,6 @@ private val SoftAmber = Color(0xFFFFF3DC)
 private val SoftRed = Color(0xFFFFEEEE)
 private val SoftNeutral = Color(0xFFF5F7FA)
 private val SoftSlate = Color(0xFFEDF1F6)
-private val FooterPrimary = Primary
-
 private object UiTypography {
     val caption = 12.sp
     val label = 13.sp
@@ -1057,7 +1055,7 @@ private fun KpiRow(state: WorkflowState) {
             Card(
                 Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(8.dp)),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(label, color = BodyText, fontSize = UiTypography.label, fontWeight = FontWeight.SemiBold)
@@ -1221,7 +1219,7 @@ private fun SourceListPanel(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
-    Card(modifier.border(1.dp, Line, RoundedCornerShape(12.dp)), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+    Card(modifier.border(1.dp, Line, RoundedCornerShape(12.dp)), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 11.dp, vertical = 4.dp),
@@ -1738,8 +1736,9 @@ private fun DetailPanel(
     val source = state.sources.firstOrNull { it.id == sourceId }
     Card(
         modifier.border(1.dp, Line, RoundedCornerShape(12.dp)),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         if (source == null) {
             Box(Modifier.fillMaxSize().padding(18.dp), contentAlignment = Alignment.Center) {
@@ -1854,7 +1853,7 @@ private fun DetailPanel(
                     Spacer(Modifier.width(8.dp))
                     Button(
                         onClick = onDismiss,
-                        colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
                     ) { Text("完成") }
                 }
             }
@@ -2050,7 +2049,7 @@ private fun BottomActions(
                         onClick = onStartDedup,
                         enabled = state.sources.isNotEmpty() && !state.busy,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
                     ) { Text("开始去重", fontSize = UiTypography.label) }
                 }
                 WorkflowStage.DEDUP_REVIEW -> {
@@ -2058,7 +2057,7 @@ private fun BottomActions(
                         onClick = onConfirmDedup,
                         enabled = state.sources.isNotEmpty() && !state.busy,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
                     ) { Text("确认去重并进入校验", fontSize = UiTypography.label) }
                 }
                 WorkflowStage.PROBE_REVIEW -> {
@@ -2075,14 +2074,14 @@ private fun BottomActions(
                         Button(
                             onClick = onContinueValidation,
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                            colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
                         ) { Text("继续校验", fontSize = UiTypography.label) }
                     } else {
                         Button(
                             onClick = onConfirmValidation,
                             enabled = state.sources.isNotEmpty(),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                            colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
                         ) { Text("确认校验并进入整理", fontSize = UiTypography.label) }
                     }
                 }
@@ -2096,7 +2095,7 @@ private fun BottomActions(
                             onClick = onGeneratePreview,
                             enabled = state.sources.isNotEmpty() && !state.busy,
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                            colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
                         ) { Text("生成预览", fontSize = UiTypography.label) }
                     } else {
                         OutlinedButton(
@@ -2108,7 +2107,7 @@ private fun BottomActions(
                             onClick = onConfirmOrganize,
                             enabled = !state.busy,
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                            colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
                         ) { Text("确认整理并导出", fontSize = UiTypography.label) }
                     }
                 }
@@ -2133,7 +2132,7 @@ private fun BottomActions(
                         onClick = onExport,
                         enabled = state.sources.isNotEmpty() && !state.busy,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
                     ) { Text(if (state.exported == null) "导出 JSON" else "再次导出", fontSize = UiTypography.label) }
                 }
             }
@@ -2362,7 +2361,7 @@ private fun CompareGroupDialog(
                                         else -> SoftAmber
                                     },
                                 ),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                             ) {
                                 Column(
                                     Modifier.fillMaxWidth().padding(bottom = 10.dp),
