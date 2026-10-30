@@ -1930,6 +1930,7 @@ private fun CompareGroupDialog(
                     ) {
                         candidates.forEach { source ->
                             val recommended = source.id == group.suggestedKeepId
+                            val proposedKeep = keepAll || source.id == keepId
                             val isPreferred = source.id == keepId && !keepAll
                             Card(
                                 Modifier.width(300.dp).border(
@@ -1941,8 +1942,8 @@ private fun CompareGroupDialog(
                                 colors = CardDefaults.cardColors(
                                     containerColor = when {
                                         isPreferred -> Color(0xFFFBFFFD)
-                                        source.deleteMarked -> SoftAmber
-                                        else -> Color.White
+                                        proposedKeep -> SoftGreen
+                                        else -> SoftAmber
                                     },
                                 ),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
@@ -1953,7 +1954,7 @@ private fun CompareGroupDialog(
                                 ) {
                                     Row(
                                         Modifier.fillMaxWidth()
-                                            .background(if (isPreferred) SoftGreen else if (source.deleteMarked) SoftAmber else SoftNeutral)
+                                            .background(if (proposedKeep) SoftGreen else SoftAmber)
                                             .padding(end = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
@@ -1973,17 +1974,14 @@ private fun CompareGroupDialog(
                                             )
                                             Text(
                                                 when {
-                                                    source.deleteMarked -> "待删除"
+                                                    !proposedKeep -> "将标记删除"
+                                                    keepAll -> "本组全部保留"
                                                     recommended -> "系统推荐保留"
-                                                    else -> "候选书源"
+                                                    else -> "当前选择保留"
                                                 },
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = when {
-                                                    source.deleteMarked -> Bad
-                                                    recommended -> Ok
-                                                    else -> Muted
-                                                },
+                                                color = if (proposedKeep) Ok else Bad,
                                             )
                                         }
                                     }
