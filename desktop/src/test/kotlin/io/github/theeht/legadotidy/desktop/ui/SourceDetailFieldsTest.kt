@@ -76,6 +76,22 @@ class SourceDetailFieldsTest {
     }
 
     @Test
+    fun `详情标签覆盖全部已定义字段区块且每个区块只属于一个标签`() {
+        val raw = JsonParser.parseString("""{"futureTopLevelField":"kept"}""").asJsonObject
+        val sections = sourceDetailSections(BookSourceDoc(raw))
+        val sectionTitles = sections.map { it.title }
+        val mappedTitles = SourceDetailTab.values().flatMap { it.sectionTitles }
+
+        assertEquals(sectionTitles.toSet(), mappedTitles.toSet())
+        assertEquals(mappedTitles.size, mappedTitles.toSet().size)
+        assertEquals(
+            listOf("搜索配置", "搜索规则"),
+            sourceDetailSectionsForTab(sections, SourceDetailTab.SEARCH).map { it.title },
+        )
+        assertTrue(sourceDetailSectionsForTab(sections, SourceDetailTab.OVERVIEW).isEmpty())
+    }
+
+    @Test
     fun `兼容以 JSON 字符串保存的上游规则组`() {
         val raw = JsonParser.parseString(
             """{"ruleSearch":"{\"bookList\":\".book\",\"customField\":\"x\"}"}"""
