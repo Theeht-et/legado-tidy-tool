@@ -65,6 +65,14 @@ class TidyTextTest {
     }
 
     @Test
+    fun `广告清理能够剥离超过四层的连续宣传后缀`() {
+        assertEquals(
+            "星河书源",
+            TidyText.removeAdvertisingWords("星河书源 - 推荐 - 精品 - 广告 - 福利 - 免费"),
+        )
+    }
+
+    @Test
     fun `装饰清理不截断长名称且不会回退已清空的图标名`() {
         val longName = "星河小说书源".repeat(12)
         assertEquals(longName, TidyText.cleanDecorations("📚 $longName ✨"))
