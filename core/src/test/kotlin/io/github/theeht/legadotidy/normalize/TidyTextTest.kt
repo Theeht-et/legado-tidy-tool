@@ -56,14 +56,19 @@ class TidyTextTest {
         assertEquals("站点", TidyText.removeAdvertisingWords("站点 - 福利"))
         assertEquals("书源", TidyText.removeAdvertisingWords("推荐书源"))
         assertEquals("小说", TidyText.removeAdvertisingWords("小说推荐"))
-        assertEquals("星河书源 ", TidyText.removeAdvertisingWords("星河书源 VIP"))
-        assertEquals("星河书源 ", TidyText.removeAdvertisingWords("星河书源 AD"))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源 VIP"))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源 AD"))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源（广告推广·官方推荐）"))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源 [VIP会员专享]"))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("VIP 星河书源 官方推荐"))
+        assertEquals("", TidyText.removeAdvertisingWords("【VIP广告】"))
     }
 
     @Test
-    fun `装饰清理不截断长名称`() {
+    fun `装饰清理不截断长名称且不会回退已清空的图标名`() {
         val longName = "星河小说书源".repeat(12)
         assertEquals(longName, TidyText.cleanDecorations("📚 $longName ✨"))
+        assertEquals("", TidyText.cleanDecorations("📚 ★ ✨"))
     }
 
     @Test
