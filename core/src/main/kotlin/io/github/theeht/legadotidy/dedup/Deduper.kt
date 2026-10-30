@@ -43,7 +43,7 @@ data class DedupReport(
 /**
  * 三层去重。
  *
- * 1. 精确：`(规范化 URL, 规范化名称)` 相同；
+ * 1. 精确：规范化 URL 相同（与 HTML 原型一致，忽略协议、www、大小写、查询参数、片段和尾斜杠）；
  * 2. 指纹：行为字段哈希相同（同站马甲）；
  * 3. 相似：行为文本 3-gram Jaccard 达到阈值（用倒排索引出候选，避免 O(n²) 全量比较）。
  *
@@ -61,8 +61,8 @@ object Deduper {
         // 1) 精确
         val exactBuckets = HashMap<String, MutableList<Int>>(n * 2)
         sources.forEachIndexed { i, s ->
-            val k = TidyText.key(s.name) + "\u0000" + TidyText.url(s.url)
-            exactBuckets.getOrPut(k) { ArrayList(2) }.add(i)
+            val k = canonicalSourceUrl(s.url)
+            if (k.isNotEmpty()) exactBuckets.getOrPut(k) { ArrayList(2) }.add(i)
         }
         for (bucket in exactBuckets.values) {
             if (bucket.size < 2) continue
@@ -139,6 +139,18 @@ object Deduper {
         groups.sortWith(compareBy<DedupGroup> { it.kind }.thenByDescending { it.size })
         return DedupReport(groups, sources.size)
     }
+
+    /**
+     * Match the prototype's URL identity: protocol/www/query/fragment/path case
+     * do not create a different source identity. The original URL is never modified.
+     */
+    private fun canonicalSourceUrl(raw: String): String = raw.trim()
+        .lowercase()
+        .replace(Regex("^https?://"), "")
+        .removePrefix("www.")
+        .substringBefore('?')
+        .substringBefore('#')
+        .trimEnd('/')
 
     /**
      * 组内选保留：规则完整度高者优先，其次名称干净、URL 合法（https）、有搜索地址。
