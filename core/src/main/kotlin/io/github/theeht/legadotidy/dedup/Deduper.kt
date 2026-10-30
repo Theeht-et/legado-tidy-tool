@@ -9,6 +9,16 @@ enum class DedupKind(val label: String) {
     SIMILAR("规则高度相似"),
 }
 
+/**
+ * 保留流水线旧配置入口的兼容类型。
+ * URL-only 去重与 HTML 原型一致，不再使用相似度阈值或 shingle 候选参数。
+ */
+data class DedupConfig(
+    @Deprecated("去重现在只按规范化 URL 分组") val similarityThreshold: Double = 0.92,
+    @Deprecated("去重现在只按规范化 URL 分组") val minSharedShingles: Int = 3,
+    @Deprecated("去重现在只按规范化 URL 分组") val maxShingleDocFreq: Int = 60,
+)
+
 data class DedupGroup(
     val kind: DedupKind,
     /** 组内成员在输入列表里的下标。 */
@@ -42,7 +52,8 @@ object Deduper {
 
     private val URL_SCHEME = Regex("^https?://", RegexOption.IGNORE_CASE)
 
-    fun run(sources: List<BookSourceDoc>): DedupReport {
+    @Suppress("UNUSED_PARAMETER")
+    fun run(sources: List<BookSourceDoc>, config: DedupConfig = DedupConfig()): DedupReport {
         if (sources.size <= 1) return DedupReport(emptyList(), sources.size)
 
         val buckets = LinkedHashMap<String, MutableList<Int>>()
