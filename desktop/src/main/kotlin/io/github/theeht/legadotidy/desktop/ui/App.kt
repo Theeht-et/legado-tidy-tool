@@ -263,7 +263,6 @@ private class WorkflowState {
     var directUrl by mutableStateOf("")
 
     var selectedRules by mutableStateOf<Set<OrganizeRule>>(emptySet())
-    var markDisabledForDeletion by mutableStateOf(false)
     var applyCleanNames by mutableStateOf(false)
     var applyGroups by mutableStateOf(false)
     var applyOrder by mutableStateOf(false)
@@ -398,25 +397,27 @@ fun TidyApp() {
                     pending.map { source ->
                         async(Dispatchers.IO) {
                             val index = snapshot.indexOfFirst { it.id == source.id }
-                            val result = if (skipProbe) {
-                                ProbeResult(index, ProbeStatus.SKIPPED, detail = "按设置跳过校验")
-                            } else {
-                                try {
-                                    gate.withPermit { probeEngine.probe(index, source.doc, options) }
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Throwable) {
-                                    ProbeResult(index, ProbeStatus.ERROR, detail = e.message ?: e::class.java.simpleName)
+                            val result = when {
+                                !source.doc.canSearch -> ProbeResult(
+                                    index,
+                                    ProbeStatus.NO_SEARCH_URL,
+                                    detail = "未配置可执行的搜索规则（searchUrl + ruleSearch.bookList 或 mainJs）",
+                                )
+                                skipProbe -> ProbeResult(index, ProbeStatus.SKIPPED, detail = "按设置跳过校验")
+                                else -> {
+                                    try {
+                                        gate.withPermit { probeEngine.probe(index, source.doc, options) }
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (e: Throwable) {
+                                        ProbeResult(index, ProbeStatus.ERROR, detail = e.message ?: e::class.java.simpleName)
+                                    }
                                 }
                             }
                             withContext(Dispatchers.Main) {
                                 val currentIndex = state.sources.indexOfFirst { it.id == source.id }
                                 if (currentIndex >= 0) {
-                                    val deleteByDefault = result.status in setOf(
-                                        ProbeStatus.NO_SEARCH_URL,
-                                        ProbeStatus.UNSUPPORTED,
-                                        ProbeStatus.PARSE_EMPTY,
-                                    )
+                                    val deleteByDefault = shouldMarkForDeletionByDefault(result.status)
                                     state.sources[currentIndex] = state.sources[currentIndex].copy(
                                         probe = result,
                                         deleteMarked = deleteByDefault,
@@ -489,7 +490,6 @@ fun TidyApp() {
             OrganizeRule.NORMALIZE_PUNCTUATION,
             OrganizeRule.KEEP_ORIGINAL_GROUPS,
         )
-        state.markDisabledForDeletion = false
         state.preview = null
         state.previewOrder = emptyList()
         state.error = null
@@ -538,24 +538,9 @@ fun TidyApp() {
                         )
                     }
                 }
-                if (state.markDisabledForDeletion) {
-                    state.sources.indices.forEach { sourceIndex ->
-                        val source = state.sources[sourceIndex]
-                        if (source.isDisabledForDisplay() && !source.deleteMarked && source.suggestion != "用户决定保留") {
-                            state.sources[sourceIndex] = source.copy(
-                                deleteMarked = true,
-                                suggestion = "禁用书源，建议删除",
-                            )
-                        }
-                    }
-                }
                 state.preview = previewRows
                 state.previewOrder = orderedIds
-                state.notice = if (state.markDisabledForDeletion) {
-                    "整理预览已生成；禁用书源已标记为待删除，请复核后确认。"
-                } else {
-                    "整理预览已生成。请检查新名称、分组和顺序，再确认应用。"
-                }
+                state.notice = "整理预览已生成。请检查新名称、分组和顺序，再确认应用。"
             } catch (e: CancellationException) {
                 state.error = "整理预览已取消。"
             } catch (e: Throwable) {
@@ -701,7 +686,11 @@ fun TidyApp() {
                         bottom = layout.bottomPadding,
                     ),
                 ) {
-                TopBar(state, onImport = ::importFile)
+                TopBar(
+                    state,
+                    onImport = ::importFile,
+                    modifier = Modifier.widthIn(max = 1600.dp).align(Alignment.CenterHorizontally),
+                )
                 Column(
                     Modifier.weight(1f).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -729,24 +718,6 @@ fun TidyApp() {
                             onEdit = { editingId = it },
                             onCompare = { comparingGroup = it },
                             onGeneratePreview = ::generateOrganizePreview,
-                            markDisabledForDeletion = state.markDisabledForDeletion,
-                            onMarkDisabledChange = { checked ->
-                                state.markDisabledForDeletion = checked
-                                if (!checked) {
-                                    state.sources.indices.forEach { index ->
-                                        val source = state.sources[index]
-                                        if (source.suggestion == "禁用书源，建议删除") {
-                                            state.sources[index] = source.copy(
-                                                deleteMarked = false,
-                                                suggestion = if (source.probe?.status == ProbeStatus.OK) "建议保留" else "建议复核",
-                                            )
-                                        }
-                                    }
-                                }
-                                state.notice = if (checked) "已选择在生成整理预览时标记禁用书源；可逐项撤销。" else "已取消禁用书源删除规则。"
-                                state.preview = null
-                                state.previewOrder = emptyList()
-                            },
                             onRuleChange = { rule, checked ->
                                 val next = if (checked) state.selectedRules + rule else state.selectedRules - rule
                                 state.selectedRules = when (rule) {
@@ -755,21 +726,13 @@ fun TidyApp() {
                                     else -> next
                                 }
                                 if (state.preview != null) {
-                                    state.sources.indices.forEach { index ->
-                                        val source = state.sources[index]
-                                        if (source.suggestion == "禁用书源，建议删除") {
-                                            state.sources[index] = source.copy(
-                                                deleteMarked = false,
-                                                suggestion = if (source.probe?.status == ProbeStatus.OK) "建议保留" else "建议复核",
-                                            )
-                                        }
-                                    }
                                     state.preview = null
                                     state.previewOrder = emptyList()
-                                    state.notice = "整理规则已变化，自动删除标记已撤销；请重新生成预览。"
+                                    state.notice = "整理规则已变化，请重新生成预览。"
                                 }
                             },
-                            modifier = Modifier.weight(1f).fillMaxSize(),
+                            modifier = Modifier.weight(1f).fillMaxWidth()
+                                .widthIn(max = 1600.dp).align(Alignment.CenterHorizontally),
                         )
                 }
                 BottomActions(
@@ -931,9 +894,13 @@ fun TidyApp() {
 }
 
 @Composable
-private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
+private fun TopBar(
+    state: WorkflowState,
+    onImport: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Row(
-        Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        modifier.fillMaxWidth().padding(bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -955,7 +922,8 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
             }
         }
         Row(
-            Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(10.dp))
+            Modifier.widthIn(max = 440.dp).weight(1f, fill = false)
+                .border(1.dp, Line, RoundedCornerShape(10.dp))
                 .background(Color.White, RoundedCornerShape(8.dp)).padding(horizontal = 9.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -974,6 +942,7 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
                 )
             }
         }
+        Spacer(Modifier.weight(1f))
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1072,8 +1041,6 @@ private fun KpiRow(state: WorkflowState) {
 private fun OrganizeRulePanel(
     state: WorkflowState,
     onRuleChange: (OrganizeRule, Boolean) -> Unit,
-    markDisabledForDeletion: Boolean,
-    onMarkDisabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -1134,11 +1101,6 @@ private fun OrganizeRulePanel(
                     OrganizeRule.SORT_BY_RESPONSE_TIME,
                     OrganizeRule.SORT_BY_RESPONSE_TIME in state.selectedRules,
                     onRuleChange,
-                )
-                CompactRuleChip(
-                    label = "禁用项标记删除",
-                    checked = markDisabledForDeletion,
-                    onClick = { onMarkDisabledChange(!markDisabledForDeletion) },
                 )
             }
         }
@@ -1223,8 +1185,6 @@ private fun SourceListPanel(
     onCompare: (Int) -> Unit,
     onRuleChange: (OrganizeRule, Boolean) -> Unit,
     onGeneratePreview: () -> Unit,
-    markDisabledForDeletion: Boolean,
-    onMarkDisabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -1243,7 +1203,7 @@ private fun SourceListPanel(
                     onValueChange = { state.filterQuery = it },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodySmall.copy(color = BodyText, fontSize = 11.sp),
-                    modifier = Modifier.width(214.dp).height(34.dp)
+                    modifier = Modifier.width(190.dp).height(34.dp)
                         .clip(RoundedCornerShape(8.dp)).border(1.dp, Line, RoundedCornerShape(8.dp))
                         .background(Color.White),
                     decorationBox = { innerTextField ->
@@ -1309,14 +1269,12 @@ private fun SourceListPanel(
                 OrganizeRulePanel(
                     state = state,
                     onRuleChange = onRuleChange,
-                    markDisabledForDeletion = markDisabledForDeletion,
-                    onMarkDisabledChange = onMarkDisabledChange,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp),
                 )
                 Spacer(Modifier.height(7.dp))
             }
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                val tableWidth = maxOf(maxWidth, 1040.dp)
+                val tableWidth = maxOf(maxWidth, 960.dp)
                 Row(Modifier.fillMaxHeight().horizontalScroll(rememberScrollState())) {
                 Column(Modifier.width(tableWidth).fillMaxHeight()) {
             TableHeader()
