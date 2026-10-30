@@ -75,17 +75,26 @@ object TidyText {
         s = DECORATIVE_SYMBOLS.replace(s, "")
         s = DECORATION_PREFIX.replace(s, "")
         s = DECORATION_SUFFIX.replace(s, "")
-        return s.trim().ifEmpty { raw.trim() }
+        s = REPEATED_WS.replace(s, " ")
+        return s.trim()
     }
 
     /** 按 v3 HTML 原型清理宣传词；不匹配普通主体文字中的相同子串。 */
     fun removeAdvertisingWords(raw: String): String {
-        var s = AD_BRACKETED.replace(raw, "")
-        s = AD_STANDALONE.replace(s, "")
-        s = AD_PREFIX.replace(s, "")
-        s = AD_SUFFIX.replace(s, "")
-        // HTML 原型只移除匹配到的宣传词；空格与首尾装饰由各自规则处理。
-        return s.ifEmpty { raw.trim() }
+        var s = ZERO_WIDTH.replace(raw, "")
+        // A bracketed advertising annotation is removed as one unit, including both brackets.
+        repeat(4) {
+            val previous = s
+            s = AD_BRACKETED.replace(s, " ")
+            s = AD_STANDALONE.replace(s, " ")
+            s = AD_PREFIX.replace(s, "")
+            s = AD_SUFFIX.replace(s, "")
+            if (s == previous) return@repeat
+        }
+        s = EMPTY_BRACKETS.replace(s, " ")
+        s = WHITESPACE.replace(s, " ")
+        s = EDGE_NAME_PUNCTUATION.replace(s, "")
+        return s.trim(' ', '-', '_', '|', '｜', '·', '・', '—', '–', ':', '：')
     }
 
     /** 按 v3 HTML 原型规范重复标点与空格，不改 URL 或书源规则。 */
