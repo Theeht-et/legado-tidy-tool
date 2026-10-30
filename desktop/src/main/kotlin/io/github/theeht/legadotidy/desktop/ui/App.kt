@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -102,7 +104,7 @@ private val Warn = Color(0xFF9A6417)
 private val Bad = Color(0xFFC43C48)
 private val Muted = Color(0xFF748096)
 private val Line = Color(0xFFD9E0E9)
-private val Canvas = Color(0xFFF1F3F6)
+private val Canvas = Color(0xFFF5F7FA)
 private val SoftBlue = Color(0xFFEAF0FB)
 
 private val Ink = Color(0xFF24344D)
@@ -111,7 +113,10 @@ private val SoftGreen = Color(0xFFE8F7F0)
 private val SoftAmber = Color(0xFFFFF5DF)
 private val SoftRed = Color(0xFFFFF0F0)
 private val SoftNeutral = Color(0xFFF7F9FC)
-private val SoftSlate = Color(0xFFE8EDF4)
+private val SoftSlate = Color(0xFFF0F2F6)
+private val FooterSurface = Color(0xFF17233A)
+private val FooterButton = Color(0xFF263652)
+private val FooterPrimary = Color(0xFF5C86F5)
 
 private val LightColors = lightColorScheme(
     primary = Primary,
@@ -635,8 +640,8 @@ fun TidyApp() {
                 TopBar(state, onImport = ::importFile)
                 HorizontalDivider(color = Line)
                 Column(
-                    Modifier.weight(1f).fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    Modifier.weight(1f).fillMaxWidth().padding(horizontal = 26.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Stepper(state.stage)
                     KpiRow(state)
@@ -659,7 +664,7 @@ fun TidyApp() {
                     }
                     Row(
                         Modifier.weight(1f).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         SourceListPanel(
                             state = state,
@@ -911,12 +916,12 @@ private fun Stepper(stage: WorkflowStage) {
             val badgeColor = when { current -> Primary; complete -> SoftGreen; else -> SoftSlate }
             val badgeTextColor = when { current -> Color.White; complete -> Ok; else -> Muted }
             Card(
-                Modifier.weight(1f).border(1.dp, if (current) Color(0xFF9FB6E8) else Line, RoundedCornerShape(10.dp)),
-                colors = CardDefaults.cardColors(containerColor = if (current) SoftBlue else Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                Modifier.weight(1f).border(1.dp, if (current) Color(0xFF91B0FF) else Line, RoundedCornerShape(12.dp)),
+                colors = CardDefaults.cardColors(containerColor = if (current) Color(0xFFEDF3FF) else Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
@@ -924,8 +929,8 @@ private fun Stepper(stage: WorkflowStage) {
                         Text("${index + 1}", color = badgeTextColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text(item.label, fontWeight = if (current) FontWeight.SemiBold else FontWeight.Medium, color = if (current) Primary else if (complete) BodyText else Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(item.help, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(item.label, fontWeight = if (current) FontWeight.SemiBold else FontWeight.Medium, color = if (current) Primary else if (complete) BodyText else Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(item.help, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (complete) Text("✓", color = Ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
@@ -950,12 +955,12 @@ private fun KpiRow(state: WorkflowState) {
             Card(
                 Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(10.dp)),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
             ) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(label, color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                    Text(value, color = Ink, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                    Text(hint, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(label, color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text(value, color = Ink, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                    Text(hint, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -1091,15 +1096,15 @@ private fun SourceListPanel(
     onMarkDisabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(modifier.border(1.dp, Line, RoundedCornerShape(12.dp)), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)) {
+    Card(modifier.border(1.dp, Line, RoundedCornerShape(14.dp)), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.fillMaxWidth().background(SoftNeutral).padding(horizontal = 14.dp, vertical = 11.dp),
+                Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 17.dp, vertical = 15.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("书源池", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    Text("书源池", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
                     Text(
                         when (state.stage) {
                             WorkflowStage.IMPORT -> "导入后统一管理；点击书源查看详情，也可编辑本阶段的处理建议。"
@@ -1108,21 +1113,28 @@ private fun SourceListPanel(
                             WorkflowStage.ORGANIZE_REVIEW -> if (state.preview == null) "先选择整理规则，再生成可编辑的预览。" else "整理预览可编辑；确认前不会写回当前工作池。"
                             WorkflowStage.EXPORT -> "以下是本次最终确认、准备导出的书源。"
                         },
-                        fontSize = 11.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        fontSize = 12.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis,
                     )
                 }
-                OutlinedTextField(
+                BasicTextField(
                     value = state.filterQuery,
                     onValueChange = { state.filterQuery = it },
-                    modifier = Modifier.width(230.dp),
-                    placeholder = { Text("搜索名称、分组或网址…", fontSize = 11.sp) },
                     singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall,
+                    textStyle = MaterialTheme.typography.bodySmall.copy(color = BodyText, fontSize = 12.sp),
+                    modifier = Modifier.width(240.dp).height(38.dp)
+                        .clip(RoundedCornerShape(9.dp)).border(1.dp, Line, RoundedCornerShape(9.dp))
+                        .background(Color.White).padding(horizontal = 11.dp, vertical = 8.dp),
+                    decorationBox = { innerTextField ->
+                        Box(contentAlignment = Alignment.CenterStart) {
+                            if (state.filterQuery.isEmpty()) Text("搜索名称、分组或网址…", fontSize = 11.sp, color = Muted)
+                            innerTextField()
+                        }
+                    },
                 )
                 OutlinedButton(
                     onClick = { state.filterQuery = "" },
                     enabled = state.filterQuery.isNotEmpty(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 11.dp, vertical = 7.dp),
                 ) { Text("清除", fontSize = 11.sp) }
             }
             HorizontalDivider(color = Line)
@@ -1144,7 +1156,7 @@ private fun SourceListPanel(
                     ) {
                         Text(
                             "$label $count",
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                         )
                     }
@@ -1171,8 +1183,10 @@ private fun SourceListPanel(
                 )
                 Spacer(Modifier.height(7.dp))
             }
-            Column(Modifier.weight(1f).fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                Column(Modifier.width(1180.dp).fillMaxHeight()) {
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val tableWidth = maxOf(maxWidth, 1180.dp)
+                Row(Modifier.fillMaxHeight().horizontalScroll(rememberScrollState())) {
+                Column(Modifier.width(tableWidth).fillMaxHeight()) {
             TableHeader()
             HorizontalDivider(color = Line)
             if (state.sources.isEmpty()) {
@@ -1224,6 +1238,7 @@ private fun SourceListPanel(
                 }
             }
                 }
+                }
             }
         }
     }
@@ -1233,17 +1248,40 @@ private fun SourceListPanel(
 @Composable
 private fun TableHeader() {
     Row(
-        Modifier.fillMaxWidth().background(SoftSlate).padding(horizontal = 12.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().background(Color(0xFFFBFCFE)).padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("源名 / URL", Modifier.weight(2.2f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BodyText)
-        Text("类型", Modifier.weight(0.55f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BodyText)
-        Text("分组", Modifier.weight(0.8f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BodyText)
-        Text("状态", Modifier.weight(1.15f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BodyText)
-        Text("耗时", Modifier.weight(0.65f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BodyText)
-        Text("建议", Modifier.weight(0.9f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BodyText)
-        Text("操作", Modifier.width(92.dp), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("源名 / URL", Modifier.weight(2.2f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("类型", Modifier.weight(0.55f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("分组", Modifier.weight(0.8f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("状态", Modifier.weight(1.15f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("耗时", Modifier.weight(0.65f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("建议", Modifier.weight(0.9f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("操作", Modifier.width(110.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
     }
+}
+
+
+@Composable
+private fun TableActionButton(label: String, onClick: () -> Unit, enabled: Boolean = true) {
+    Box(
+        Modifier.clip(RoundedCornerShape(7.dp))
+            .border(1.dp, Line, RoundedCornerShape(7.dp))
+            .background(Color.White)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, fontSize = 11.sp, color = if (enabled) Primary else Muted)
+    }
+}
+
+private fun sourceTypeLabel(type: Int): String = when (type) {
+    0 -> "文本"
+    1 -> "有声"
+    2 -> "漫画"
+    3 -> "其他"
+    else -> "其他"
 }
 
 
@@ -1267,30 +1305,26 @@ private fun SourceRowItem(
     }
     Row(
         Modifier.fillMaxWidth().background(if (selected) Color(0xFFF0F5FF) else Color.White)
-            .clickable { onDetail(source.id) }.padding(horizontal = 12.dp, vertical = 8.dp),
+            .clickable { onDetail(source.id) }.padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(2.2f).padding(end = 7.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(name.ifBlank { "（未命名）" }, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(source.doc.url, fontSize = 10.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(name.ifBlank { "（未命名）" }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(source.doc.url, fontSize = 11.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        SmallChip(source.doc.type.toString(), SoftSlate, Color(0xFF57647A), Modifier.weight(0.55f))
-        Text(group.ifBlank { "—" }, Modifier.weight(0.8f), fontSize = 10.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        SmallChip(sourceTypeLabel(source.doc.type), SoftSlate, Color(0xFF57647A), Modifier.weight(0.65f))
+        Text(group.ifBlank { "—" }, Modifier.weight(0.8f), fontSize = 11.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
         SmallChip(status, statusBackground(source.probe?.status), statusColor(source.probe?.status), Modifier.weight(1.15f))
-        Text(elapsed, Modifier.weight(0.65f), fontSize = 10.sp, color = Muted, maxLines = 1)
+        Text(elapsed, Modifier.weight(0.65f), fontSize = 11.sp, color = Muted, maxLines = 1)
         SmallChip(
             advice,
             if (source.deleteMarked) SoftRed else if (source.probe?.status == ProbeStatus.OK) SoftGreen else SoftSlate,
             if (source.deleteMarked) Bad else if (source.probe?.status == ProbeStatus.OK) Ok else Muted,
             Modifier.weight(0.9f),
         )
-        Row(Modifier.width(92.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            TextButton(onClick = { onDetail(source.id) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 3.dp, vertical = 2.dp)) { Text("详情", fontSize = 10.sp) }
-            TextButton(
-                onClick = { onEdit(source.id) },
-                enabled = !state.busy && state.stage != WorkflowStage.EXPORT,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 3.dp, vertical = 2.dp),
-            ) { Text("编辑", fontSize = 10.sp) }
+        Row(Modifier.width(110.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            TableActionButton("详情", onClick = { onDetail(source.id) })
+            TableActionButton("编辑", onClick = { onEdit(source.id) }, enabled = !state.busy && state.stage != WorkflowStage.EXPORT)
         }
     }
 }
@@ -1305,9 +1339,9 @@ private fun DetailPanel(
 ) {
     val source = state.sources.firstOrNull { it.id == state.selectedId }
     Card(
-        modifier.border(1.dp, Line, RoundedCornerShape(12.dp)),
+        modifier.border(1.dp, Line, RoundedCornerShape(14.dp)),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         if (source == null) {
             Box(Modifier.fillMaxSize().padding(18.dp), contentAlignment = Alignment.Center) {
@@ -1317,7 +1351,7 @@ private fun DetailPanel(
             val preview = state.preview?.get(source.id).takeIf { state.stage == WorkflowStage.ORGANIZE_REVIEW || state.stage == WorkflowStage.EXPORT }
             Column(Modifier.fillMaxSize()) {
                 Column(
-                    Modifier.fillMaxWidth().background(SoftNeutral).padding(horizontal = 14.dp, vertical = 12.dp),
+                    Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 18.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     Text("SOURCE #${(source.id + 1).toString().padStart(3, '0')} · ${state.stage.label}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Primary)
@@ -1326,7 +1360,7 @@ private fun DetailPanel(
                 }
                 HorizontalDivider(color = Line)
                 Column(
-                    Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
+                    Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(17.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1334,7 +1368,7 @@ private fun DetailPanel(
                         val statusLabel = source.probe?.status?.label ?: "待校验"
                         SmallChip(statusLabel, statusBackground(source.probe?.status), statusColor(source.probe?.status))
                     }
-                    DetailField("类型", source.doc.type.toString())
+                    DetailField("类型", sourceTypeLabel(source.doc.type))
                     DetailField("源分组", preview?.group ?: source.doc.group.ifBlank { "未分组" })
                     DetailField("启用状态", if (source.isDisabledForDisplay()) "禁用" else "启用")
                     DetailField("搜索规则", if (source.doc.canSearch) "已配置 / 待引擎确认" else "未发现常规搜索规则")
@@ -1430,8 +1464,8 @@ private fun DetailField(label: String, value: String) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Text(label, Modifier.width(82.dp), fontSize = 10.sp, color = Muted)
-        Text(value.ifBlank { "—" }, Modifier.weight(1f), fontSize = 11.sp, color = Ink)
+        Text(label, Modifier.width(82.dp), fontSize = 11.sp, color = Muted)
+        Text(value.ifBlank { "—" }, Modifier.weight(1f), fontSize = 12.sp, color = Ink)
     }
 }
 
@@ -1452,10 +1486,10 @@ private fun BottomActions(
     onCopyImportLink: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 7.dp)
-            .border(1.dp, Line, RoundedCornerShape(12.dp))
-            .clip(RoundedCornerShape(12.dp)).background(Color.White)
-            .padding(horizontal = 14.dp, vertical = 9.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 26.dp, vertical = 7.dp)
+            .border(1.dp, FooterSurface, RoundedCornerShape(13.dp))
+            .clip(RoundedCornerShape(13.dp)).background(FooterSurface)
+            .padding(horizontal = 17.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -1466,7 +1500,7 @@ private fun BottomActions(
                 WorkflowStage.PROBE_REVIEW -> "复核校验结果"
                 WorkflowStage.ORGANIZE_REVIEW -> "预览整理规则"
                 WorkflowStage.EXPORT -> "生成 JSON"
-            }, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
+            }, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
             Text(
                 when (state.stage) {
                     WorkflowStage.IMPORT -> "开始后自动生成去重建议"
@@ -1475,37 +1509,37 @@ private fun BottomActions(
                     WorkflowStage.ORGANIZE_REVIEW -> "仅执行勾选的整理规则，确认后应用预览"
                     WorkflowStage.EXPORT -> "只导出已确认的当前工作池，不覆盖导入文件"
                 },
-                fontSize = 10.sp,
-                color = Muted,
+                fontSize = 11.sp,
+                color = Color(0xFFC4CDDD),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         when (state.stage) {
             WorkflowStage.IMPORT -> {
-                OutlinedButton(onClick = onShowImportInfo, enabled = state.inputFile != null && !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText)) {
+                OutlinedButton(onClick = onShowImportInfo, enabled = state.inputFile != null && !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White)) {
                     Text("查看导入信息")
                 }
-                Button(colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White), onClick = onStartDedup, enabled = state.sources.isNotEmpty() && !state.busy) {
+                Button(colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White), onClick = onStartDedup, enabled = state.sources.isNotEmpty() && !state.busy) {
                     Text("开始去重")
                 }
             }
             WorkflowStage.DEDUP_REVIEW -> {
-                Button(colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White), onClick = onConfirmDedup, enabled = state.sources.isNotEmpty() && !state.busy) {
+                Button(colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White), onClick = onConfirmDedup, enabled = state.sources.isNotEmpty() && !state.busy) {
                     Text("确认去重并进入校验")
                 }
             }
             WorkflowStage.PROBE_REVIEW -> {
                 OutlinedButton(
                     onClick = { state.sourceFilter = "异常 / 复核" },
-                    colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText),
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White),
                 ) { Text("查看异常项") }
                 if (state.busy) {
-                    OutlinedButton(onClick = onStop, colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText)) { Text("停止校验") }
+                    OutlinedButton(onClick = onStop, colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White)) { Text("停止校验") }
                 } else if (state.sources.any { it.probe == null }) {
-                    Button(colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White), onClick = onContinueValidation) { Text("继续校验") }
+                    Button(colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White), onClick = onContinueValidation) { Text("继续校验") }
                 } else {
-                    Button(colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White), onClick = onConfirmValidation, enabled = state.sources.isNotEmpty()) {
+                    Button(colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White), onClick = onConfirmValidation, enabled = state.sources.isNotEmpty()) {
                         Text("确认校验并进入整理")
                     }
                 }
@@ -1514,10 +1548,10 @@ private fun BottomActions(
                 if (state.preview == null) {
                     OutlinedButton(
                         onClick = { state.sourceFilter = "待删除" },
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White),
                     ) { Text("查看待删除项") }
                     Button(
-                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
+                        colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
                         onClick = onGeneratePreview,
                         enabled = state.sources.isNotEmpty() && !state.busy,
                     ) { Text("生成整理预览") }
@@ -1525,10 +1559,10 @@ private fun BottomActions(
                     OutlinedButton(
                         onClick = onGeneratePreview,
                         enabled = !state.busy,
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White),
                     ) { Text("重新生成预览") }
                     Button(
-                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
+                        colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
                         onClick = onConfirmOrganize,
                         enabled = !state.busy,
                     ) { Text("确认整理并进入导出") }
@@ -1537,13 +1571,13 @@ private fun BottomActions(
             WorkflowStage.EXPORT -> {
                 OutlinedButton(
                     onClick = { state.showReport = true },
-                    colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText),
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White),
                 ) { Text("查看最终清单") }
                 if (DirectLink.isUsable(state.directUrl)) {
-                    OutlinedButton(onClick = onCopyImportLink, enabled = !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText)) { Text("复制导入链接") }
+                    OutlinedButton(onClick = onCopyImportLink, enabled = !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White)) { Text("复制导入链接") }
                 }
-                OutlinedButton(onClick = onOpenFolder, enabled = !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = SoftSlate, contentColor = BodyText)) { Text("打开导出目录") }
-                Button(colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White), onClick = onExport, enabled = state.sources.isNotEmpty() && !state.busy) {
+                OutlinedButton(onClick = onOpenFolder, enabled = !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White)) { Text("打开导出目录") }
+                Button(colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White), onClick = onExport, enabled = state.sources.isNotEmpty() && !state.busy) {
                     Text(if (state.exported == null) "导出 JSON" else "再次导出 JSON")
                 }
             }
@@ -1975,7 +2009,7 @@ private fun SmallChip(
         modifier.clip(RoundedCornerShape(6.dp)).background(backgroundColor).padding(horizontal = 6.dp, vertical = 4.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Text(text, fontSize = 9.sp, color = textColor, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(text, fontSize = 10.sp, color = textColor, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
