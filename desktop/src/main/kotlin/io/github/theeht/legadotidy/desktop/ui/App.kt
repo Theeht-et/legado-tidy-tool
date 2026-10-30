@@ -942,9 +942,9 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
             Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(10.dp))
                 .background(Color.White, RoundedCornerShape(8.dp)).padding(horizontal = 9.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(9.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("▤", fontSize = 18.sp, color = Muted)
+            Text("▤", fontSize = 15.sp, color = Muted)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(state.inputFile?.name ?: "尚未导入书源 JSON", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
@@ -971,7 +971,7 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
             OutlinedButton(
                 onClick = { state.showSettings = true },
                 enabled = !state.busy,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 13.dp, vertical = 9.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 5.dp),
             ) { Text("⚙ 校验设置", fontSize = 12.sp) }
         }
     }
@@ -997,7 +997,7 @@ private fun Stepper(stage: WorkflowStage) {
                     horizontalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
                     Box(Modifier.size(22.dp).clip(RoundedCornerShape(7.dp)).background(badgeColor), contentAlignment = Alignment.Center) {
-                        Text("${index + 1}", color = badgeTextColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("${index + 1}", color = badgeTextColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text(item.label, fontWeight = if (current) FontWeight.SemiBold else FontWeight.Medium, color = if (current) Primary else if (complete) BodyText else Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1029,7 +1029,7 @@ private fun KpiRow(state: WorkflowState) {
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
             ) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(label, color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text(label, color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                     Text(value, color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                     Text(hint, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
@@ -1062,7 +1062,7 @@ private fun OrganizeRulePanel(
                 Spacer(Modifier.width(8.dp))
                 Text("仅执行已勾选的规则；未勾选项保持原样", fontSize = 11.sp, color = Muted)
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 RuleCheckbox(
                     OrganizeRule.CLEAN_DECORATIONS,
                     OrganizeRule.CLEAN_DECORATIONS in state.selectedRules,
@@ -1091,7 +1091,7 @@ private fun OrganizeRulePanel(
                     modifier = Modifier.weight(1f),
                 )
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.Top) {
                 Column(
                     Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(9.dp))
                         .background(Color.White, RoundedCornerShape(8.dp)).padding(7.dp),
@@ -1162,7 +1162,7 @@ private fun RuleOptionCard(
             .padding(horizontal = 7.dp, vertical = 5.dp)
             .heightIn(min = 42.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         RuleCheckMark(checked)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -1175,7 +1175,7 @@ private fun RuleOptionCard(
 @Composable
 private fun RuleCheckMark(checked: Boolean) {
     Box(
-        Modifier.size(14.dp).clip(RoundedCornerShape(3.dp))
+        Modifier.size(12.dp).clip(RoundedCornerShape(3.dp))
             .background(if (checked) Primary else Color.White)
             .border(1.dp, if (checked) Primary else Color(0xFFB8C1D0), RoundedCornerShape(3.dp)),
         contentAlignment = Alignment.Center,
@@ -1244,7 +1244,7 @@ private fun SourceListPanel(
     Card(modifier.border(1.dp, Line, RoundedCornerShape(14.dp)), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 19.dp, vertical = 17.dp),
+                Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 11.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
