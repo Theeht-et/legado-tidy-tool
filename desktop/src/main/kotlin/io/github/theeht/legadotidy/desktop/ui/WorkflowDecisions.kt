@@ -1,6 +1,7 @@
 package io.github.theeht.legadotidy.desktop.ui
 
 import java.io.File
+import java.nio.file.Path
 
 /**
  * Pure decision result for committing a stage's delete marks.
