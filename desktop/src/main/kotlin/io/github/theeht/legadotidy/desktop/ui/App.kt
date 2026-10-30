@@ -105,7 +105,6 @@ import java.awt.Frame
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.io.File
-import java.nio.file.Path
 import javax.swing.JFileChooser
 
 private val Primary = Color(0xFF2D5DB8)
@@ -208,12 +207,12 @@ internal fun desktopLayoutSpec(availableWidth: Dp, availableHeight: Dp): Desktop
     }
 }
 
-private enum class WorkflowStage(val label: String, val help: String) {
-    IMPORT("导入书源", "文件与数据"),
-    DEDUP_REVIEW("去重审核", "自动建议保留项"),
-    PROBE_REVIEW("书源校验", "状态与删除标记"),
-    ORGANIZE_REVIEW("整理审核", "按勾选规则整理"),
-    EXPORT("导出结果", "生成 JSON"),
+private enum class WorkflowStage(val label: String) {
+    IMPORT("导入书源"),
+    DEDUP_REVIEW("去重审核"),
+    PROBE_REVIEW("书源校验"),
+    ORGANIZE_REVIEW("整理审核"),
+    EXPORT("导出结果"),
 }
 
 private data class WorkflowSource(
@@ -1063,32 +1062,7 @@ private fun WorkflowStageCard(stage: WorkflowStage) {
 }
 
 
-@Composable
-private fun KpiRow(state: WorkflowState) {
-    val passed = state.sources.count { it.probe?.status == ProbeStatus.OK }
-    val hasProbeResult = state.sources.any { it.probe != null }
-    val values = listOf(
-        Triple("当前书源池", state.sources.size.toString(), if (state.removedCount == 0) "当前导入文件" else "原始 ${state.inputCount} · 已移出 ${state.removedCount}"),
-        Triple("重复组", state.duplicateGroups.size.toString(), "已标记系统建议保留项与删除项"),
-        Triple("校验通过", if (hasProbeResult) passed.toString() else "—", "校验阶段完成后显示"),
-        Triple("待处理标记", state.sources.count { it.deleteMarked }.toString(), "进入下一阶段时才实际移出书源池"),
-    )
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        values.forEach { (label, value, hint) ->
-            Card(
-                Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(8.dp)),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            ) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(label, color = BodyText, fontSize = UiTypography.label, fontWeight = FontWeight.SemiBold)
-                    Text(value, color = Ink, fontSize = UiTypography.metric, fontWeight = FontWeight.Bold)
-                    Text(hint, color = Muted, fontSize = UiTypography.caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
-    }
-}
+
 
 
 @Composable
@@ -2640,9 +2614,6 @@ private fun buildSourceRows(state: WorkflowState): List<SourceListRow> {
     return rows
 }
 
-private fun visibleSourceCount(state: WorkflowState): Int =
-    state.sources.count { sourceMatchesFilter(state, it) }
-
 private fun commitMarkedDeletions(state: WorkflowState): Boolean {
     val plan = planMarkedDeletions(state.sources.toList()) { it.deleteMarked }
     if (plan.allItemsMarked) {
@@ -2701,12 +2672,6 @@ private fun statusColor(status: ProbeStatus?): Color = when (status) {
     ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> Warn
     ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS, ProbeStatus.ERROR -> Bad
     else -> Muted
-}
-
-private fun rawString(source: WorkflowSource, key: String): String {
-    val value = source.doc.raw.get(key) ?: return ""
-    if (value.isJsonNull) return ""
-    return if (value.isJsonPrimitive) value.asString else value.toString()
 }
 
 private fun defaultExportDir(): String {
