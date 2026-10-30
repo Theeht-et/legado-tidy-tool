@@ -1864,6 +1864,18 @@ private fun DetailValueCard(field: SourceDetailField, modifier: Modifier = Modif
 }
 
 @Composable
+private fun DetailField(label: String, value: String) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(label, Modifier.width(110.dp), fontSize = 11.sp, color = Muted)
+        Text(value.ifBlank { "—" }, Modifier.weight(1f), fontSize = 12.sp, color = Ink)
+    }
+}
+
+@Composable
 private fun BottomActions(
     state: WorkflowState,
     onShowImportInfo: () -> Unit,
