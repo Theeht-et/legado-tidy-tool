@@ -1079,7 +1079,7 @@ private fun OrganizeRulePanel(
                         onClick = { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
                     )
                     RuleRadio(
-                        label = "重新分组",
+                        label = "智能归类",
                         selected = OrganizeRule.REGROUP_BY_TYPE in state.selectedRules,
                         onClick = { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
                     )
