@@ -57,6 +57,8 @@ class TidyTextTest {
         assertEquals("书源", TidyText.removeAdvertisingWords("推荐书源"))
         assertEquals("小说", TidyText.removeAdvertisingWords("小说推荐"))
         assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源 VIP"))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("  星河书源 - 福利  "))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("  推荐 星河书源  "))
         assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源 AD"))
         assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源（广告推广·官方推荐）"))
         assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源 [VIP会员专享]"))
