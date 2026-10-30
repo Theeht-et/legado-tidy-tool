@@ -31,7 +31,7 @@ class SelectedOrganizerTest {
             """{"bookSourceName":"星河书源 - 官方推荐","bookSourceUrl":"https://slow.test","bookSourceType":1,"bookSourceGroup":"旧分组"}"""
         )
         val faster = doc(
-            """{"bookSourceName":"银河书源 · 福利","bookSourceUrl":"https://fast.test","bookSourceType":1,"bookSourceGroup":"另一个旧分组"}"""
+            """{"bookSourceName":"银河书源 - 福利","bookSourceUrl":"https://fast.test","bookSourceType":1,"bookSourceGroup":"另一个旧分组"}"""
         )
         val results = mapOf(
             0 to ProbeResult(0, ProbeStatus.OK, elapsedMs = 300),
