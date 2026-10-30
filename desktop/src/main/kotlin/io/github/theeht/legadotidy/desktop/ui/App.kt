@@ -1459,7 +1459,7 @@ private data class SourceDetailSection(
 
 private data class SourceDetailFieldSpec(val key: String, val label: String)
 
-internal fun sourceDetailSections(doc: BookSourceDoc): List<SourceDetailSection> {
+private fun sourceDetailSections(doc: BookSourceDoc): List<SourceDetailSection> {
     val raw = doc.raw
     val knownTopLevelKeys = linkedSetOf<String>()
     val sections = mutableListOf<SourceDetailSection>()
@@ -1498,7 +1498,7 @@ internal fun sourceDetailSections(doc: BookSourceDoc): List<SourceDetailSection>
             else -> null
         }
         val known = specs.mapTo(linkedSetOf()) { it.key }
-        val fields = specs.map { field("$key.\${it.key}", it.label, obj?.get(it.key)) }.toMutableList()
+        val fields = specs.map { field("$key.${it.key}", it.label, obj?.get(it.key)) }.toMutableList()
         obj?.entrySet()?.filterNot { it.key in known }?.forEach { (nestedKey, value) ->
             fields += field("$key.$nestedKey", "$nestedKey（上游扩展）", value)
         }
@@ -1688,7 +1688,7 @@ private fun DetailPanel(
                 ) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text(
-                            "SOURCE #\${(source.id + 1).toString().padStart(3, '0')}  /  \${state.stage.label}",
+                            "SOURCE #${(source.id + 1).toString().padStart(3, '0')}  /  ${state.stage.label}",
                             fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Primary,
                         )
                         Text(
@@ -1710,7 +1710,7 @@ private fun DetailPanel(
                     DetailMetric("书源类型", sourceTypeLabel(source.doc.type), Modifier.weight(1f))
                     DetailMetric("启用状态", if (source.isDisabledForDisplay()) "已禁用" else "已启用", Modifier.weight(1f))
                     DetailMetric("已配置规则字段", source.doc.ruleCompleteness.toString(), Modifier.weight(1f))
-                    DetailMetric("响应耗时", source.probe?.let { "\${it.elapsedMs} ms" } ?: "暂无", Modifier.weight(1f))
+                    DetailMetric("响应耗时", source.probe?.let { "${it.elapsedMs} ms" } ?: "暂无", Modifier.weight(1f))
                 }
                 HorizontalDivider(color = Line)
                 Column(
@@ -1726,7 +1726,7 @@ private fun DetailPanel(
                     ) {
                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text(
-                                if (source.deleteMarked) "当前标记：待删除" else "当前建议：\${source.suggestion}",
+                                if (source.deleteMarked) "当前标记：待删除" else "当前建议：${source.suggestion}",
                                 fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                                 color = if (source.deleteMarked) Bad else Ink,
                             )
@@ -1773,7 +1773,7 @@ private fun DetailPanel(
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("上游书源编辑字段", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
-                        SmallChip("\${detailSections.sumOf { it.fields.size }} 项", SoftBlue, Primary)
+                        SmallChip("${detailSections.sumOf { it.fields.size }} 项", SoftBlue, Primary)
                     }
                     Text(
                         "按上游 BookSource 的编辑区块整理。未配置字段也会列出；规则组显示已知字段及源文件中实际存在的扩展字段。",
@@ -1788,7 +1788,7 @@ private fun DetailPanel(
                         ) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(section.title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
-                                SmallChip("\${section.fields.size} 项", SoftNeutral, Muted)
+                                SmallChip("${section.fields.size} 项", SoftNeutral, Muted)
                             }
                             Text(section.description, fontSize = 10.sp, color = Muted)
                             section.fields.chunked(2).forEach { pair ->
