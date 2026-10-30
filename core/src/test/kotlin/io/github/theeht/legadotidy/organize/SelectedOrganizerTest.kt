@@ -105,6 +105,33 @@ class SelectedOrganizerTest {
         assertEquals("", report.sources.single().group)
     }
 
+    @Test
+    fun `响应时间排序将未实际测得耗时的书源稳定放在末尾`() {
+        val sources = listOf(
+            doc("""{"bookSourceName":"无搜索规则","bookSourceUrl":"https://no-search.test"}"""),
+            doc("""{"bookSourceName":"较慢","bookSourceUrl":"https://slow.test"}"""),
+            doc("""{"bookSourceName":"跳过校验","bookSourceUrl":"https://skipped.test"}"""),
+            doc("""{"bookSourceName":"较快","bookSourceUrl":"https://fast.test"}"""),
+            doc("""{"bookSourceName":"未返回耗时","bookSourceUrl":"https://error.test"}"""),
+        )
+        val results = mapOf(
+            0 to ProbeResult(0, ProbeStatus.NO_SEARCH_URL),
+            1 to ProbeResult(1, ProbeStatus.OK, elapsedMs = 300),
+            2 to ProbeResult(2, ProbeStatus.SKIPPED, elapsedMs = 10),
+            3 to ProbeResult(3, ProbeStatus.OK, elapsedMs = 100),
+            4 to ProbeResult(4, ProbeStatus.ERROR),
+        )
+
+        val report = Organizer.run(
+            sources = sources,
+            results = results,
+            config = OrganizeConfig(selectedRules = setOf(OrganizeRule.SORT_BY_RESPONSE_TIME)),
+        )
+
+        assertEquals(listOf(3, 1, 0, 2, 4), report.sources.map { it.index })
+        assertEquals(listOf(0, 1, 2, 3, 4), report.sources.map { it.rank })
+    }
+
     private fun doc(json: String): BookSourceDoc =
         BookSourceDoc(JsonParser.parseString(json).asJsonObject)
 }
