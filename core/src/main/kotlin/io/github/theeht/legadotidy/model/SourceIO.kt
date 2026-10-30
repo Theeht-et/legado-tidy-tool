@@ -33,7 +33,10 @@ object SourceIO {
             }
             else -> throw IllegalArgumentException("顶层必须是数组或对象")
         }
-        return array.mapNotNull { e -> e.takeIf { it.isJsonObject }?.asJsonObject }
+        require(array.all { it.isJsonObject }) {
+            "书源数组中包含非对象元素；为避免静默丢弃数据，已拒绝导入"
+        }
+        return array.map { it.asJsonObject }
     }
 
     fun load(path: Path): List<JsonObject> = parse(path.readText())
