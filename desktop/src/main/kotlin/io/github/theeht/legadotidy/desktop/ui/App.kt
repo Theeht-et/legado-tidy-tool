@@ -1,5 +1,6 @@
 package io.github.theeht.legadotidy.desktop.ui
 
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +23,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.rememberScrollbarAdapter
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -276,6 +279,7 @@ fun TidyApp() {
     var activeJob by remember { mutableStateOf<Job?>(null) }
     var editingId by remember { mutableStateOf<Int?>(null) }
     var comparingGroup by remember { mutableStateOf<Int?>(null) }
+    var detailDialogId by remember { mutableStateOf<Int?>(null) }
 
     fun importFile() {
         if (state.busy) return
@@ -702,7 +706,6 @@ fun TidyApp() {
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Stepper(state.stage)
-                    KpiRow(state)
                     state.error?.let {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = SoftRed),
@@ -720,13 +723,9 @@ fun TidyApp() {
                             Text("校验进度：${state.completed}/${state.total}", fontSize = 11.sp, color = Muted)
                         }
                     }
-                    Row(
-                        Modifier.weight(1f).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(layout.panelSpacing),
-                    ) {
-                        SourceListPanel(
+                    SourceListPanel(
                             state = state,
-                            onDetail = { state.selectedId = it },
+                            onDetail = { id -> state.selectedId = id; detailDialogId = id },
                             onEdit = { editingId = it },
                             onCompare = { comparingGroup = it },
                             onGeneratePreview = ::generateOrganizePreview,
@@ -770,15 +769,8 @@ fun TidyApp() {
                                     state.notice = "整理规则已变化，自动删除标记已撤销；请重新生成预览。"
                                 }
                             },
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            modifier = Modifier.weight(1f).fillMaxSize(),
                         )
-                        DetailPanel(
-                            state = state,
-                            onEdit = { editingId = it },
-                            onToggleDelete = { id -> toggleDeleteMark(state, id) },
-                            modifier = Modifier.width(layout.detailPanelWidth).fillMaxHeight(),
-                        )
-                    }
                 }
                 BottomActions(
                     state = state,
@@ -826,6 +818,29 @@ fun TidyApp() {
         }
     }
     if (state.showReport) ReportDialog(state, onDismiss = { state.showReport = false })
+    detailDialogId?.let { id ->
+        state.sources.firstOrNull { it.id == id }?.let { source ->
+            Dialog(
+                onDismissRequest = { detailDialogId = null },
+                properties = DialogProperties(usePlatformDefaultWidth = false),
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 680.dp).heightIn(max = 760.dp),
+                    shape = RoundedCornerShape(15.dp),
+                    color = Color.White,
+                    shadowElevation = 24.dp,
+                ) {
+                    DetailPanel(
+                        state = state,
+                        sourceId = source.id,
+                        onEdit = { editingId = it; detailDialogId = null },
+                        onToggleDelete = { sourceId -> toggleDeleteMark(state, sourceId) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+    }
     comparingGroup?.let { groupNo ->
         state.duplicateGroups.firstOrNull { it.number == groupNo }?.let { group ->
             CompareGroupDialog(
@@ -980,33 +995,22 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
 
 @Composable
 private fun Stepper(stage: WorkflowStage) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        WorkflowStage.entries.forEachIndexed { index, item ->
-            val current = item == stage
-            val complete = item.ordinal < stage.ordinal
-            val badgeColor = when { current -> Primary; complete -> SoftGreen; else -> SoftSlate }
-            val badgeTextColor = when { current -> Color.White; complete -> Ok; else -> Muted }
-            Card(
-                Modifier.weight(1f).border(1.dp, if (current) Color(0xFF91B0FF) else Line, RoundedCornerShape(12.dp)),
-                colors = CardDefaults.cardColors(containerColor = if (current) Color(0xFFEDF3FF) else Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 9.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(9.dp),
-                ) {
-                    Box(Modifier.size(22.dp).clip(RoundedCornerShape(7.dp)).background(badgeColor), contentAlignment = Alignment.Center) {
-                        Text("${index + 1}", color = badgeTextColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text(item.label, fontWeight = if (current) FontWeight.SemiBold else FontWeight.Medium, color = if (current) Primary else if (complete) BodyText else Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(item.help, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    if (complete) Text("✓", color = Ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-            }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp))
+            .background(Color.White).border(1.dp, Line, RoundedCornerShape(9.dp))
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("${stage.ordinal + 1}/5", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Primary)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(stage.label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text(stage.help, fontSize = 9.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        LinearProgressIndicator(
+            progress = { (stage.ordinal + 1) / 5f },
+            modifier = Modifier.width(88.dp).height(4.dp),
+        )
     }
 }
 
@@ -1241,6 +1245,7 @@ private fun SourceListPanel(
     onMarkDisabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val listState = rememberLazyListState()
     Card(modifier.border(1.dp, Line, RoundedCornerShape(14.dp)), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(
@@ -1345,7 +1350,11 @@ private fun SourceListPanel(
                         }
                     }
                 } else {
-                    LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize().padding(end = 10.dp),
+                    ) {
                         items(rows, key = { it.key }) { row ->
                             when (row) {
                                 is SourceListRow.GroupHeader -> {
@@ -1373,6 +1382,11 @@ private fun SourceListPanel(
                             }
                             HorizontalDivider(color = Line)
                         }
+                    }
+                    VerticalScrollbar(
+                        adapter = rememberScrollbarAdapter(listState),
+                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(vertical = 3.dp),
+                    )
                     }
                 }
             }
@@ -1445,7 +1459,7 @@ private fun SourceRowItem(
     }
     Row(
         Modifier.fillMaxWidth().background(if (selected) Color(0xFFF0F5FF) else Color.White)
-            .clickable { onDetail(source.id) }.padding(horizontal = 12.dp, vertical = 10.dp),
+            .clickable { state.selectedId = source.id }.padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(3.1f).padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1473,11 +1487,12 @@ private fun SourceRowItem(
 @Composable
 private fun DetailPanel(
     state: WorkflowState,
+    sourceId: Int,
     onEdit: (Int) -> Unit,
     onToggleDelete: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val source = state.sources.firstOrNull { it.id == state.selectedId }
+    val source = state.sources.firstOrNull { it.id == sourceId }
     Card(
         modifier.border(1.dp, Line, RoundedCornerShape(14.dp)),
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -1625,36 +1640,15 @@ private fun BottomActions(
     onOpenFolder: () -> Unit,
     onCopyImportLink: () -> Unit,
 ) {
-    Row(
-        Modifier.fillMaxWidth().padding(top = 16.dp)
-            .border(1.dp, FooterSurface, RoundedCornerShape(13.dp))
-            .clip(RoundedCornerShape(13.dp)).background(FooterSurface)
-            .padding(horizontal = 17.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(state.stage.label + " · " + when (state.stage) {
-                WorkflowStage.IMPORT -> "准备去重"
-                WorkflowStage.DEDUP_REVIEW -> "确认重复项"
-                WorkflowStage.PROBE_REVIEW -> "复核校验结果"
-                WorkflowStage.ORGANIZE_REVIEW -> "预览整理规则"
-                WorkflowStage.EXPORT -> "生成 JSON"
-            }, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            Text(
-                when (state.stage) {
-                    WorkflowStage.IMPORT -> "开始后自动生成去重建议"
-                    WorkflowStage.DEDUP_REVIEW -> "确认后从工作池移除标记删除的重复项，并自动开始校验"
-                    WorkflowStage.PROBE_REVIEW -> "超时与网络异常默认复核；确认后才移除删除项"
-                    WorkflowStage.ORGANIZE_REVIEW -> "仅执行勾选的整理规则，确认后应用预览"
-                    WorkflowStage.EXPORT -> "只导出已确认的当前工作池，不覆盖导入文件"
-                },
-                fontSize = 11.sp,
-                color = Color(0xFFC4CDDD),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+    Box(Modifier.fillMaxWidth().padding(top = 7.dp), contentAlignment = Alignment.CenterEnd) {
+        Row(
+            Modifier.clip(RoundedCornerShape(9.dp))
+                .background(Color.White)
+                .border(1.dp, Line, RoundedCornerShape(9.dp))
+                .padding(horizontal = 9.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
         when (state.stage) {
             WorkflowStage.IMPORT -> {
                 OutlinedButton(onClick = onShowImportInfo, enabled = state.inputFile != null && !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White)) {
@@ -1721,6 +1715,7 @@ private fun BottomActions(
                     Text(if (state.exported == null) "导出 JSON" else "再次导出 JSON")
                 }
             }
+        }
         }
     }
 }
@@ -1886,20 +1881,8 @@ private fun CompareGroupDialog(
     onDismiss: () -> Unit,
 ) {
     val candidates = group.sourceIds.mapNotNull { id -> state.sources.firstOrNull { it.id == id } }
-    val compareFields = listOf(
-        "searchUrl" to "搜索入口",
-        "exploreUrl" to "发现入口",
-        "mainJs" to "主脚本",
-        "ruleSearch" to "搜索规则",
-        "ruleExplore" to "发现规则",
-        "ruleBookInfo" to "详情规则",
-        "ruleToc" to "目录规则",
-        "ruleContent" to "正文规则",
-        "ruleReview" to "书评规则",
-        "header" to "请求头",
-        "jsLib" to "JS 库",
-        "loginUrl" to "登录入口",
-    )
+    var keepId by remember(group.number) { mutableStateOf(group.suggestedKeepId) }
+    var keepAll by remember(group.number) { mutableStateOf(false) }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -1918,7 +1901,7 @@ private fun CompareGroupDialog(
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text("对比重复组 ${group.number}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
                         Text(
-                            "${group.kind.label} · 相似度 ${(group.similarity * 100).toInt()}% · ${candidates.size} 个候选",
+                            "相同 URL · ${candidates.size} 个候选",
                             fontSize = 11.sp,
                             color = Muted,
                         )
@@ -1930,7 +1913,7 @@ private fun CompareGroupDialog(
                     Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
-                    Text("横向比较基础信息与关键规则；勾选表示保留，不勾选表示待删除。每组至少保留一项。", fontSize = 11.sp, color = Muted)
+                    Text("比较与 HTML 原型一致：核对 URL、类型、分组、启用状态、权重和规则字段数，再选择保留项。", fontSize = 11.sp, color = Muted)
                     Row(
                         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1938,7 +1921,7 @@ private fun CompareGroupDialog(
                     ) {
                         candidates.forEach { source ->
                             val recommended = source.id == group.suggestedKeepId
-                            val isPreferred = recommended && !source.deleteMarked
+                            val isPreferred = source.id == keepId && !keepAll
                             Card(
                                 Modifier.width(300.dp).border(
                                     1.dp,
@@ -1965,10 +1948,10 @@ private fun CompareGroupDialog(
                                             .padding(end = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        Checkbox(
-                                            checked = !source.deleteMarked,
-                                            onCheckedChange = { keep -> toggleDeleteMark(state, source.id, marked = !keep) },
-                                            enabled = !state.busy,
+                                        RadioButton(
+                                            selected = !keepAll && keepId == source.id,
+                                            onClick = { keepId = source.id },
+                                            enabled = !state.busy && !keepAll,
                                         )
                                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                             Text(
@@ -2002,7 +1985,10 @@ private fun CompareGroupDialog(
                                     ) {
                                     DetailField("URL", source.doc.url)
                                     DetailField("类型 / 分组", "${source.doc.type} / ${source.doc.group.ifBlank { "未分组" }}")
-                                    DetailField("启用 / 规则字段", "${if (source.isDisabledForDisplay()) "禁用" else "启用"} / ${source.doc.ruleCompleteness}")
+                                    DetailField("启用状态", if (source.isDisabledForDisplay()) "已禁用" else "启用")
+                                    DetailField("配置权重", source.doc.raw.get("weight")?.takeIf { it.isJsonPrimitive }?.asString ?: "—")
+                                    DetailField("规则字段", "${source.doc.raw.size()} 个")
+                                    DetailField("系统评分", String.format(java.util.Locale.ROOT, "%.2f", Deduper.keepScore(source.doc)))
                                     Text("关键规则", fontSize = 10.sp, color = Muted, fontWeight = FontWeight.SemiBold)
                                     compareFields.forEach { (key, label) ->
                                         val value = rawString(source, key)
@@ -2035,9 +2021,31 @@ private fun CompareGroupDialog(
                 HorizontalDivider(color = Line)
                 Row(
                     Modifier.fillMaxWidth().background(SoftNeutral).padding(horizontal = 18.dp, vertical = 10.dp),
-                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    OutlinedButton(onClick = onDismiss) { Text("完成对比") }
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = keepAll, onCheckedChange = { keepAll = it }, enabled = !state.busy)
+                        Text("本组全部保留（认为它们并不重复）", fontSize = 11.sp, color = BodyText)
+                    }
+                    OutlinedButton(onClick = onDismiss) { Text("取消") }
+                    Spacer(Modifier.width(7.dp))
+                    Button(
+                        onClick = {
+                            candidates.forEach { candidate ->
+                                val keep = keepAll || candidate.id == keepId
+                                val index = state.sources.indexOfFirst { it.id == candidate.id }
+                                if (index >= 0) state.sources[index] = state.sources[index].copy(
+                                    deleteMarked = !keep,
+                                    suggestion = if (keep) {
+                                        if (keepAll) "用户确认：本组全部保留" else "用户指定保留"
+                                    } else "用户确认：同组其他候选删除",
+                                )
+                            }
+                            onDismiss()
+                        },
+                        enabled = !state.busy && candidates.isNotEmpty(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
+                    ) { Text("保存本组决定") }
                 }
             }
         }
