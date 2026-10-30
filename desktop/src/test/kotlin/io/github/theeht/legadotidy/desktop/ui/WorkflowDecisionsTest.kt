@@ -140,6 +140,24 @@ class WorkflowDecisionsTest {
     }
 
     @Test
+    fun `待删除标记优先异常与待删除分组互斥`() {
+        assertFalse(shouldShowInExceptionReview(ProbeStatus.NO_SEARCH_URL, deleteMarked = true))
+        assertFalse(shouldShowInExceptionReview(ProbeStatus.UNSUPPORTED, deleteMarked = true))
+        assertFalse(shouldShowInExceptionReview(ProbeStatus.PARSE_EMPTY, deleteMarked = true))
+        assertTrue(shouldShowInExceptionReview(ProbeStatus.NO_SEARCH_URL, deleteMarked = false))
+        assertTrue(shouldShowInExceptionReview(ProbeStatus.NETWORK, deleteMarked = false))
+        assertFalse(shouldShowInExceptionReview(ProbeStatus.SKIPPED, deleteMarked = false))
+    }
+
+    @Test
+    fun `保留原组不触发无意义写回而重分组和手动编辑会写回`() {
+        assertFalse(shouldApplyGroups(setOf(OrganizeRule.KEEP_ORIGINAL_GROUPS), false))
+        assertTrue(shouldApplyGroups(setOf(OrganizeRule.REGROUP_BY_TYPE), false))
+        assertTrue(shouldApplyGroups(setOf(OrganizeRule.KEEP_ORIGINAL_GROUPS), true))
+        assertFalse(shouldApplyGroups(emptySet(), false))
+    }
+
+    @Test
     fun `导出文件名不会覆盖输入或之前的导出`(@TempDir dir: Path) {
         val input = File(dir.toFile(), "sources.json")
         input.writeText("original")
