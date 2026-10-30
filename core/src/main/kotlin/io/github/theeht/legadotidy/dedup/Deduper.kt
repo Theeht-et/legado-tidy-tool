@@ -83,32 +83,42 @@ object Deduper {
     fun keepScore(source: BookSourceDoc): Double {
         val raw = source.raw
         var score = 0.0
-        if (rawBoolean(raw, "enabled", true) && rawBoolean(raw, "bookSourceEnabled", true)) score += 10.0
-        if (firstPresent(raw, "searchUrl", "searchUrlRule", "ruleSearch", "ruleSearchUrl")) score += 8.0
-        if (firstPresent(raw, "exploreUrl", "exploreUrlRule", "bookSourceExploreUrl")) score += 4.0
-        if (firstPresent(raw, "ruleBookInfo", "bookSourceInfoRule")) score += 2.0
-        if (firstPresent(raw, "ruleBookContent", "bookSourceContentRule")) score += 2.0
-        if (firstPresent(raw, "bookSourceComment")) score += 1.0
-        score += (rawNumber(raw, "weight") ?: rawNumber(raw, "bookSourceWeight") ?: 0.0) * 0.1
+        if (!explicitlyFalse(raw, "enabled") && !explicitlyFalse(raw, "bookSourceEnabled")) score += 10.0
+        if (firstTruthy(raw, "searchUrl", "searchUrlRule", "ruleSearch", "ruleSearchUrl")) score += 8.0
+        if (firstTruthy(raw, "exploreUrl", "exploreUrlRule", "bookSourceExploreUrl")) score += 4.0
+        if (firstTruthy(raw, "ruleBookInfo", "bookSourceInfoRule")) score += 2.0
+        if (firstTruthy(raw, "ruleBookContent", "bookSourceContentRule")) score += 2.0
+        if (firstTruthy(raw, "bookSourceComment")) score += 1.0
+        val weight = when {
+            jsTruthy(raw.get("weight")) -> rawNumber(raw, "weight") ?: Double.NaN
+            jsTruthy(raw.get("bookSourceWeight")) -> rawNumber(raw, "bookSourceWeight") ?: Double.NaN
+            else -> 0.0
+        }
+        score += weight * 0.1
         score += raw.size() * 0.01
         return score
     }
 
-    private fun firstPresent(raw: com.google.gson.JsonObject, vararg keys: String): Boolean =
-        keys.any { key ->
-            val value = raw.get(key) ?: return@any false
-            !value.isJsonNull && when {
-                value.isJsonPrimitive -> value.asString.isNotBlank()
-                value.isJsonObject -> value.asJsonObject.size() > 0
-                value.isJsonArray -> value.asJsonArray.size() > 0
-                else -> false
-            }
-        }
+    private fun firstTruthy(raw: com.google.gson.JsonObject, vararg keys: String): Boolean =
+        keys.any { key -> jsTruthy(raw.get(key)) }
 
-    private fun rawBoolean(raw: com.google.gson.JsonObject, key: String, fallback: Boolean): Boolean {
-        val value = raw.get(key) ?: return fallback
-        if (value.isJsonNull || !value.isJsonPrimitive) return fallback
-        return runCatching { value.asBoolean }.getOrDefault(fallback)
+    private fun jsTruthy(value: com.google.gson.JsonElement?): Boolean {
+        if (value == null || value.isJsonNull) return false
+        if (value.isJsonObject || value.isJsonArray) return true
+        if (!value.isJsonPrimitive) return false
+        val primitive = value.asJsonPrimitive
+        return when {
+            primitive.isBoolean -> primitive.asBoolean
+            primitive.isNumber -> primitive.asDouble != 0.0 && !primitive.asDouble.isNaN()
+            primitive.isString -> primitive.asString.isNotEmpty()
+            else -> false
+        }
+    }
+
+    /** HTML checks strict boolean false; strings such as "false" are not false. */
+    private fun explicitlyFalse(raw: com.google.gson.JsonObject, key: String): Boolean {
+        val value = raw.get(key) ?: return false
+        return value.isJsonPrimitive && value.asJsonPrimitive.isBoolean && !value.asBoolean
     }
 
     private fun rawNumber(raw: com.google.gson.JsonObject, key: String): Double? {
