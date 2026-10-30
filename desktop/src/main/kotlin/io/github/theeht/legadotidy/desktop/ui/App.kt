@@ -833,6 +833,7 @@ fun TidyApp() {
                     DetailPanel(
                         state = state,
                         sourceId = source.id,
+                        onDismiss = { detailDialogId = null },
                         onEdit = { editingId = it; detailDialogId = null },
                         onToggleDelete = { sourceId -> toggleDeleteMark(state, sourceId) },
                         modifier = Modifier.fillMaxSize(),
@@ -1488,6 +1489,7 @@ private fun SourceRowItem(
 private fun DetailPanel(
     state: WorkflowState,
     sourceId: Int,
+    onDismiss: () -> Unit,
     onEdit: (Int) -> Unit,
     onToggleDelete: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -1505,13 +1507,16 @@ private fun DetailPanel(
         } else {
             val preview = state.preview?.get(source.id).takeIf { state.stage == WorkflowStage.ORGANIZE_REVIEW || state.stage == WorkflowStage.EXPORT }
             Column(Modifier.fillMaxSize()) {
-                Column(
-                    Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 18.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                Row(
+                    Modifier.fillMaxWidth().background(Color.White).padding(start = 18.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
+                    verticalAlignment = Alignment.Top,
                 ) {
-                    Text("SOURCE #${(source.id + 1).toString().padStart(3, '0')} · ${state.stage.label}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Primary)
-                    Text(preview?.name ?: source.doc.name.ifBlank { "（未命名）" }, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    Text(source.doc.url, fontSize = 11.sp, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("SOURCE #${(source.id + 1).toString().padStart(3, '0')} · ${state.stage.label}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Primary)
+                        Text(preview?.name ?: source.doc.name.ifBlank { "（未命名）" }, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        Text(source.doc.url, fontSize = 11.sp, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    }
+                    TextButton(onClick = onDismiss) { Text("×", fontSize = 20.sp, color = Muted) }
                 }
                 HorizontalDivider(color = Line)
                 Column(
@@ -1881,8 +1886,12 @@ private fun CompareGroupDialog(
     onDismiss: () -> Unit,
 ) {
     val candidates = group.sourceIds.mapNotNull { id -> state.sources.firstOrNull { it.id == id } }
-    var keepId by remember(group.number) { mutableStateOf(group.suggestedKeepId) }
-    var keepAll by remember(group.number) { mutableStateOf(false) }
+    var keepId by remember(group.number) {
+        mutableStateOf(candidates.firstOrNull { !it.deleteMarked }?.id ?: group.suggestedKeepId)
+    }
+    var keepAll by remember(group.number) {
+        mutableStateOf(candidates.isNotEmpty() && candidates.all { !it.deleteMarked })
+    }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -1989,22 +1998,6 @@ private fun CompareGroupDialog(
                                     DetailField("配置权重", source.doc.raw.get("weight")?.takeIf { it.isJsonPrimitive }?.asString ?: "—")
                                     DetailField("规则字段", "${source.doc.raw.size()} 个")
                                     DetailField("系统评分", String.format(java.util.Locale.ROOT, "%.2f", Deduper.keepScore(source.doc)))
-                                    Text("关键规则", fontSize = 10.sp, color = Muted, fontWeight = FontWeight.SemiBold)
-                                    compareFields.forEach { (key, label) ->
-                                        val value = rawString(source, key)
-                                        if (value.isNotBlank()) {
-                                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                                Text(label, fontSize = 9.sp, color = Muted)
-                                                Text(
-                                                    value,
-                                                    fontSize = 10.sp,
-                                                    color = BodyText,
-                                                    maxLines = 3,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                )
-                                            }
-                                        }
-                                    }
                                     HorizontalDivider(color = Line)
                                     Text(
                                         "系统建议：${if (recommended) "保留" else "删除"}",
