@@ -1,5 +1,8 @@
 package io.github.theeht.legadotidy.desktop.ui
 
+import com.google.gson.JsonParser
+import io.github.theeht.legadotidy.model.BookSourceDoc
+import io.github.theeht.legadotidy.organize.OrganizeRule
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -9,6 +12,8 @@ import java.io.File
 import java.nio.file.Path
 
 class WorkflowDecisionsTest {
+
+    private fun doc(json: String) = BookSourceDoc(JsonParser.parseString(json).asJsonObject)
 
     private data class Row(val id: Int, val markedForDeletion: Boolean)
 
@@ -72,6 +77,55 @@ class WorkflowDecisionsTest {
     @Test
     fun `有效导出目录会规范为绝对路径`() {
         assertTrue(resolveExportDirectory(".").getOrThrow().isAbsolute)
+    }
+
+    @Test
+    fun `只有明确勾选响应时间排序才允许重排预览`() {
+        assertEquals(false, usesOrganizerOutputOrder(setOf(OrganizeRule.REGROUP_BY_TYPE)))
+        assertEquals(false, usesOrganizerOutputOrder(setOf(OrganizeRule.CLEAN_DECORATIONS)))
+        assertEquals(true, usesOrganizerOutputOrder(setOf(OrganizeRule.SORT_BY_RESPONSE_TIME)))
+        assertEquals(
+            true,
+            usesOrganizerOutputOrder(setOf(OrganizeRule.REGROUP_BY_TYPE, OrganizeRule.SORT_BY_RESPONSE_TIME)),
+        )
+    }
+
+    @Test
+    fun `修改地址或类型会使旧校验结果失效而修改名称分组不会`() {
+        val original = doc("""{"bookSourceName":"原名","bookSourceUrl":"https://one.test","bookSourceType":0,"bookSourceGroup":"旧组"}""")
+        val renamed = doc("""{"bookSourceName":"新名","bookSourceUrl":"https://one.test","bookSourceType":0,"bookSourceGroup":"新组"}""")
+        val changedUrl = doc("""{"bookSourceName":"原名","bookSourceUrl":"https://two.test","bookSourceType":0,"bookSourceGroup":"旧组"}""")
+        val changedType = doc("""{"bookSourceName":"原名","bookSourceUrl":"https://one.test","bookSourceType":1,"bookSourceGroup":"旧组"}""")
+
+        assertFalse(probeInputsChanged(original, renamed))
+        assertTrue(probeInputsChanged(original, changedUrl))
+        assertTrue(probeInputsChanged(original, changedType))
+    }
+
+    @Test
+    fun `旧版启用字段编辑时同步写入新旧字段`() {
+        val raw = JsonParser.parseString(
+            """{"bookSourceName":"旧源","bookSourceUrl":"https://legacy.test","bookSourceEnabled":false}"""
+        ).asJsonObject
+
+        val legacyDoc = BookSourceDoc(raw)
+        assertFalse(isDocumentEnabled(legacyDoc))
+        setDocumentEnabled(raw, true)
+
+        assertTrue(raw.get("enabled").asBoolean)
+        assertTrue(raw.get("bookSourceEnabled").asBoolean)
+        assertTrue(isDocumentEnabled(BookSourceDoc(raw)))
+    }
+
+    @Test
+    fun `没有启用字段时默认启用，关闭后写入标准字段`() {
+        val raw = JsonParser.parseString("""{"bookSourceName":"源","bookSourceUrl":"https://example.test"}""").asJsonObject
+        assertTrue(isDocumentEnabled(BookSourceDoc(raw)))
+
+        setDocumentEnabled(raw, false)
+
+        assertFalse(raw.get("enabled").asBoolean)
+        assertFalse(isDocumentEnabled(BookSourceDoc(raw)))
     }
 
     @Test
