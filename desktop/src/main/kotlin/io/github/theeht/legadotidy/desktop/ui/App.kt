@@ -991,14 +991,14 @@ private fun WorkflowStageStrip(stage: WorkflowStage, modifier: Modifier = Modifi
                 ) {
                     Text(
                         if (completed) "✓" else "${index + 1}",
-                        fontSize = 9.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (completed || current) Color.White else Muted,
                     )
                 }
                 Text(
                     item.label,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = if (current) FontWeight.Bold else FontWeight.Normal,
                     color = if (current) Primary else if (completed) Ink else Muted,
                     maxLines = 1,
@@ -1051,7 +1051,7 @@ private fun OrganizeRulePanel(
 ) {
     Card(
         modifier.border(1.dp, SoftBlueBorder, RoundedCornerShape(9.dp)),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FBFF)),
+        colors = CardDefaults.cardColors(containerColor = SoftBlue),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
@@ -1061,7 +1061,7 @@ private fun OrganizeRulePanel(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("整理规则", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
                 Spacer(Modifier.width(7.dp))
-                Text("勾选项才执行", fontSize = 10.sp, color = Muted)
+                Text("勾选项才执行", fontSize = 11.sp, color = Muted)
             }
             FlowRow(
                 Modifier.fillMaxWidth(),
@@ -1328,7 +1328,7 @@ private fun SourceListPanel(
                                             "重复组 ${row.group.number} · ${row.group.kind.label}",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF3156A7),
+                                            color = PrimaryDeep,
                                         )
                                         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                                             Text(
@@ -1965,9 +1965,9 @@ private fun DetailValueCard(field: SourceDetailField, modifier: Modifier = Modif
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(field.label, Modifier.weight(1f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-            Text(if (field.configured) "已配置" else "未配置", fontSize = 10.sp, color = if (field.configured) Ok else Muted)
+            Text(if (field.configured) "已配置" else "未配置", fontSize = 11.sp, color = if (field.configured) Ok else Muted)
         }
-        Text(field.key, fontSize = 10.sp, color = Muted)
+        Text(field.key, fontSize = 11.sp, color = Muted)
         Text(field.value, fontSize = 11.sp, color = if (field.configured) BodyText else Muted, lineHeight = 15.sp)
     }
 }
