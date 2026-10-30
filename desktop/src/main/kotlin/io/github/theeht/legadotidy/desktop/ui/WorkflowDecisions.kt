@@ -47,6 +47,14 @@ internal fun shouldMarkForDeletionByDefault(status: ProbeStatus): Boolean =
         status == ProbeStatus.UNSUPPORTED ||
         status == ProbeStatus.PARSE_EMPTY
 
+/**
+ * Keep the exception/review bucket mutually exclusive with pending deletion.
+ * A manually restored delete mark makes the outcome visible for review again.
+ */
+internal fun shouldShowInExceptionReview(status: ProbeStatus?, deleteMarked: Boolean): Boolean =
+    !deleteMarked && status != null &&
+        status != ProbeStatus.OK && status != ProbeStatus.SKIPPED
+
 internal fun <T> resolveSelectedId(
     selectedId: Int?,
     items: List<T>,
@@ -100,6 +108,10 @@ internal fun nextSafeExportFileName(
  */
 internal fun usesOrganizerOutputOrder(rules: Set<OrganizeRule>): Boolean =
     OrganizeRule.SORT_BY_RESPONSE_TIME in rules
+
+/** Preserving an existing group is a no-op; only regrouping or manual edits need a JSON write. */
+internal fun shouldApplyGroups(rules: Set<OrganizeRule>, hasManualGroupEdits: Boolean): Boolean =
+    OrganizeRule.REGROUP_BY_TYPE in rules || hasManualGroupEdits
 
 /**
  * The probe engine checks a source using its URL and source type. Name, group and
