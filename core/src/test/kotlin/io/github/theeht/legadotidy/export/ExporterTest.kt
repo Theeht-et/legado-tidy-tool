@@ -48,4 +48,59 @@ class ExporterTest {
         assertEquals("原名字", parsed.get("bookSourceName").asString)
         assertTrue(parsed.get("bookSourceGroup") == null)
     }
+
+    @Test
+    fun `清理后允许将已有名称写为空且不凭空创建缺失名称字段`() {
+        val named = JsonParser.parseString(
+            """{"bookSourceName":"📚 ★","bookSourceUrl":"https://named.test"}"""
+        ).asJsonObject
+        val unnamed = JsonParser.parseString(
+            """{"bookSourceUrl":"https://unnamed.test"}"""
+        ).asJsonObject
+        val organized = listOf(
+            OrganizedSource(0, "", "", ProbeStatus.OK, 0),
+            OrganizedSource(1, "", "", ProbeStatus.OK, 0),
+        )
+
+        val built = Exporter.buildJson(
+            raws = listOf(named, unnamed),
+            organized = organized,
+            config = ExportConfig(
+                applyCleanNames = true,
+                applyGroupAndOrder = false,
+                applyGroups = false,
+                applyOrder = false,
+            ),
+        )
+
+        assertTrue(built[0].has("bookSourceName"))
+        assertEquals("", built[0].get("bookSourceName").asString)
+        assertTrue(!built[1].has("bookSourceName"))
+    }
+
+    @Test
+    fun `只改排序时保留原分组字段`(@TempDir dir: Path) {
+        val raw = JsonParser.parseString(
+            """{"bookSourceName":"原名字","bookSourceUrl":"https://a.com","bookSourceGroup":"原分组","customOrder":8}"""
+        ).asJsonObject
+        val organized = listOf(OrganizedSource(0, "原名字", "新分组", ProbeStatus.OK, 2))
+
+        Exporter.write(
+            listOf(raw),
+            organized,
+            dir,
+            "order-only.json",
+            ExportConfig(
+                applyCleanNames = false,
+                applyGroupAndOrder = true,
+                applyGroups = false,
+                applyOrder = true,
+            ),
+        )
+
+        val parsed = SourceIO.parse(Files.readString(dir.resolve("order-only.json"))).single()
+        assertEquals("原分组", parsed.get("bookSourceGroup").asString)
+        assertEquals(2, parsed.get("customOrder").asInt)
+    }
+
 }

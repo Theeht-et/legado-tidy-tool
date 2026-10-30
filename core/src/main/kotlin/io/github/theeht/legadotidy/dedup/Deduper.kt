@@ -1,27 +1,27 @@
 package io.github.theeht.legadotidy.dedup
 
 import io.github.theeht.legadotidy.model.BookSourceDoc
-import io.github.theeht.legadotidy.normalize.TidyText
 
-/** 去重强度，声明顺序即优先级（数字越小越强）。 */
+/** HTML 原型使用的 URL 完全重复分组。 */
 enum class DedupKind(val label: String) {
-    EXACT("完全重复"),
+    EXACT("相同 URL"),
     FINGERPRINT("规则指纹相同"),
     SIMILAR("规则高度相似"),
 }
 
+/**
+ * 保留流水线旧配置入口的兼容类型。
+ * URL-only 去重与 HTML 原型一致，不再使用相似度阈值或 shingle 候选参数。
+ */
 data class DedupConfig(
-    /** 相似层阈值。0.92 意味着「整段规则只有零星字符不同」才会被归为一组。 */
-    val similarityThreshold: Double = 0.92,
-    /** 候选对至少要共事的 3-gram 数，低于此值直接跳过精确比对。 */
-    val minSharedShingles: Int = 3,
-    /** 单个 shingle 超过这个文档数就视为噪声，不用于候选生成。 */
-    val maxShingleDocFreq: Int = 60,
+    @Deprecated("去重现在只按规范化 URL 分组") val similarityThreshold: Double = 0.92,
+    @Deprecated("去重现在只按规范化 URL 分组") val minSharedShingles: Int = 3,
+    @Deprecated("去重现在只按规范化 URL 分组") val maxShingleDocFreq: Int = 60,
 )
 
 data class DedupGroup(
     val kind: DedupKind,
-    /** 组内成员在输入列表里的下标，第一个是建议保留的那一个。 */
+    /** 组内成员在输入列表里的下标。 */
     val members: List<Int>,
     val keep: Int,
     val similarity: Double,
@@ -33,190 +33,108 @@ data class DedupReport(
     val groups: List<DedupGroup>,
     val total: Int,
 ) {
-    /** 去重后建议保留的源数目（每组留 1 个 + 未分组的全部）。 */
+    /** 每组建议保留一项，其余均为候选删除项。 */
     val keepCount: Int = total - groups.sumOf { it.size - 1 }
     val exactGroups: Int get() = groups.count { it.kind == DedupKind.EXACT }
-    val fingerprintGroups: Int get() = groups.count { it.kind == DedupKind.FINGERPRINT }
-    val similarGroups: Int get() = groups.count { it.kind == DedupKind.SIMILAR }
+    val fingerprintGroups: Int get() = 0
+    val similarGroups: Int get() = 0
 }
 
 /**
- * 三层去重。
+ * 去重规则与 HTML v3 原型保持一致：
+ * 1. 仅按规范化后的 bookSourceUrl 分组；
+ * 2. 不因规则字段相同或内容相似而把不同 URL 的书源误判为重复；
+ * 3. 组内按原型 sourceScore 选择默认保留项，平分时保持输入顺序。
  *
- * 1. 精确：`(规范化 URL, 规范化名称)` 相同；
- * 2. 指纹：行为字段哈希相同（同站马甲）；
- * 3. 相似：行为文本 3-gram Jaccard 达到阈值（用倒排索引出候选，避免 O(n²) 全量比较）。
- *
- * 始终只分组，不删源——是否采纳由用户决定。
+ * 本阶段只产生建议，不修改原始书源。
  */
 object Deduper {
 
+    private val URL_SCHEME = Regex("^https?://", RegexOption.IGNORE_CASE)
+
+    @Suppress("UNUSED_PARAMETER")
     fun run(sources: List<BookSourceDoc>, config: DedupConfig = DedupConfig()): DedupReport {
-        val n = sources.size
-        if (n <= 1) return DedupReport(emptyList(), n)
+        if (sources.size <= 1) return DedupReport(emptyList(), sources.size)
 
-        val uf = UnionFind(n)
-        val edges = ArrayList<Edge>(0)
-
-        // 1) 精确
-        val exactBuckets = HashMap<String, MutableList<Int>>(n * 2)
-        sources.forEachIndexed { i, s ->
-            val k = TidyText.key(s.name) + "\u0000" + TidyText.url(s.url)
-            exactBuckets.getOrPut(k) { ArrayList(2) }.add(i)
+        val buckets = LinkedHashMap<String, MutableList<Int>>()
+        sources.forEachIndexed { index, source ->
+            val key = canonicalSourceUrl(source.url)
+            if (key.isNotEmpty()) buckets.getOrPut(key) { ArrayList(2) }.add(index)
         }
-        for (bucket in exactBuckets.values) {
-            if (bucket.size < 2) continue
-            val keep = pickKeep(sources, bucket)
-            for (i in bucket) {
-                if (i == keep) continue
-                if (uf.union(keep, i)) edges.add(Edge(keep, i, DedupKind.EXACT, 1.0))
+
+        val groups = buckets.values
+            .asSequence()
+            .filter { it.size >= 2 }
+            .map { members ->
+                val keep = members.maxWithOrNull(
+                    compareBy<Int> { keepScore(sources[it]) }.thenBy { -it },
+                ) ?: members.first()
+                DedupGroup(
+                    kind = DedupKind.EXACT,
+                    members = members.toList(),
+                    keep = keep,
+                    similarity = 1.0,
+                )
             }
-        }
+            .toList()
 
-        // 2) 指纹
-        val byFingerprint = LinkedHashMap<String, MutableList<Int>>(n * 2)
-        sources.forEachIndexed { i, s ->
-            byFingerprint.getOrPut(BehaviorFingerprint.of(s)) { ArrayList(2) }.add(i)
-        }
-        for (bucket in byFingerprint.values) {
-            if (bucket.size < 2) continue
-            var root = bucket.first()
-            for (i in bucket) {
-                if (uf.find(i) == uf.find(root) && i == root) continue
-                if (uf.find(i) != uf.find(root)) {
-                    if (uf.union(root, i)) edges.add(Edge(root, i, DedupKind.FINGERPRINT, 1.0))
-                }
-            }
-        }
-
-        // 3) 相似：先算 shingle，再倒排出候选对
-        if (config.similarityThreshold < 1.0) {
-            val texts = sources.map { TidyText.ruleText(BehaviorFingerprint.canonical(it)) }
-            val shingles = texts.map { Shingles.of(it, Shingles.DEFAULT_N) }
-            val candidates = candidatePairs(shingles, config)
-            for ((i, j) in candidates) {
-                if (uf.find(i) == uf.find(j)) continue
-                if (!Shingles.lengthRatioPass(shingles[i], shingles[j], config.similarityThreshold)) continue
-                val sim = Shingles.jaccard(shingles[i], shingles[j])
-                if (sim >= config.similarityThreshold) {
-                    if (uf.union(i, j)) edges.add(Edge(i, j, DedupKind.SIMILAR, sim))
-                }
-            }
-        }
-
-        return buildReport(sources, uf, edges, config)
-    }
-
-    private fun buildReport(
-        sources: List<BookSourceDoc>,
-        uf: UnionFind,
-        edges: List<Edge>,
-        config: DedupConfig,
-    ): DedupReport {
-        val clusters = LinkedHashMap<Int, MutableList<Int>>()
-        for (i in sources.indices) clusters.getOrPut(uf.find(i)) { ArrayList(2) }.add(i)
-
-        val strongestKind = HashMap<Int, DedupKind>()
-        val strongestSim = HashMap<Int, Double>()
-        for (e in edges) {
-            val root = uf.find(e.a)
-            val cur = strongestKind[root]
-            if (cur == null || e.kind < cur) {
-                strongestKind[root] = e.kind
-                strongestSim[root] = e.similarity
-            } else if (e.kind == cur && e.similarity > (strongestSim[root] ?: 0.0)) {
-                strongestSim[root] = e.similarity
-            }
-        }
-
-        val groups = ArrayList<DedupGroup>()
-        for ((root, members) in clusters) {
-            if (members.size < 2) continue
-            val kind = strongestKind[root] ?: DedupKind.SIMILAR
-            val keep = pickKeep(sources, members)
-            groups.add(DedupGroup(kind, members, keep, strongestSim[root] ?: 1.0))
-        }
-        groups.sortWith(compareBy<DedupGroup> { it.kind }.thenByDescending { it.size })
         return DedupReport(groups, sources.size)
     }
 
-    /**
-     * 组内选保留：规则完整度高者优先，其次名称干净、URL 合法（https）、有搜索地址。
-     * 完全平等时取下标小的，保证结果稳定可复现。
-     */
-    fun pickKeep(sources: List<BookSourceDoc>, members: List<Int>): Int {
-        var best = members.first()
-        var bestScore = Int.MIN_VALUE
-        for (i in members) {
-            val s = sources[i]
-            var score = 0
-            score += s.ruleCompleteness * 10
-            if (s.canSearch) score += 30
-            if (s.url.startsWith("https://")) score += 5
-            if (s.enabled) score += 3
-            if (s.group.isNotEmpty()) score += 2
-            // 名字越「干净」越好：被括号/营销后缀污染的扣分
-            if (TidyText.key(s.name) == TidyText.key(TidyText.display(s.name)).lowercase()) score += 2
-            if (score > bestScore) {
-                bestScore = score
-                best = i
-            }
+    /** 与 HTML 原型 canonicalUrl 完全一致：去协议、www、查询、片段及尾斜杠。 */
+    fun canonicalSourceUrl(raw: String): String = raw.trim()
+        .lowercase()
+        .replace(URL_SCHEME, "")
+        .removePrefix("www.")
+        .substringBefore('?')
+        .substringBefore('#')
+        .trimEnd('/')
+
+    /** 与 HTML 原型 sourceScore 一致，用于组内默认保留推荐和对比面板显示。 */
+    fun keepScore(source: BookSourceDoc): Double {
+        val raw = source.raw
+        var score = 0.0
+        if (!explicitlyFalse(raw, "enabled") && !explicitlyFalse(raw, "bookSourceEnabled")) score += 10.0
+        if (firstTruthy(raw, "searchUrl", "searchUrlRule", "ruleSearch", "ruleSearchUrl")) score += 8.0
+        if (firstTruthy(raw, "exploreUrl", "exploreUrlRule", "bookSourceExploreUrl")) score += 4.0
+        if (firstTruthy(raw, "ruleBookInfo", "bookSourceInfoRule")) score += 2.0
+        if (firstTruthy(raw, "ruleBookContent", "bookSourceContentRule")) score += 2.0
+        if (firstTruthy(raw, "bookSourceComment")) score += 1.0
+        val weight = when {
+            jsTruthy(raw.get("weight")) -> rawNumber(raw, "weight") ?: Double.NaN
+            jsTruthy(raw.get("bookSourceWeight")) -> rawNumber(raw, "bookSourceWeight") ?: Double.NaN
+            else -> 0.0
         }
-        return best
+        score += weight * 0.1
+        score += raw.size() * 0.01
+        return score
     }
 
-    private fun candidatePairs(shingles: List<IntArray>, config: DedupConfig): Set<Pair<Int, Int>> {
-        val index = HashMap<Int, MutableList<Int>>(shingles.size * 8)
-        shingles.forEachIndexed { doc, arr ->
-            for (sh in arr) index.getOrPut(sh) { ArrayList(4) }.add(doc)
+    private fun firstTruthy(raw: com.google.gson.JsonObject, vararg keys: String): Boolean =
+        keys.any { key -> jsTruthy(raw.get(key)) }
+
+    private fun jsTruthy(value: com.google.gson.JsonElement?): Boolean {
+        if (value == null || value.isJsonNull) return false
+        if (value.isJsonObject || value.isJsonArray) return true
+        if (!value.isJsonPrimitive) return false
+        val primitive = value.asJsonPrimitive
+        return when {
+            primitive.isBoolean -> primitive.asBoolean
+            primitive.isNumber -> primitive.asDouble != 0.0 && !primitive.asDouble.isNaN()
+            primitive.isString -> primitive.asString.isNotEmpty()
+            else -> false
         }
-        val shared = HashMap<Long, Int>(shingles.size * 4)
-        val n = shingles.size.toLong()
-        for (docs in index.values) {
-            if (docs.size < 2 || docs.size > config.maxShingleDocFreq) continue
-            for (x in docs.indices) for (y in x + 1 until docs.size) {
-                val i = docs[x].toLong()
-                val j = docs[y].toLong()
-                val key = if (i < j) i * n + j else j * n + i
-                shared[key] = (shared[key] ?: 0) + 1
-            }
-        }
-        val out = HashSet<Pair<Int, Int>>()
-        for ((key, count) in shared) {
-            if (count < config.minSharedShingles) continue
-            val i = (key / n).toInt()
-            val j = (key % n).toInt()
-            out.add(i to j)
-        }
-        return out
     }
 
-    private data class Edge(val a: Int, val b: Int, val kind: DedupKind, val similarity: Double)
-}
-
-internal class UnionFind(size: Int) {
-    private val parent = IntArray(size) { it }
-    private val rank = ByteArray(size)
-
-    fun find(x: Int): Int {
-        var r = x
-        while (parent[r] != r) r = parent[r]
-        var c = x
-        while (parent[c] != c) {
-            val next = parent[c]
-            parent[c] = r
-            c = next
-        }
-        return r
+    /** HTML checks strict boolean false; strings such as "false" are not false. */
+    private fun explicitlyFalse(raw: com.google.gson.JsonObject, key: String): Boolean {
+        val value = raw.get(key) ?: return false
+        return value.isJsonPrimitive && value.asJsonPrimitive.isBoolean && !value.asBoolean
     }
 
-    fun union(a: Int, b: Int): Boolean {
-        var ra = find(a)
-        var rb = find(b)
-        if (ra == rb) return false
-        if (rank[ra] < rank[rb]) { val t = ra; ra = rb; rb = t }
-        parent[rb] = ra
-        if (rank[ra] == rank[rb]) rank[ra] = (rank[ra] + 1).toByte()
-        return true
+    private fun rawNumber(raw: com.google.gson.JsonObject, key: String): Double? {
+        val value = raw.get(key) ?: return null
+        if (value.isJsonNull || !value.isJsonPrimitive) return null
+        return runCatching { value.asDouble }.getOrNull()
     }
 }

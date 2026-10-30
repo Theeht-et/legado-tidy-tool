@@ -49,4 +49,42 @@ class TidyTextTest {
         assertEquals("a.com", TidyText.host("https://a.com:8080/x?y=1"))
         assertFalse(TidyText.host("").isNotEmpty())
     }
+
+    @Test
+    fun `广告清理与 v3 原型的前后缀规则一致`() {
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源（官方推荐） - 广告"))
+        assertEquals("站点", TidyText.removeAdvertisingWords("站点 - 福利"))
+        assertEquals("书源", TidyText.removeAdvertisingWords("推荐书源"))
+        assertEquals("小说", TidyText.removeAdvertisingWords("小说推荐"))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源 VIP"))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("  星河书源 - 福利  "))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("  推荐 星河书源  "))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源 AD"))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源（广告推广·官方推荐）"))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源 [VIP会员专享]"))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("VIP 星河书源 官方推荐"))
+        assertEquals("", TidyText.removeAdvertisingWords("【VIP广告】"))
+    }
+
+    @Test
+    fun `广告清理能够剥离超过四层的连续宣传后缀`() {
+        assertEquals(
+            "星河书源",
+            TidyText.removeAdvertisingWords("星河书源 - 推荐 - 精品 - 广告 - 福利 - 免费"),
+        )
+    }
+
+    @Test
+    fun `装饰清理不截断长名称且不会回退已清空的图标名`() {
+        val longName = "星河小说书源".repeat(12)
+        assertEquals(longName, TidyText.cleanDecorations("📚 $longName ✨"))
+        assertEquals("", TidyText.cleanDecorations("📚 ★ ✨"))
+    }
+
+    @Test
+    fun `名称标点整理遵循原型的重复标点规则`() {
+        assertEquals("星河书源 || 官方", TidyText.normalizeNamePunctuation(" 星河书源  ||   官方 "))
+        assertEquals("星河书源 官方", TidyText.normalizeNamePunctuation("星河书源——官方"))
+    }
+
 }

@@ -7,6 +7,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# 同一 PR / 分支有新提交时，取消旧运行，只保留最新提交的构建。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 # contents: write 只为了让失败现场能推到 ci-artifacts 分支（见最后一步），
 # 正常构建不需要写权限。
 permissions:
@@ -46,6 +51,7 @@ jobs:
         run: |
           gradle :core:test --console=plain
           gradle :engine:test --console=plain
+          gradle :desktop:test --console=plain
 
       - name: 编译全模块
         run: gradle build -x test --console=plain
@@ -115,12 +121,20 @@ jobs:
       - name: 组装便携目录
         run: gradle :desktop:portable --console=plain
 
-      - name: 打包
+      - name: 验证便携 JVM 启动与环境隔离
         shell: pwsh
-        run: Compress-Archive -Path desktop/build/portable/legado-tidy/* -DestinationPath legado-tidy-windows-x64.zip
+        run: |
+          $env:_JAVA_OPTIONS = "-Xbootclasspath/p:invalid-test.jar"
+          $env:JAVA_TOOL_OPTIONS = "-Xbootclasspath/p:invalid-test.jar"
+          $env:JDK_JAVA_OPTIONS = "-Xbootclasspath/p:invalid-test.jar"
+          & cmd.exe /c 'call "desktop\build\portable\legado-tidy\legado-tidy.bat" --runtime-check'
+          if ($LASTEXITCODE -ne 0) {
+            throw "便携 JRE 启动失败，或启动器未隔离外部 JVM 参数。"
+          }
 
+      # 直接上传便携目录；GitHub Artifact 本身会生成下载 ZIP，避免再嵌套一层 ZIP。
       - uses: actions/upload-artifact@v4
         with:
           name: legado-tidy-windows-x64
-          path: legado-tidy-windows-x64.zip
+          path: desktop/build/portable/legado-tidy/
           retention-days: 7

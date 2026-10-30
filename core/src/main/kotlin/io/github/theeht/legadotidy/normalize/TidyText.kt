@@ -4,23 +4,33 @@ package io.github.theeht.legadotidy.normalize
  * 文本归一化。
  *
  * 这里有三种口径，用途不同，不要混用：
- * - [key]   ：用于「两个书源是不是同一个」的 **匹配键**，会把营销后缀、括号注释、emoji 都去掉；
- * - [display]：用于导出的 **显示名**，只做保守清洗，没有归一化；
+ * - [key]   ：用于「两个书源是不是同一个」的匹配键，会把营销后缀、括号注释、emoji 都去掉；
+ * - [display]：传统流水线使用的显示名清洗；
  * - [ruleText]：用于规则指纹/相似度，去掉所有空白与不可见字符。
  */
 object TidyText {
 
-    /**
-     * emoji 走 Unicode 类别，而不是手写代理对区间：Java 的 regex 按码点匹配，
-     * `[\uD800-\uDBFF][\uDC00-\uDFFF]` 这种写法永远匹配不到——它只认「孤立代理」。
-     * 这类 bug 编译期看不出来，只有拿真数据跑才会暴露。
-     */
     private val EMOJI = Regex("[\\p{So}\\p{Sk}\\p{Cs}\\uFE0F\\u200D\\u20E3]")
     private val ZERO_WIDTH = Regex("[\\u200B-\\u200F\\uFEFF]")
     private val WHITESPACE = Regex("[\\s\\u00A0\\u3000]+")
     private val BRACKETED = Regex("[（(【\\[][^）)】\\]]*[）)】\\]]")
     private val TRAILING_SEP = Regex("\\s*[-_|｜·・—–]\\s*[^-_|｜·・—–]{1,12}$")
     private val REPEATED_WS = Regex("\\s{2,}")
+    private val AD_TERMS = "免广告|广告推广|官方推荐|精品源|高速源|优质源|稳定源|推荐|精品|高速|优质|稳定|广告|VIP|福利|会员专享|免费"
+    private val AD_BRACKETED = Regex(
+        "[【［\\[（(][^】］\\]）)]*(?:$AD_TERMS)[^】］\\]）)]*[】］\\]）)]",
+        RegexOption.IGNORE_CASE,
+    )
+    private val AD_PREFIX = Regex("^(?:$AD_TERMS)[：:_ -]*", RegexOption.IGNORE_CASE)
+    private val AD_SUFFIX = Regex("[：:_ -]*(?:$AD_TERMS)$", RegexOption.IGNORE_CASE)
+    private val AD_STANDALONE = Regex("\\b(?:VIP|AD|ADS)\\b", RegexOption.IGNORE_CASE)
+    private val DECORATIVE_SYMBOLS = Regex("[★☆◆◇■□●○✦✧✪✿❖※♛♚♔♕♡♥❤⚡🔥✨🌟☀️☘️]+")
+    private val DECORATION_PREFIX = Regex("^[\\s【［\\[（(「『《〈<>|｜·•!！:：_=~～—–-]+")
+    private val DECORATION_SUFFIX = Regex("[\\s】］\\]）)」』》〉<>|｜·•!！:：_=~～—–-]+$")
+    private val REPEATED_NAME_PUNCTUATION = Regex("[!！。．·•]{2,}")
+    private val REPEATED_DASHES = Regex("[_~～—–-]{2,}")
+    private val EMPTY_BRACKETS = Regex("[【［\\[（(「『]+\\s*[】］\\]）)」』]+")
+    private val EDGE_NAME_PUNCTUATION = Regex("^[\\s,，。:：;；|｜]+|[\\s,，。:：;；|｜]+$")
 
     /** 全角 → 半角（仅 ASCII 区 + 全角空格）。 */
     fun halfWidth(s: String): String {
@@ -48,13 +58,54 @@ object TidyText {
         return s.lowercase()
     }
 
-    /** 显示名：去首尾空白、去零宽与 emoji 尾巴、限长。不做语义裁剪。 */
+    /** 显示名：去首尾空白、去零宽与 emoji、限长。不做语义裁剪。 */
     fun display(raw: String, maxLength: Int = 40): String {
         var s = ZERO_WIDTH.replace(raw, "")
         s = REPEATED_WS.replace(s.trim(), " ")
         s = EMOJI.replace(s, "").trim()
         s = s.trim(' ', '-', '|', '·', '_')
         if (s.length > maxLength) s = s.take(maxLength).trim()
+        return s.ifEmpty { raw.trim() }
+    }
+
+    /** 与 v3 HTML 原型一致地清理装饰字符；不截断名称，避免丢失有效站点名。 */
+    fun cleanDecorations(raw: String): String {
+        var s = ZERO_WIDTH.replace(raw, "")
+        s = EMOJI.replace(s, "")
+        s = DECORATIVE_SYMBOLS.replace(s, "")
+        s = DECORATION_PREFIX.replace(s, "")
+        s = DECORATION_SUFFIX.replace(s, "")
+        s = REPEATED_WS.replace(s, " ")
+        return s.trim()
+    }
+
+    /** 按 v3 HTML 原型清理宣传词；不匹配普通主体文字中的相同子串。 */
+    fun removeAdvertisingWords(raw: String): String {
+        // Trim the edges before matching Chinese prefixes/suffixes; internal spacing is preserved.
+        var s = ZERO_WIDTH.replace(raw, "").trim()
+        // A bracketed advertising annotation is removed as one unit, including both brackets.
+        while (true) {
+            val previous = s
+            s = AD_BRACKETED.replace(s, " ")
+            s = AD_STANDALONE.replace(s, " ")
+            s = AD_PREFIX.replace(s, "")
+            s = AD_SUFFIX.replace(s, "")
+            if (s == previous) break
+        }
+        s = EMPTY_BRACKETS.replace(s, " ")
+        s = WHITESPACE.replace(s, " ")
+        s = EDGE_NAME_PUNCTUATION.replace(s, "")
+        return s.trim(' ', '-', '_', '|', '｜', '·', '・', '—', '–', ':', '：')
+    }
+
+    /** 按 v3 HTML 原型规范重复标点与空格，不改 URL 或书源规则。 */
+    fun normalizeNamePunctuation(raw: String): String {
+        var s = ZERO_WIDTH.replace(raw, "")
+        s = REPEATED_NAME_PUNCTUATION.replace(s, "")
+        s = REPEATED_DASHES.replace(s, " ")
+        s = EMPTY_BRACKETS.replace(s, "")
+        s = WHITESPACE.replace(s, " ")
+        s = EDGE_NAME_PUNCTUATION.replace(s, "").trim()
         return s.ifEmpty { raw.trim() }
     }
 

@@ -1,7 +1,9 @@
 package io.github.theeht.legadotidy.desktop
 
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
 import io.github.theeht.legadotidy.desktop.ui.TidyApp
 import kotlin.system.exitProcess
 
@@ -19,7 +21,13 @@ fun main(args: Array<String>) {
         exitProcess(runCli(args))
     }
     application {
-        Window(onCloseRequest = ::exitApplication, title = "书源整理") {
+        // 初次启动直接使用显示器可用工作区，充分利用 2K/高分辨率屏幕；
+        // 用户仍可通过系统窗口按钮还原、调整大小。
+        Window(
+            onCloseRequest = ::exitApplication,
+            state = rememberWindowState(placement = WindowPlacement.Maximized),
+            title = "书源整理",
+        ) {
             TidyApp()
         }
     }
