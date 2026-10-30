@@ -69,11 +69,11 @@ object Organizer {
                 TidyText.display(doc.name, config.maxNameLength)
             } else {
                 var name = doc.name
-                if (OrganizeRule.CLEAN_DECORATIONS in rules) {
-                    name = TidyText.display(name, config.maxNameLength)
-                }
                 if (OrganizeRule.REMOVE_ADVERTISING_WORDS in rules) {
                     name = TidyText.removeAdvertisingWords(name)
+                }
+                if (OrganizeRule.CLEAN_DECORATIONS in rules) {
+                    name = TidyText.cleanDecorations(name)
                 }
                 if (OrganizeRule.NORMALIZE_PUNCTUATION in rules) {
                     name = TidyText.normalizeNamePunctuation(name)
