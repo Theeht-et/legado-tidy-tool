@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -1923,17 +1924,17 @@ private fun CompareGroupDialog(
                     verticalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
                     Text("比较与 HTML 原型一致：核对 URL、类型、分组、启用状态、权重和规则字段数，再选择保留项。", fontSize = 11.sp, color = Muted)
-                    Row(
-                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    FlowRow(
+                        Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.Top,
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         candidates.forEach { source ->
                             val recommended = source.id == group.suggestedKeepId
                             val proposedKeep = keepAll || source.id == keepId
                             val isPreferred = source.id == keepId && !keepAll
                             Card(
-                                Modifier.width(300.dp).border(
+                                Modifier.weight(1f).widthIn(min = 230.dp).border(
                                     1.dp,
                                     if (isPreferred) Color(0xFFB8D9CB) else Line,
                                     RoundedCornerShape(11.dp),
