@@ -4,6 +4,7 @@ import com.google.gson.JsonObject
 import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.model.SourceField
 import io.github.theeht.legadotidy.organize.OrganizeRule
+import io.github.theeht.legadotidy.probe.ProbeStatus
 import java.io.File
 import java.nio.file.Path
 
@@ -39,6 +40,12 @@ internal fun <T> planMarkedDeletions(
         allItemsMarked = false,
     )
 }
+
+/** Probe outcomes that should enter the pending-delete bucket by default. */
+internal fun shouldMarkForDeletionByDefault(status: ProbeStatus): Boolean =
+    status == ProbeStatus.NO_SEARCH_URL ||
+        status == ProbeStatus.UNSUPPORTED ||
+        status == ProbeStatus.PARSE_EMPTY
 
 internal fun <T> resolveSelectedId(
     selectedId: Int?,
