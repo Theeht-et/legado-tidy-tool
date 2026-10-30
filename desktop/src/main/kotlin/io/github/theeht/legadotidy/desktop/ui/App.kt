@@ -43,6 +43,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -129,9 +130,18 @@ private val SoftAmber = Color(0xFFFFF3DC)
 private val SoftRed = Color(0xFFFFEEEE)
 private val SoftNeutral = Color(0xFFF5F7FA)
 private val SoftSlate = Color(0xFFEDF1F6)
-private val FooterSurface = Color(0xFF16263D)
-private val FooterButton = Color(0xFF263B59)
-private val FooterPrimary = Color(0xFF315FBE)
+private val FooterPrimary = Primary
+
+private object UiTypography {
+    val caption = 12.sp
+    val label = 13.sp
+    val body = 14.sp
+    val emphasis = 15.sp
+    val sectionTitle = 17.sp
+    val brandTitle = 18.sp
+    val metric = 20.sp
+    val pageTitle = 22.sp
+}
 
 private val LightColors = lightColorScheme(
     primary = Primary,
@@ -689,7 +699,14 @@ fun TidyApp() {
             letterSpacing = 0.sp,
         ),
     ) {
-    MaterialTheme(colorScheme = LightColors) {
+    MaterialTheme(
+        colorScheme = LightColors,
+        shapes = Shapes(
+            small = RoundedCornerShape(6.dp),
+            medium = RoundedCornerShape(8.dp),
+            large = RoundedCornerShape(12.dp),
+        ),
+    ) {
         Surface(Modifier.fillMaxSize(), color = Canvas) {
             BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                 val layout = desktopLayoutSpec(maxWidth, maxHeight)
@@ -702,6 +719,7 @@ fun TidyApp() {
                     ),
                 ) {
                 TopBar(state, onImport = ::importFile)
+                WorkflowStageStrip(state.stage, Modifier.padding(top = 4.dp, bottom = 4.dp))
                 Column(
                     Modifier.weight(1f).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -799,7 +817,7 @@ fun TidyApp() {
             ) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(0.96f).widthIn(max = 1180.dp).heightIn(min = 560.dp, max = 920.dp),
-                    shape = RoundedCornerShape(15.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = Color.White,
                     shadowElevation = 24.dp,
                 ) {
@@ -917,19 +935,19 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(11.dp),
         ) {
             Box(
-                Modifier.size(32.dp).clip(RoundedCornerShape(10.dp))
+                Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
                     .background(Brush.linearGradient(listOf(Primary, PrimaryDeep))),
                 contentAlignment = Alignment.Center,
             ) {
                 Text("书", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             }
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text("书源整理工具", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
-                Text("Legado Tidy Tool · 分阶段审核", fontSize = 11.sp, color = Muted)
+                Text("书源整理工具", fontSize = UiTypography.brandTitle, fontWeight = FontWeight.Bold, color = Ink)
+                Text("Legado Tidy Tool · 分阶段审核", fontSize = UiTypography.caption, color = Muted)
             }
         }
         Row(
-            Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(10.dp))
+            Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(8.dp))
                 .background(Color.White, RoundedCornerShape(8.dp)).padding(horizontal = 9.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -944,7 +962,7 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
                         WorkflowStage.EXPORT -> "待导出"
                         else -> "处理中"
                     },
-                    fontSize = 13.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    fontSize = UiTypography.caption, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -971,42 +989,52 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
 @Composable
 private fun WorkflowStageStrip(stage: WorkflowStage, modifier: Modifier = Modifier) {
     Row(
-        modifier,
+        modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.White)
+            .border(1.dp, Line, RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         WorkflowStage.values().forEachIndexed { index, item ->
             val completed = index < stage.ordinal
             val current = index == stage.ordinal
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Box(
-                    Modifier.size(16.dp)
+                    Modifier.size(18.dp)
                         .clip(RoundedCornerShape(50))
-                        .background(if (completed || current) Primary else SoftSlate),
+                        .background(
+                            when {
+                                current -> Primary
+                                completed -> SoftBlue
+                                else -> SoftSlate
+                            },
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         if (completed) "✓" else "${index + 1}",
-                        fontSize = 11.sp,
+                        fontSize = UiTypography.caption,
                         fontWeight = FontWeight.Bold,
-                        color = if (completed || current) Color.White else Muted,
+                        color = if (current) Color.White else if (completed) Primary else Muted,
                     )
                 }
                 Text(
                     item.label,
-                    fontSize = 11.sp,
-                    fontWeight = if (current) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = UiTypography.label,
+                    fontWeight = if (current) FontWeight.Bold else FontWeight.Medium,
                     color = if (current) Primary else if (completed) Ink else Muted,
                     maxLines = 1,
                 )
             }
             if (index < WorkflowStage.values().lastIndex) {
                 Box(
-                    Modifier.width(10.dp).height(1.dp)
-                        .background(if (completed) Primary else Line),
+                    Modifier.weight(1f).height(1.dp)
+                        .background(if (completed) SoftBlueBorder else Line),
                 )
             }
         }
@@ -1027,7 +1055,7 @@ private fun KpiRow(state: WorkflowState) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         values.forEach { (label, value, hint) ->
             Card(
-                Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(10.dp)),
+                Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(8.dp)),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
             ) {
@@ -1049,7 +1077,7 @@ private fun OrganizeRulePanel(
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier.border(1.dp, SoftBlueBorder, RoundedCornerShape(9.dp)),
+        modifier.border(1.dp, SoftBlueBorder, RoundedCornerShape(8.dp)),
         colors = CardDefaults.cardColors(containerColor = SoftBlue),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
@@ -1083,8 +1111,8 @@ private fun OrganizeRulePanel(
                     onRuleChange,
                 )
                 Row(
-                    Modifier.clip(RoundedCornerShape(7.dp))
-                        .border(1.dp, Line, RoundedCornerShape(7.dp))
+                    Modifier.clip(RoundedCornerShape(6.dp))
+                        .border(1.dp, Line, RoundedCornerShape(6.dp))
                         .background(Color.White)
                         .padding(horizontal = 7.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1128,7 +1156,7 @@ private fun RuleCheckMark(checked: Boolean) {
 @Composable
 private fun RuleRadio(label: String, selected: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.clip(RoundedCornerShape(7.dp)).clickable(onClick = onClick).padding(vertical = 2.dp),
+        Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onClick).padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -1168,8 +1196,8 @@ private fun CompactRuleChip(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier.clip(RoundedCornerShape(7.dp))
-            .border(1.dp, if (checked) SoftBlueBorder else Line, RoundedCornerShape(7.dp))
+        modifier.clip(RoundedCornerShape(6.dp))
+            .border(1.dp, if (checked) SoftBlueBorder else Line, RoundedCornerShape(6.dp))
             .background(if (checked) SoftBlue else Color.White)
             .clickable(onClick = onClick)
             .padding(horizontal = 7.dp, vertical = 4.dp),
@@ -1193,7 +1221,7 @@ private fun SourceListPanel(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
-    Card(modifier.border(1.dp, Line, RoundedCornerShape(14.dp)), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+    Card(modifier.border(1.dp, Line, RoundedCornerShape(12.dp)), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 11.dp, vertical = 4.dp),
@@ -1251,9 +1279,9 @@ private fun SourceListPanel(
                     val count = sourceFilterCount(state, label)
                     val selected = state.sourceFilter == label
                     Box(
-                        Modifier.clip(RoundedCornerShape(7.dp))
+                        Modifier.clip(RoundedCornerShape(6.dp))
                             .background(if (selected) SoftBlue else Color.Transparent)
-                            .border(1.dp, if (selected) SoftBlueBorder else Color.Transparent, RoundedCornerShape(7.dp))
+                            .border(1.dp, if (selected) SoftBlueBorder else Color.Transparent, RoundedCornerShape(6.dp))
                             .clickable { state.sourceFilter = label }
                             .padding(horizontal = 7.dp, vertical = 3.dp),
                         contentAlignment = Alignment.Center,
@@ -1386,8 +1414,8 @@ private fun TableHeader() {
 @Composable
 private fun TableActionButton(label: String, onClick: () -> Unit, enabled: Boolean = true) {
     Box(
-        Modifier.clip(RoundedCornerShape(7.dp))
-            .border(1.dp, Line, RoundedCornerShape(7.dp))
+        Modifier.clip(RoundedCornerShape(6.dp))
+            .border(1.dp, Line, RoundedCornerShape(6.dp))
             .background(Color.White)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 5.dp),
@@ -1709,7 +1737,7 @@ private fun DetailPanel(
 ) {
     val source = state.sources.firstOrNull { it.id == sourceId }
     Card(
-        modifier.border(1.dp, Line, RoundedCornerShape(14.dp)),
+        modifier.border(1.dp, Line, RoundedCornerShape(12.dp)),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
@@ -1879,7 +1907,7 @@ private fun DetailOverviewContent(source: WorkflowSource, preview: PreviewSource
             verticalAlignment = Alignment.Top,
         ) {
             Column(
-                Modifier.weight(1f).clip(RoundedCornerShape(9.dp)).background(SoftRed).padding(11.dp),
+                Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(SoftRed).padding(11.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Text("修改前", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Bad)
@@ -1887,7 +1915,7 @@ private fun DetailOverviewContent(source: WorkflowSource, preview: PreviewSource
                 Text(source.doc.group.ifBlank { "未分组" }, fontSize = 11.sp, color = Muted)
             }
             Column(
-                Modifier.weight(1f).clip(RoundedCornerShape(9.dp)).background(SoftGreen).padding(11.dp),
+                Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(SoftGreen).padding(11.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Text("预览结果", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ok)
@@ -1909,8 +1937,8 @@ private fun DetailSectionsContent(
     }
     sections.forEach { section ->
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                .border(1.dp, Line, RoundedCornerShape(10.dp))
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                .border(1.dp, Line, RoundedCornerShape(8.dp))
                 .background(Color.White).padding(11.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -1999,19 +2027,17 @@ private fun BottomActions(
     onCopyImportLink: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(top = 5.dp)
-            .clip(RoundedCornerShape(9.dp))
+        Modifier.fillMaxWidth().padding(top = 4.dp)
+            .clip(RoundedCornerShape(8.dp))
             .background(Color.White)
-            .border(1.dp, Line, RoundedCornerShape(9.dp))
-            .padding(horizontal = 9.dp, vertical = 4.dp),
+            .border(1.dp, Line, RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        WorkflowStageStrip(state.stage, Modifier.weight(1f))
-        Box(Modifier.width(1.dp).height(25.dp).background(Line))
         Row(
+            Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
         ) {
             when (state.stage) {
                 WorkflowStage.IMPORT -> {
@@ -2119,7 +2145,7 @@ private fun BottomActions(
 private fun ImportInfoDialog(state: WorkflowState, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         containerColor = Color.White,
         titleContentColor = Ink,
         textContentColor = BodyText,
@@ -2142,7 +2168,7 @@ private fun ImportInfoDialog(state: WorkflowState, onDismiss: () -> Unit) {
 private fun SettingsDialog(state: WorkflowState, onDismiss: () -> Unit, onChooseFolder: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         containerColor = Color.White,
         titleContentColor = Ink,
         textContentColor = BodyText,
@@ -2217,7 +2243,7 @@ private fun ReportDialog(state: WorkflowState, onDismiss: () -> Unit) {
         .entries.sortedBy { it.key.severity }
     AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         containerColor = Color.White,
         titleContentColor = Ink,
         textContentColor = BodyText,
@@ -2288,7 +2314,7 @@ private fun CompareGroupDialog(
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 1080.dp).heightIn(max = 760.dp),
-            shape = RoundedCornerShape(15.dp),
+            shape = RoundedCornerShape(12.dp),
             color = Color.White,
             shadowElevation = 24.dp,
         ) {
@@ -2326,9 +2352,9 @@ private fun CompareGroupDialog(
                                 Modifier.weight(1f).widthIn(min = 230.dp).border(
                                     1.dp,
                                     if (isPreferred) SoftGreenBorder else Line,
-                                    RoundedCornerShape(11.dp),
+                                    RoundedCornerShape(8.dp),
                                 ),
-                                shape = RoundedCornerShape(11.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 colors = CardDefaults.cardColors(
                                     containerColor = when {
                                         isPreferred -> SoftGreen
@@ -2453,7 +2479,7 @@ private fun EditSourceDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         containerColor = Color.White,
         titleContentColor = Ink,
         textContentColor = BodyText,
