@@ -81,7 +81,8 @@ object TidyText {
 
     /** 按 v3 HTML 原型清理宣传词；不匹配普通主体文字中的相同子串。 */
     fun removeAdvertisingWords(raw: String): String {
-        var s = ZERO_WIDTH.replace(raw, "")
+        // Trim the edges before matching Chinese prefixes/suffixes; internal spacing is preserved.
+        var s = ZERO_WIDTH.replace(raw, "").trim()
         // A bracketed advertising annotation is removed as one unit, including both brackets.
         while (true) {
             val previous = s
