@@ -731,8 +731,8 @@ fun TidyApp() {
                                     state.notice = "整理规则已变化，请重新生成预览。"
                                 }
                             },
-                            modifier = Modifier.weight(1f).fillMaxWidth()
-                                .widthIn(max = 1600.dp).align(Alignment.CenterHorizontally),
+                            modifier = Modifier.weight(1f).widthIn(max = 1600.dp)
+                                .fillMaxWidth().align(Alignment.CenterHorizontally),
                         )
                 }
                 BottomActions(
