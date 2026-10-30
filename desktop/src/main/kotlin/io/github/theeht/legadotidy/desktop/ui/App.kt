@@ -1822,7 +1822,7 @@ private fun DetailOverviewContent(source: WorkflowSource, preview: PreviewSource
     ) {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(
-                if (source.deleteMarked) "当前标记：待删除" else "当前建议：\${source.suggestion}",
+                if (source.deleteMarked) "当前标记：待删除" else "当前建议：${source.suggestion}",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = if (source.deleteMarked) Bad else Ink,
@@ -1898,7 +1898,7 @@ private fun DetailSectionsContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(section.title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
-                SmallChip("\${section.fields.size} 项", SoftNeutral, Muted)
+                SmallChip("${section.fields.size} 项", SoftNeutral, Muted)
             }
             Text(section.description, fontSize = 10.sp, color = Muted)
             section.fields.chunked(2).forEach { pair ->
