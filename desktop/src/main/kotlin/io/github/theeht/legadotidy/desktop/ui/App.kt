@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -137,6 +138,53 @@ private val LightColors = lightColorScheme(
     outline = Line,
     outlineVariant = Line,
 )
+
+/**
+ * 响应当前窗口的可用 dp 尺寸。Compose 的 dp/sp 已经处理 Windows DPI 缩放；
+ * 这里仅调整内容最大宽度、栏宽和留白，避免在 2K 屏上把 UI 再次按物理像素放大。
+ */
+internal data class DesktopLayoutSpec(
+    val maxContentWidth: Dp,
+    val horizontalPadding: Dp,
+    val topPadding: Dp,
+    val bottomPadding: Dp,
+    val panelSpacing: Dp,
+    val detailPanelWidth: Dp,
+)
+
+internal fun desktopLayoutSpec(availableWidth: Dp, availableHeight: Dp): DesktopLayoutSpec {
+    val wide = when {
+        availableWidth >= 2400.dp -> DesktopLayoutSpec(
+            maxContentWidth = 2400.dp,
+            horizontalPadding = 40.dp,
+            topPadding = 28.dp,
+            bottomPadding = 32.dp,
+            panelSpacing = 20.dp,
+            detailPanelWidth = 440.dp,
+        )
+        availableWidth >= 1900.dp -> DesktopLayoutSpec(
+            maxContentWidth = 2200.dp,
+            horizontalPadding = 32.dp,
+            topPadding = 24.dp,
+            bottomPadding = 28.dp,
+            panelSpacing = 18.dp,
+            detailPanelWidth = 400.dp,
+        )
+        else -> DesktopLayoutSpec(
+            maxContentWidth = 1720.dp,
+            horizontalPadding = 26.dp,
+            topPadding = 22.dp,
+            bottomPadding = 26.dp,
+            panelSpacing = 16.dp,
+            detailPanelWidth = 350.dp,
+        )
+    }
+    return when {
+        availableHeight < 820.dp -> wide.copy(topPadding = 12.dp, bottomPadding = 16.dp)
+        availableHeight < 1100.dp -> wide.copy(topPadding = minOf(wide.topPadding, 22.dp), bottomPadding = minOf(wide.bottomPadding, 24.dp))
+        else -> wide
+    }
+}
 
 private enum class WorkflowStage(val label: String, val help: String) {
     IMPORT("导入书源", "文件与数据"),
@@ -638,9 +686,15 @@ fun TidyApp() {
 
     MaterialTheme(colorScheme = LightColors) {
         Surface(Modifier.fillMaxSize(), color = Canvas) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                val layout = desktopLayoutSpec(maxWidth, maxHeight)
                 Column(
-                    Modifier.widthIn(max = 1720.dp).fillMaxWidth().fillMaxHeight().padding(start = 26.dp, end = 26.dp, top = 22.dp, bottom = 26.dp),
+                    Modifier.widthIn(max = layout.maxContentWidth).fillMaxWidth().fillMaxHeight().padding(
+                        start = layout.horizontalPadding,
+                        end = layout.horizontalPadding,
+                        top = layout.topPadding,
+                        bottom = layout.bottomPadding,
+                    ),
                 ) {
                 TopBar(state, onImport = ::importFile)
                 Column(
@@ -668,7 +722,7 @@ fun TidyApp() {
                     }
                     Row(
                         Modifier.weight(1f).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(layout.panelSpacing),
                     ) {
                         SourceListPanel(
                             state = state,
@@ -722,7 +776,7 @@ fun TidyApp() {
                             state = state,
                             onEdit = { editingId = it },
                             onToggleDelete = { id -> toggleDeleteMark(state, id) },
-                            modifier = Modifier.width(350.dp).fillMaxHeight(),
+                            modifier = Modifier.width(layout.detailPanelWidth).fillMaxHeight(),
                         )
                     }
                 }
