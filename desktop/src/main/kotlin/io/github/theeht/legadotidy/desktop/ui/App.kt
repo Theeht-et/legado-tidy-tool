@@ -699,7 +699,7 @@ fun TidyApp() {
                 TopBar(state, onImport = ::importFile)
                 Column(
                     Modifier.weight(1f).fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Stepper(state.stage)
                     KpiRow(state)
@@ -917,9 +917,9 @@ fun TidyApp() {
 @Composable
 private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(bottom = 20.dp),
+        Modifier.fillMaxWidth().padding(bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(
             Modifier.widthIn(min = 245.dp),
@@ -927,26 +927,26 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(11.dp),
         ) {
             Box(
-                Modifier.size(42.dp).clip(RoundedCornerShape(13.dp))
+                Modifier.size(34.dp).clip(RoundedCornerShape(10.dp))
                     .background(Brush.linearGradient(listOf(Color(0xFF4779F4), Color(0xFF2D56C8)))),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("书", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text("书", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             }
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text("书源整理工具", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Ink)
-                Text("Legado Tidy Tool · 分阶段审核", fontSize = 12.sp, color = Muted)
+                Text("书源整理工具", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
+                Text("Legado Tidy Tool · 分阶段审核", fontSize = 10.sp, color = Muted)
             }
         }
         Row(
             Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(10.dp))
-                .background(Color.White, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 9.dp),
+                .background(Color.White, RoundedCornerShape(8.dp)).padding(horizontal = 9.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             Text("▤", fontSize = 18.sp, color = Muted)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text(state.inputFile?.name ?: "尚未导入书源 JSON", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(state.inputFile?.name ?: "尚未导入书源 JSON", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     if (state.inputFile == null) "导入本地文件，按阶段审核后导出"
                     else "${state.sources.size} 个当前书源 · " + when (state.stage) {
@@ -966,13 +966,13 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
             OutlinedButton(
                 onClick = onImport,
                 enabled = !state.busy,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 13.dp, vertical = 9.dp),
-            ) { Text("导入 JSON", fontSize = 14.sp) }
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 5.dp),
+            ) { Text("导入 JSON", fontSize = 12.sp) }
             OutlinedButton(
                 onClick = { state.showSettings = true },
                 enabled = !state.busy,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 13.dp, vertical = 9.dp),
-            ) { Text("⚙ 校验设置", fontSize = 14.sp) }
+            ) { Text("⚙ 校验设置", fontSize = 12.sp) }
         }
     }
 }
@@ -992,16 +992,16 @@ private fun Stepper(stage: WorkflowStage) {
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 9.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
-                    Box(Modifier.size(29.dp).clip(RoundedCornerShape(9.dp)).background(badgeColor), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(22.dp).clip(RoundedCornerShape(7.dp)).background(badgeColor), contentAlignment = Alignment.Center) {
                         Text("${index + 1}", color = badgeTextColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text(item.label, fontWeight = if (current) FontWeight.SemiBold else FontWeight.Medium, color = if (current) Primary else if (complete) BodyText else Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(item.help, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(item.label, fontWeight = if (current) FontWeight.SemiBold else FontWeight.Medium, color = if (current) Primary else if (complete) BodyText else Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(item.help, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (complete) Text("✓", color = Ok, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
@@ -1028,10 +1028,10 @@ private fun KpiRow(state: WorkflowState) {
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
             ) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(label, color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                    Text(value, color = Ink, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                    Text(hint, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(value, color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                    Text(hint, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -1054,8 +1054,8 @@ private fun OrganizeRulePanel(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier.fillMaxWidth().padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("整理规则", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Ink)
@@ -1094,10 +1094,10 @@ private fun OrganizeRulePanel(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
                 Column(
                     Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(9.dp))
-                        .background(Color.White, RoundedCornerShape(9.dp)).padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                        .background(Color.White, RoundedCornerShape(8.dp)).padding(7.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text("分组规则", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                    Text("分组规则", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                     Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         RuleRadio(
                             label = "保留原有分组",
@@ -1112,9 +1112,9 @@ private fun OrganizeRulePanel(
                     }
                     Text(
                         "重新分组按书源类型和名称关键词分类，未命中时归入综合。",
-                        fontSize = 11.sp,
+                        fontSize = 9.sp,
                         color = Muted,
-                        lineHeight = 15.sp,
+                        lineHeight = 12.sp,
                     )
                 }
                 RuleCheckbox(
@@ -1132,15 +1132,15 @@ private fun OrganizeRulePanel(
                 Text(
                     "默认建议：清理名称装饰与广告词，规范标点，保留现有分组。",
                     Modifier.weight(1f).padding(end = 8.dp),
-                    fontSize = 11.sp,
+                    fontSize = 9.sp,
                     color = Muted,
                 )
                 Button(
                     onClick = onGeneratePreview,
                     enabled = state.sources.isNotEmpty() && !state.busy,
                     colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 13.dp, vertical = 9.dp),
-                ) { Text("按所选规则生成整理预览", fontSize = 12.sp) }
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 5.dp),
+                ) { Text("生成整理预览", fontSize = 11.sp) }
             }
         }
     }
@@ -1159,15 +1159,15 @@ private fun RuleOptionCard(
             .border(1.dp, if (checked) Color(0xFFB8CCFF) else Line, RoundedCornerShape(9.dp))
             .background(if (checked) SoftBlue else Color.White, RoundedCornerShape(9.dp))
             .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 10.dp, vertical = 10.dp)
-            .heightIn(min = 58.dp),
+            .padding(horizontal = 7.dp, vertical = 5.dp)
+            .heightIn(min = 42.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         RuleCheckMark(checked)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-            Text(description, fontSize = 11.sp, color = Muted, lineHeight = 15.sp)
+            Text(title, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text(description, fontSize = 9.sp, color = Muted, lineHeight = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -1249,29 +1249,27 @@ private fun SourceListPanel(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("书源池", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
-                    Text(
-                        when (state.stage) {
-                            WorkflowStage.IMPORT -> "导入后统一管理；点击书源查看详情，也可编辑本阶段的处理建议。"
-                            WorkflowStage.DEDUP_REVIEW -> "重复候选按组相邻显示，可打开横向对比并调整保留建议。"
-                            WorkflowStage.PROBE_REVIEW -> "检查真实校验状态、响应耗时和系统删除建议。"
-                            WorkflowStage.ORGANIZE_REVIEW -> if (state.preview == null) "先选择整理规则，再生成可编辑的预览。" else "整理预览可编辑；确认前不会写回当前工作池。"
-                            WorkflowStage.EXPORT -> "以下是本次最终确认、准备导出的书源。"
-                        },
-                        fontSize = 12.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    )
+                    Text("书源池", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    val panelHint = when (state.stage) {
+                        WorkflowStage.IMPORT -> "导入后统一管理；点击书源查看详情，也可编辑本阶段的处理建议。"
+                        WorkflowStage.DEDUP_REVIEW -> "重复候选按组相邻显示，可打开横向对比并调整保留建议。"
+                        WorkflowStage.PROBE_REVIEW -> ""
+                        WorkflowStage.ORGANIZE_REVIEW -> if (state.preview == null) "先选择整理规则，再生成可编辑的预览。" else "整理预览可编辑；确认前不会写回当前工作池。"
+                        WorkflowStage.EXPORT -> "以下是本次最终确认、准备导出的书源。"
+                    }
+                    if (panelHint.isNotBlank()) Text(panelHint, fontSize = 10.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 BasicTextField(
                     value = state.filterQuery,
                     onValueChange = { state.filterQuery = it },
                     singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(color = BodyText, fontSize = 14.sp),
-                    modifier = Modifier.width(240.dp).height(40.dp)
+                    textStyle = MaterialTheme.typography.bodySmall.copy(color = BodyText, fontSize = 12.sp),
+                    modifier = Modifier.width(200.dp).height(32.dp)
                         .clip(RoundedCornerShape(9.dp)).border(1.dp, Line, RoundedCornerShape(9.dp))
                         .background(Color.White).padding(horizontal = 11.dp, vertical = 8.dp),
                     decorationBox = { innerTextField ->
                         Box(contentAlignment = Alignment.CenterStart) {
-                            if (state.filterQuery.isEmpty()) Text("搜索名称、分组或网址…", fontSize = 14.sp, color = Muted)
+                            if (state.filterQuery.isEmpty()) Text("搜索名称、分组或网址…", fontSize = 12.sp, color = Muted)
                             innerTextField()
                         }
                     },
@@ -1284,37 +1282,33 @@ private fun SourceListPanel(
             }
             HorizontalDivider(color = Line)
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(1.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 sourceFilterLabels.forEach { label ->
                     val count = sourceFilterCount(state, label)
                     val selected = state.sourceFilter == label
-                    TextButton(
-                        onClick = { state.sourceFilter = label },
-                        modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                    Box(
+                        Modifier.clip(RoundedCornerShape(7.dp))
                             .background(if (selected) SoftBlue else Color.Transparent)
-                            .border(1.dp, if (selected) Color(0xFFD8E4FF) else Color.Transparent, RoundedCornerShape(8.dp)),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                        colors = ButtonDefaults.textButtonColors(contentColor = if (selected) Primary else Muted),
+                            .border(1.dp, if (selected) Color(0xFFD8E4FF) else Color.Transparent, RoundedCornerShape(7.dp))
+                            .clickable { state.sourceFilter = label }
+                            .padding(horizontal = 7.dp, vertical = 5.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            "$label $count",
-                            fontSize = 12.sp,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                        )
+                        Text("$label $count", fontSize = 10.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) Primary else Muted, maxLines = 1)
                     }
                 }
             }
             HorizontalDivider(color = Line)
             state.notice?.let {
                 Card(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
                     colors = CardDefaults.cardColors(containerColor = SoftBlue),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 ) {
-                    Text(it, Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), color = Color(0xFF3156A7), fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(it, Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), color = Color(0xFF3156A7), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             if (state.stage == WorkflowStage.ORGANIZE_REVIEW) {
@@ -1324,7 +1318,7 @@ private fun SourceListPanel(
                     onGeneratePreview = onGeneratePreview,
                     markDisabledForDeletion = markDisabledForDeletion,
                     onMarkDisabledChange = onMarkDisabledChange,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp),
                 )
                 Spacer(Modifier.height(7.dp))
             }
