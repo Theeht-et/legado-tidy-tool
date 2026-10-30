@@ -13,7 +13,7 @@ enum class OrganizeRule(val label: String) {
     REMOVE_ADVERTISING_WORDS("清理广告宣传词"),
     NORMALIZE_PUNCTUATION("规范标点与空格"),
     KEEP_ORIGINAL_GROUPS("保留原有分组"),
-    REGROUP_BY_TYPE("按书源类型重新分组"),
+    REGROUP_BY_TYPE("按类型与名称归类"),
     SORT_BY_RESPONSE_TIME("按响应时间升序"),
 }
 
