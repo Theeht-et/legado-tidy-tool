@@ -52,6 +52,26 @@ class DeduperTest {
     }
 
     @Test
+    fun `同一规范化 URL 的不同名称与查询参数仍判定为完全重复`() {
+        val first = Docs.doc(
+            "站点甲",
+            "https://www.example.com/Book/?from=one",
+            bookList = "//div[@id='first']",
+        )
+        val second = Docs.doc(
+            "站点乙",
+            "http://example.com/book?from=two#chapter",
+            bookList = "//section[@id='second']",
+        )
+
+        val report = Deduper.run(listOf(first, second))
+
+        assertEquals(1, report.groups.size)
+        assertEquals(DedupKind.EXACT, report.groups.single().kind)
+        assertEquals(2, report.groups.single().size)
+    }
+
+    @Test
     fun `名字不同但规则完全相同拾为指纹重复`() {
         val sources = listOf(
             Docs.doc("甲", "https://a.com"),
