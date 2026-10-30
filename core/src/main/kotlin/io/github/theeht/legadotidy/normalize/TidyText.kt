@@ -84,7 +84,7 @@ object TidyText {
         s = AD_STANDALONE.replace(s, "")
         s = AD_PREFIX.replace(s, "")
         s = AD_SUFFIX.replace(s, "")
-        s = WHITESPACE.replace(s, " ").trim(' ', '-', '_', ':', '：')
+        // HTML 原型只移除匹配到的宣传词；空格与首尾装饰由各自规则处理。
         return s.ifEmpty { raw.trim() }
     }
 
