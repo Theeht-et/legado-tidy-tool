@@ -706,7 +706,6 @@ fun TidyApp() {
                     Modifier.weight(1f).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Stepper(state.stage)
                     state.error?.let {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = SoftRed),
@@ -996,23 +995,47 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
 
 
 @Composable
-private fun Stepper(stage: WorkflowStage) {
+private fun WorkflowStageStrip(stage: WorkflowStage, modifier: Modifier = Modifier) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp))
-            .background(Color.White).border(1.dp, Line, RoundedCornerShape(9.dp))
-            .padding(horizontal = 12.dp, vertical = 7.dp),
+        modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        Text("${stage.ordinal + 1}/5", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Primary)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(stage.label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-            Text(stage.help, fontSize = 9.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        WorkflowStage.values().forEachIndexed { index, item ->
+            val completed = index < stage.ordinal
+            val current = index == stage.ordinal
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Box(
+                    Modifier.size(16.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(if (completed || current) Primary else SoftSlate),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        if (completed) "✓" else "${index + 1}",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (completed || current) Color.White else Muted,
+                    )
+                }
+                Text(
+                    item.label,
+                    fontSize = 9.sp,
+                    fontWeight = if (current) FontWeight.Bold else FontWeight.Normal,
+                    color = if (current) Primary else if (completed) Ink else Muted,
+                    maxLines = 1,
+                )
+            }
+            if (index < WorkflowStage.values().lastIndex) {
+                Box(
+                    Modifier.width(10.dp).height(1.dp)
+                        .background(if (completed) Primary else Line),
+                )
+            }
         }
-        LinearProgressIndicator(
-            progress = { (stage.ordinal + 1) / 5f },
-            modifier = Modifier.width(88.dp).height(4.dp),
-        )
     }
 }
 
@@ -1049,134 +1072,79 @@ private fun KpiRow(state: WorkflowState) {
 private fun OrganizeRulePanel(
     state: WorkflowState,
     onRuleChange: (OrganizeRule, Boolean) -> Unit,
-    onGeneratePreview: () -> Unit,
     markDisabledForDeletion: Boolean,
     onMarkDisabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier.border(1.dp, Color(0xFFDCE5FB), RoundedCornerShape(11.dp)),
+        modifier.border(1.dp, Color(0xFFDCE5FB), RoundedCornerShape(9.dp)),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FBFF)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("整理规则", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Ink)
-                Spacer(Modifier.width(8.dp))
-                Text("仅执行已勾选的规则；未勾选项保持原样", fontSize = 11.sp, color = Muted)
+                Text("整理规则", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink)
+                Spacer(Modifier.width(7.dp))
+                Text("勾选项才执行", fontSize = 9.sp, color = Muted)
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            FlowRow(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 RuleCheckbox(
                     OrganizeRule.CLEAN_DECORATIONS,
                     OrganizeRule.CLEAN_DECORATIONS in state.selectedRules,
                     onRuleChange,
-                    Modifier.weight(1f),
                 )
                 RuleCheckbox(
                     OrganizeRule.REMOVE_ADVERTISING_WORDS,
                     OrganizeRule.REMOVE_ADVERTISING_WORDS in state.selectedRules,
                     onRuleChange,
-                    Modifier.weight(1f),
                 )
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 RuleCheckbox(
                     OrganizeRule.NORMALIZE_PUNCTUATION,
                     OrganizeRule.NORMALIZE_PUNCTUATION in state.selectedRules,
                     onRuleChange,
-                    Modifier.weight(1f),
                 )
-                RuleOptionCard(
-                    title = "标记已禁用书源为删除",
-                    description = "只打删除标记，确认进入导出阶段时才从当前书源池移除。",
-                    checked = markDisabledForDeletion,
-                    onCheckedChange = onMarkDisabledChange,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.Top) {
-                Column(
-                    Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(9.dp))
-                        .background(Color.White, RoundedCornerShape(8.dp)).padding(7.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                Row(
+                    Modifier.clip(RoundedCornerShape(7.dp))
+                        .border(1.dp, Line, RoundedCornerShape(7.dp))
+                        .background(Color.White)
+                        .padding(horizontal = 7.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("分组规则", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RuleRadio(
-                            label = "保留原有分组",
-                            selected = OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules,
-                            onClick = { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
-                        )
-                        RuleRadio(
-                            label = "重新分组",
-                            selected = OrganizeRule.REGROUP_BY_TYPE in state.selectedRules,
-                            onClick = { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
-                        )
-                    }
-                    Text(
-                        "重新分组按书源类型和名称关键词分类，未命中时归入综合。",
-                        fontSize = 9.sp,
-                        color = Muted,
-                        lineHeight = 12.sp,
+                    Text("分组", fontSize = 10.sp, color = Muted)
+                    RuleRadio(
+                        label = "保留原组",
+                        selected = OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules,
+                        onClick = { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
+                    )
+                    RuleRadio(
+                        label = "重新分组",
+                        selected = OrganizeRule.REGROUP_BY_TYPE in state.selectedRules,
+                        onClick = { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
                     )
                 }
                 RuleCheckbox(
                     OrganizeRule.SORT_BY_RESPONSE_TIME,
                     OrganizeRule.SORT_BY_RESPONSE_TIME in state.selectedRules,
                     onRuleChange,
-                    Modifier.weight(1f),
                 )
-            }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "默认建议：清理名称装饰与广告词，规范标点，保留现有分组。",
-                    Modifier.weight(1f).padding(end = 8.dp),
-                    fontSize = 9.sp,
-                    color = Muted,
+                CompactRuleChip(
+                    label = "禁用项标记删除",
+                    checked = markDisabledForDeletion,
+                    onClick = { onMarkDisabledChange(!markDisabledForDeletion) },
                 )
-                Button(
-                    onClick = onGeneratePreview,
-                    enabled = state.sources.isNotEmpty() && !state.busy,
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 5.dp),
-                ) { Text("生成整理预览", fontSize = 11.sp) }
             }
         }
     }
 }
 
-@Composable
-private fun RuleOptionCard(
-    title: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier.clip(RoundedCornerShape(9.dp))
-            .border(1.dp, if (checked) Color(0xFFB8CCFF) else Line, RoundedCornerShape(9.dp))
-            .background(if (checked) SoftBlue else Color.White, RoundedCornerShape(9.dp))
-            .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 7.dp, vertical = 5.dp)
-            .heightIn(min = 42.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        RuleCheckMark(checked)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-            Text(description, fontSize = 9.sp, color = Muted, lineHeight = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
 
 @Composable
 private fun RuleCheckMark(checked: Boolean) {
@@ -1217,21 +1185,33 @@ private fun RuleCheckbox(
     onRuleChange: (OrganizeRule, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val description = when (rule) {
-        OrganizeRule.CLEAN_DECORATIONS -> "移除图标、装饰字符及首尾多余符号，尽量保留站点主体名称。"
-        OrganizeRule.REMOVE_ADVERTISING_WORDS -> "清理精品、高速、推荐、免广告、VIP 等常见宣传标签。"
-        OrganizeRule.NORMALIZE_PUNCTUATION -> "去除首尾标点、重复感叹号及多余空格。"
-        OrganizeRule.KEEP_ORIGINAL_GROUPS -> "保持导入时已有的书源分组。"
-        OrganizeRule.REGROUP_BY_TYPE -> "按书源类型和名称关键词重新分组。"
-        OrganizeRule.SORT_BY_RESPONSE_TIME -> "响应较快的书源排在前面；未获得耗时的书源排在最后。"
-    }
-    RuleOptionCard(
-        title = rule.label,
-        description = description,
+    CompactRuleChip(
+        label = rule.label,
         checked = checked,
-        onCheckedChange = { onRuleChange(rule, it) },
+        onClick = { onRuleChange(rule, !checked) },
         modifier = modifier,
     )
+}
+
+@Composable
+private fun CompactRuleChip(
+    label: String,
+    checked: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier.clip(RoundedCornerShape(7.dp))
+            .border(1.dp, if (checked) Color(0xFFB8CCFF) else Line, RoundedCornerShape(7.dp))
+            .background(if (checked) SoftBlue else Color.White)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 7.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        RuleCheckMark(checked)
+        Text(label, fontSize = 10.sp, color = if (checked) Primary else BodyText, maxLines = 1)
+    }
 }
 
 
@@ -1257,27 +1237,31 @@ private fun SourceListPanel(
             ) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("书源池", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
-                    val panelHint = when (state.stage) {
-                        WorkflowStage.IMPORT -> "导入后统一管理；点击书源查看详情，也可编辑本阶段的处理建议。"
-                        WorkflowStage.DEDUP_REVIEW -> "重复候选按组相邻显示，可打开横向对比并调整保留建议。"
-                        WorkflowStage.PROBE_REVIEW -> ""
-                        WorkflowStage.ORGANIZE_REVIEW -> if (state.preview == null) "先选择整理规则，再生成可编辑的预览。" else "整理预览可编辑；确认前不会写回当前工作池。"
-                        WorkflowStage.EXPORT -> "以下是本次最终确认、准备导出的书源。"
-                    }
-                    if (panelHint.isNotBlank()) Text(panelHint, fontSize = 10.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 BasicTextField(
                     value = state.filterQuery,
                     onValueChange = { state.filterQuery = it },
                     singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(color = BodyText, fontSize = 12.sp),
-                    modifier = Modifier.width(200.dp).height(32.dp)
-                        .clip(RoundedCornerShape(9.dp)).border(1.dp, Line, RoundedCornerShape(9.dp))
-                        .background(Color.White).padding(horizontal = 11.dp, vertical = 8.dp),
+                    textStyle = MaterialTheme.typography.bodySmall.copy(color = BodyText, fontSize = 11.sp),
+                    modifier = Modifier.width(214.dp).height(34.dp)
+                        .clip(RoundedCornerShape(8.dp)).border(1.dp, Line, RoundedCornerShape(8.dp))
+                        .background(Color.White),
                     decorationBox = { innerTextField ->
-                        Box(contentAlignment = Alignment.CenterStart) {
-                            if (state.filterQuery.isEmpty()) Text("搜索名称、分组或网址…", fontSize = 12.sp, color = Muted)
-                            innerTextField()
+                        Row(
+                            Modifier.fillMaxSize().padding(horizontal = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text("⌕", fontSize = 15.sp, color = Muted)
+                            Box(
+                                Modifier.weight(1f).fillMaxHeight(),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                if (state.filterQuery.isEmpty()) {
+                                    Text("搜索源名或 URL", fontSize = 11.sp, color = Muted, maxLines = 1)
+                                }
+                                innerTextField()
+                            }
                         }
                     },
                 )
@@ -1307,22 +1291,24 @@ private fun SourceListPanel(
                         Text("$label $count", fontSize = 10.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) Primary else Muted, maxLines = 1)
                     }
                 }
-            }
-            HorizontalDivider(color = Line)
-            state.notice?.let {
-                Card(
-                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
-                    colors = CardDefaults.cardColors(containerColor = SoftBlue),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                ) {
-                    Text(it, Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), color = Color(0xFF3156A7), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (state.stage == WorkflowStage.DEDUP_REVIEW) {
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        val duplicateCount = state.duplicateGroups.sumOf { it.sourceIds.size }
+                        Text(
+                            "全部分组 · ${state.duplicateGroups.size} 组 · ${duplicateCount} 个重复候选",
+                            fontSize = 10.sp,
+                            color = Muted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
+            HorizontalDivider(color = Line)
             if (state.stage == WorkflowStage.ORGANIZE_REVIEW) {
                 OrganizeRulePanel(
                     state = state,
                     onRuleChange = onRuleChange,
-                    onGeneratePreview = onGeneratePreview,
                     markDisabledForDeletion = markDisabledForDeletion,
                     onMarkDisabledChange = onMarkDisabledChange,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp),
@@ -1330,7 +1316,7 @@ private fun SourceListPanel(
                 Spacer(Modifier.height(7.dp))
             }
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                val tableWidth = maxOf(maxWidth, 1180.dp)
+                val tableWidth = maxOf(maxWidth, 1040.dp)
                 Row(Modifier.fillMaxHeight().horizontalScroll(rememberScrollState())) {
                 Column(Modifier.width(tableWidth).fillMaxHeight()) {
             TableHeader()
@@ -1366,17 +1352,28 @@ private fun SourceListPanel(
                                         "当前显示 ${row.visibleCount}/${row.group.sourceIds.size} 个候选"
                                     }
                                     Row(
-                                        Modifier.fillMaxWidth().background(Color(0xFFF1F5FF)).padding(horizontal = 12.dp, vertical = 7.dp),
+                                        Modifier.fillMaxWidth().background(Color(0xFFF1F5FF)).padding(horizontal = 10.dp, vertical = 5.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                            Text("重复组 ${row.group.number} · ${row.group.kind.label}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3156A7))
-                                            Text("$countLabel · 当前显示项中待删除 ${row.visibleMarkedCount} 个", fontSize = 10.sp, color = Muted)
+                                        Text(
+                                            "重复组 ${row.group.number} · ${row.group.kind.label}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF3156A7),
+                                        )
+                                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                            Text(
+                                                "$countLabel · 待删除 ${row.visibleMarkedCount}",
+                                                fontSize = 10.sp,
+                                                color = Muted,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
                                         }
                                         OutlinedButton(
                                             onClick = { onCompare(row.group.number) },
                                             enabled = !state.busy,
-                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
                                         ) { Text("对比重复组", fontSize = 10.sp) }
                                     }
                                 }
@@ -1403,16 +1400,17 @@ private fun SourceListPanel(
 @Composable
 private fun TableHeader() {
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFFFBFCFE)).padding(horizontal = 10.dp, vertical = 11.dp),
+        Modifier.fillMaxWidth().background(Color(0xFFFBFCFE)).padding(horizontal = 9.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("源名 / URL", Modifier.weight(3.1f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("类型", Modifier.weight(1.0f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("分组", Modifier.weight(1.2f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("状态", Modifier.weight(1.2f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("耗时", Modifier.weight(0.75f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("建议", Modifier.weight(1.4f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("操作", Modifier.weight(1.7f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("源名", Modifier.weight(1.55f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("URL", Modifier.weight(2.15f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("类型", Modifier.weight(0.65f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("分组", Modifier.weight(0.9f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("耗时", Modifier.weight(0.6f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("状态", Modifier.weight(0.95f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("建议", Modifier.weight(1.1f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("操作", Modifier.weight(1.35f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
     }
 }
 
@@ -1461,24 +1459,37 @@ private fun SourceRowItem(
     }
     Row(
         Modifier.fillMaxWidth().background(if (selected) Color(0xFFF0F5FF) else Color.White)
-            .clickable { state.selectedId = source.id }.padding(horizontal = 12.dp, vertical = 10.dp),
+            .clickable { state.selectedId = source.id }.padding(horizontal = 9.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(3.1f).padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(name.ifBlank { "（未命名）" }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(source.doc.url, fontSize = 12.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        SmallChip(sourceTypeLabel(source.doc.type), SoftSlate, Color(0xFF57647A), Modifier.weight(1.0f))
-        Text(group.ifBlank { "—" }, Modifier.weight(1.2f), fontSize = 12.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        SmallChip(status, statusBackground(source.probe?.status), statusColor(source.probe?.status), Modifier.weight(1.2f))
-        Text(elapsed, Modifier.weight(0.75f), fontSize = 11.sp, color = Muted, maxLines = 1)
+        Text(
+            name.ifBlank { "（未命名）" },
+            Modifier.weight(1.55f).padding(end = 5.dp),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            source.doc.url.ifBlank { "—" },
+            Modifier.weight(2.15f).padding(end = 5.dp),
+            fontSize = 10.sp,
+            color = Muted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        SmallChip(sourceTypeLabel(source.doc.type), SoftSlate, Color(0xFF57647A), Modifier.weight(0.65f))
+        Text(group.ifBlank { "—" }, Modifier.weight(0.9f), fontSize = 11.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(elapsed, Modifier.weight(0.6f), fontSize = 10.sp, color = Muted, maxLines = 1)
+        SmallChip(status, statusBackground(source.probe?.status), statusColor(source.probe?.status), Modifier.weight(0.95f))
         SmallChip(
             advice,
             if (source.deleteMarked) SoftRed else if (source.probe?.status == ProbeStatus.OK) SoftGreen else SoftSlate,
             if (source.deleteMarked) Bad else if (source.probe?.status == ProbeStatus.OK) Ok else Muted,
-            Modifier.weight(1.4f),
+            Modifier.weight(1.1f),
         )
-        Row(Modifier.weight(1.7f), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        Row(Modifier.weight(1.35f), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             TableActionButton("详情", onClick = { onDetail(source.id) })
             TableActionButton("编辑", onClick = { onEdit(source.id) }, enabled = !state.busy && state.stage != WorkflowStage.EXPORT)
         }
@@ -1646,82 +1657,119 @@ private fun BottomActions(
     onOpenFolder: () -> Unit,
     onCopyImportLink: () -> Unit,
 ) {
-    Box(Modifier.fillMaxWidth().padding(top = 7.dp), contentAlignment = Alignment.CenterEnd) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 5.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(Color.White)
+            .border(1.dp, Line, RoundedCornerShape(9.dp))
+            .padding(horizontal = 9.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        WorkflowStageStrip(state.stage, Modifier.weight(1f))
+        Box(Modifier.width(1.dp).height(25.dp).background(Line))
         Row(
-            Modifier.clip(RoundedCornerShape(9.dp))
-                .background(Color.White)
-                .border(1.dp, Line, RoundedCornerShape(9.dp))
-                .padding(horizontal = 9.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-        when (state.stage) {
-            WorkflowStage.IMPORT -> {
-                OutlinedButton(onClick = onShowImportInfo, enabled = state.inputFile != null && !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White)) {
-                    Text("查看导入信息")
+            when (state.stage) {
+                WorkflowStage.IMPORT -> {
+                    OutlinedButton(
+                        onClick = onShowImportInfo,
+                        enabled = state.inputFile != null && !state.busy,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                    ) { Text("导入信息", fontSize = 11.sp) }
+                    Button(
+                        onClick = onStartDedup,
+                        enabled = state.sources.isNotEmpty() && !state.busy,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                    ) { Text("开始去重", fontSize = 11.sp) }
                 }
-                Button(colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White), onClick = onStartDedup, enabled = state.sources.isNotEmpty() && !state.busy) {
-                    Text("开始去重")
+                WorkflowStage.DEDUP_REVIEW -> {
+                    Button(
+                        onClick = onConfirmDedup,
+                        enabled = state.sources.isNotEmpty() && !state.busy,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                    ) { Text("确认去重并进入校验", fontSize = 11.sp) }
                 }
-            }
-            WorkflowStage.DEDUP_REVIEW -> {
-                Button(colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White), onClick = onConfirmDedup, enabled = state.sources.isNotEmpty() && !state.busy) {
-                    Text("确认去重并进入校验")
-                }
-            }
-            WorkflowStage.PROBE_REVIEW -> {
-                OutlinedButton(
-                    onClick = { state.sourceFilter = "异常 / 复核" },
-                    colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White),
-                ) { Text("查看异常项") }
-                if (state.busy) {
-                    OutlinedButton(onClick = onStop, colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White)) { Text("停止校验") }
-                } else if (state.sources.any { it.probe == null }) {
-                    Button(colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White), onClick = onContinueValidation) { Text("继续校验") }
-                } else {
-                    Button(colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White), onClick = onConfirmValidation, enabled = state.sources.isNotEmpty()) {
-                        Text("确认校验并进入整理")
+                WorkflowStage.PROBE_REVIEW -> {
+                    OutlinedButton(
+                        onClick = { state.sourceFilter = "异常 / 复核" },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                    ) { Text("异常项", fontSize = 11.sp) }
+                    if (state.busy) {
+                        OutlinedButton(
+                            onClick = onStop,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                        ) { Text("停止", fontSize = 11.sp) }
+                    } else if (state.sources.any { it.probe == null }) {
+                        Button(
+                            onClick = onContinueValidation,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                        ) { Text("继续校验", fontSize = 11.sp) }
+                    } else {
+                        Button(
+                            onClick = onConfirmValidation,
+                            enabled = state.sources.isNotEmpty(),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                        ) { Text("确认校验并进入整理", fontSize = 11.sp) }
                     }
                 }
-            }
-            WorkflowStage.ORGANIZE_REVIEW -> {
-                if (state.preview == null) {
+                WorkflowStage.ORGANIZE_REVIEW -> {
+                    if (state.preview == null) {
+                        OutlinedButton(
+                            onClick = { state.sourceFilter = "待删除" },
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                        ) { Text("待删除项", fontSize = 11.sp) }
+                        Button(
+                            onClick = onGeneratePreview,
+                            enabled = state.sources.isNotEmpty() && !state.busy,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                        ) { Text("生成预览", fontSize = 11.sp) }
+                    } else {
+                        OutlinedButton(
+                            onClick = onGeneratePreview,
+                            enabled = !state.busy,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                        ) { Text("重新生成", fontSize = 11.sp) }
+                        Button(
+                            onClick = onConfirmOrganize,
+                            enabled = !state.busy,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                        ) { Text("确认整理并导出", fontSize = 11.sp) }
+                    }
+                }
+                WorkflowStage.EXPORT -> {
                     OutlinedButton(
-                        onClick = { state.sourceFilter = "待删除" },
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White),
-                    ) { Text("查看待删除项") }
+                        onClick = { state.showReport = true },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                    ) { Text("最终清单", fontSize = 11.sp) }
+                    if (DirectLink.isUsable(state.directUrl)) {
+                        OutlinedButton(
+                            onClick = onCopyImportLink,
+                            enabled = !state.busy,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                        ) { Text("复制导入链接", fontSize = 11.sp) }
+                    }
+                    OutlinedButton(
+                        onClick = onOpenFolder,
+                        enabled = !state.busy,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                    ) { Text("打开目录", fontSize = 11.sp) }
                     Button(
-                        colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
-                        onClick = onGeneratePreview,
+                        onClick = onExport,
                         enabled = state.sources.isNotEmpty() && !state.busy,
-                    ) { Text("生成整理预览") }
-                } else {
-                    OutlinedButton(
-                        onClick = onGeneratePreview,
-                        enabled = !state.busy,
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White),
-                    ) { Text("重新生成预览") }
-                    Button(
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
-                        onClick = onConfirmOrganize,
-                        enabled = !state.busy,
-                    ) { Text("确认整理并进入导出") }
+                    ) { Text(if (state.exported == null) "导出 JSON" else "再次导出", fontSize = 11.sp) }
                 }
             }
-            WorkflowStage.EXPORT -> {
-                OutlinedButton(
-                    onClick = { state.showReport = true },
-                    colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White),
-                ) { Text("查看最终清单") }
-                if (DirectLink.isUsable(state.directUrl)) {
-                    OutlinedButton(onClick = onCopyImportLink, enabled = !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White)) { Text("复制导入链接") }
-                }
-                OutlinedButton(onClick = onOpenFolder, enabled = !state.busy, colors = ButtonDefaults.outlinedButtonColors(containerColor = FooterButton, contentColor = Color.White)) { Text("打开导出目录") }
-                Button(colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White), onClick = onExport, enabled = state.sources.isNotEmpty() && !state.busy) {
-                    Text(if (state.exported == null) "导出 JSON" else "再次导出 JSON")
-                }
-            }
-        }
         }
     }
 }
