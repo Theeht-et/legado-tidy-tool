@@ -99,7 +99,11 @@ object Organizer {
         if (explicitRules && OrganizeRule.SORT_BY_RESPONSE_TIME in rules) {
             val byElapsed = compareBy<Int> { index ->
                 results[index]
-                    ?.takeIf { it.status != ProbeStatus.SKIPPED }
+                    ?.takeIf {
+                        it.status != ProbeStatus.SKIPPED &&
+                            it.status != ProbeStatus.NO_SEARCH_URL &&
+                            it.elapsedMs > 0
+                    }
                     ?.elapsedMs ?: Long.MAX_VALUE
             }.thenBy { it }
             val rankByIndex = HashMap<Int, Int>(sources.size)
