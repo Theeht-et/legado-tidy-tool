@@ -16,16 +16,21 @@ object TidyText {
     private val BRACKETED = Regex("[（(【\\[][^）)】\\]]*[）)】\\]]")
     private val TRAILING_SEP = Regex("\\s*[-_|｜·・—–]\\s*[^-_|｜·・—–]{1,12}$")
     private val REPEATED_WS = Regex("\\s{2,}")
+    private val AD_TERMS = "免广告|广告推广|官方推荐|精品源|高速源|优质源|稳定源|推荐|精品|高速|优质|稳定|广告|VIP|福利|会员专享|免费"
     private val AD_BRACKETED = Regex(
-        "[（(【\\[][^）)】\\]]*(?:广告|推广|营销|福利|官方推荐|官方|推荐|加群|QQ群|公众号|备用站|新站|永久免费|免广告|免费阅读)[^）)】\\]]*[）)】\\]]",
+        "[【［\\[（(][^】］\\]）)]*(?:$AD_TERMS)[^】］\\]）)]*[】］\\]）)]",
         RegexOption.IGNORE_CASE,
     )
-    private val AD_SUFFIX = Regex(
-        "(?:\\s*[-_|｜·・—–]\\s*(?:官方推荐|广告|推广|营销|福利|加群|QQ群|公众号|备用站|新站|永久免费|免广告|免费阅读|官方|推荐)+|(?:永久免费|免广告|官方推荐))\\s*$",
-        RegexOption.IGNORE_CASE,
-    )
-    private val NAME_SEPARATORS = Regex("\\s*([|｜])\\s*")
-    private val REPEATED_SEPARATORS = Regex("([|｜_-])\\1{1,}")
+    private val AD_PREFIX = Regex("^(?:$AD_TERMS)[：:_ -]*", RegexOption.IGNORE_CASE)
+    private val AD_SUFFIX = Regex("[：:_ -]*(?:$AD_TERMS)$", RegexOption.IGNORE_CASE)
+    private val AD_STANDALONE = Regex("\\b(?:VIP|AD|ADS)\\b", RegexOption.IGNORE_CASE)
+    private val DECORATIVE_SYMBOLS = Regex("[★☆◆◇■□●○✦✧✪✿❖※♛♚♔♕♡♥❤⚡🔥✨🌟☀️☘️]+")
+    private val DECORATION_PREFIX = Regex("^[\\s【［\\[（(「『《〈<>|｜·•!！:：_=~～—–-]+")
+    private val DECORATION_SUFFIX = Regex("[\\s】］\\]）)」』》〉<>|｜·•!！:：_=~～—–-]+$")
+    private val REPEATED_NAME_PUNCTUATION = Regex("[!！。．·•]{2,}")
+    private val REPEATED_DASHES = Regex("[_~～—–-]{2,}")
+    private val EMPTY_BRACKETS = Regex("[【［\\[（(「『]+\\s*[】］\\]）)」』]+")
+    private val EDGE_NAME_PUNCTUATION = Regex("^[\\s,，。:：;；|｜]+|[\\s,，。:：;；|｜]+$")
 
     /** 全角 → 半角（仅 ASCII 区 + 全角空格）。 */
     fun halfWidth(s: String): String {
@@ -63,24 +68,34 @@ object TidyText {
         return s.ifEmpty { raw.trim() }
     }
 
-    /** 仅清理看起来像广告/宣传的括号内容和名称尾缀，保留站点主体文字。 */
+    /** 与 v3 HTML 原型一致地清理装饰字符；不截断名称，避免丢失有效站点名。 */
+    fun cleanDecorations(raw: String): String {
+        var s = ZERO_WIDTH.replace(raw, "")
+        s = EMOJI.replace(s, "")
+        s = DECORATIVE_SYMBOLS.replace(s, "")
+        s = DECORATION_PREFIX.replace(s, "")
+        s = DECORATION_SUFFIX.replace(s, "")
+        return s.trim().ifEmpty { raw.trim() }
+    }
+
+    /** 按 v3 HTML 原型清理宣传词；不匹配普通主体文字中的相同子串。 */
     fun removeAdvertisingWords(raw: String): String {
         var s = AD_BRACKETED.replace(raw, "")
-        // 最多重复几次，处理「站名 - 官方 - 推荐」这类连续尾缀。
-        repeat(3) {
-            s = AD_SUFFIX.replace(s, "")
-        }
-        s = REPEATED_WS.replace(s, " ").trim(' ', '-', '|', '｜', '·', '_')
+        s = AD_STANDALONE.replace(s, "")
+        s = AD_PREFIX.replace(s, "")
+        s = AD_SUFFIX.replace(s, "")
+        s = WHITESPACE.replace(s, " ").trim(' ', '-', '_', ':', '：')
         return s.ifEmpty { raw.trim() }
     }
 
-    /** 只整理名称标点与空格，不改 URL 或书源规则。 */
+    /** 按 v3 HTML 原型规范重复标点与空格，不改 URL 或书源规则。 */
     fun normalizeNamePunctuation(raw: String): String {
-        var s = halfWidth(ZERO_WIDTH.replace(raw, ""))
-        s = WHITESPACE.replace(s, " ").trim()
-        s = REPEATED_SEPARATORS.replace(s) { it.value.first().toString() }
-        s = NAME_SEPARATORS.replace(s) { " ${it.groupValues[1]} " }
-        s = REPEATED_WS.replace(s, " ").trim(' ', '|', '_', '-')
+        var s = ZERO_WIDTH.replace(raw, "")
+        s = REPEATED_NAME_PUNCTUATION.replace(s, "")
+        s = REPEATED_DASHES.replace(s, " ")
+        s = EMPTY_BRACKETS.replace(s, "")
+        s = WHITESPACE.replace(s, " ")
+        s = EDGE_NAME_PUNCTUATION.replace(s, "").trim()
         return s.ifEmpty { raw.trim() }
     }
 
