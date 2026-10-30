@@ -9,6 +9,6 @@ rem Do NOT put non-ASCII text in this file: cmd reads it byte-by-byte in the
 rem old code page before chcp takes effect, and the line gets chopped up.
 setlocal
 chcp 65001 >nul
-set DIR=%~dp0
-"%DIR%runtime\bin\java.exe" -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Xmx2g -Dskiko.library.path=%DIR%app -cp "%DIR%app\*" io.github.theeht.legadotidy.desktop.MainKt %*
+set "APP_DIR=%~dp0"
+"%APP_DIR%runtime\bin\java.exe" -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Xmx2g "-Dskiko.library.path=%APP_DIR%app" -cp "%APP_DIR%app\*" io.github.theeht.legadotidy.desktop.MainKt %*
 if errorlevel 1 pause
