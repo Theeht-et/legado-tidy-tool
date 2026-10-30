@@ -3,6 +3,7 @@ package io.github.theeht.legadotidy.desktop.ui
 import com.google.gson.JsonParser
 import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.organize.OrganizeRule
+import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -126,6 +127,16 @@ class WorkflowDecisionsTest {
 
         assertFalse(raw.get("enabled").asBoolean)
         assertFalse(isDocumentEnabled(BookSourceDoc(raw)))
+    }
+
+    @Test
+    fun `没有搜索规则的源进入待删除而网络故障保留复核`() {
+        assertTrue(shouldMarkForDeletionByDefault(ProbeStatus.NO_SEARCH_URL))
+        assertTrue(shouldMarkForDeletionByDefault(ProbeStatus.UNSUPPORTED))
+        assertTrue(shouldMarkForDeletionByDefault(ProbeStatus.PARSE_EMPTY))
+        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.NETWORK))
+        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.TIMEOUT))
+        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.SKIPPED))
     }
 
     @Test
