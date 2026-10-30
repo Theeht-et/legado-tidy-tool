@@ -81,10 +81,10 @@ object Organizer {
                 name
             }
         }
-        val groupOf = sources.map { doc ->
+        val groupOf = sources.mapIndexed { index, doc ->
             if (!explicitRules) resolveGroup(doc, config)
             else if (OrganizeRule.REGROUP_BY_TYPE in rules) {
-                config.typeNames[doc.type] ?: config.unknownGroup
+                resolveSelectedGroup(doc, nameOf[index])
             } else {
                 // GUI 未勾选重新分组时严格保留原分组，不为未分组源偷偷填默认组。
                 doc.group
@@ -93,6 +93,33 @@ object Organizer {
 
         val byGroup = LinkedHashMap<String, MutableList<Int>>()
         sources.indices.forEach { i -> byGroup.getOrPut(groupOf[i]) { ArrayList() }.add(i) }
+
+        // HTML 原型的响应耗时排序是全书源池排序，而不是每个分组内部排序。
+        // 分组仍作为导出字段保留；customOrder 则按各自分组内的最终顺序重新编号。
+        if (explicitRules && OrganizeRule.SORT_BY_RESPONSE_TIME in rules) {
+            val byElapsed = compareBy<Int> { index ->
+                results[index]
+                    ?.takeIf { it.status != ProbeStatus.SKIPPED }
+                    ?.elapsedMs ?: Long.MAX_VALUE
+            }.thenBy { it }
+            val rankByIndex = HashMap<Int, Int>(sources.size)
+            val pools = byGroup.map { (group, members) ->
+                val orderedMembers = members.sortedWith(byElapsed)
+                orderedMembers.forEachIndexed { rank, index -> rankByIndex[index] = rank }
+                Pool(group, orderedMembers)
+            }
+            val orderedIndexes = sources.indices.sortedWith(byElapsed)
+            val organized = orderedIndexes.map { index ->
+                OrganizedSource(
+                    index = index,
+                    name = nameOf[index],
+                    group = groupOf[index],
+                    status = statusOf.getValue(index),
+                    rank = rankByIndex.getValue(index),
+                )
+            }
+            return OrganizeReport(organized, pools)
+        }
 
         val organized = ArrayList<OrganizedSource>(sources.size)
         val pools = ArrayList<Pool>(byGroup.size)
@@ -105,11 +132,6 @@ object Organizer {
                         val byName = collator.compare(nameOf[a], nameOf[b])
                         if (byName != 0) byName else sources[a].url.compareTo(sources[b].url)
                     }
-                } else if (OrganizeRule.SORT_BY_RESPONSE_TIME in rules) {
-                    val elapsedA = results[a]?.takeIf { it.status != ProbeStatus.SKIPPED }?.elapsedMs ?: Long.MAX_VALUE
-                    val elapsedB = results[b]?.takeIf { it.status != ProbeStatus.SKIPPED }?.elapsedMs ?: Long.MAX_VALUE
-                    val byElapsed = elapsedA.compareTo(elapsedB)
-                    if (byElapsed != 0) byElapsed else a.compareTo(b)
                 } else {
                     // 未选排序规则时，不按状态、名称或耗时重新排。
                     a.compareTo(b)
@@ -121,6 +143,18 @@ object Organizer {
             pools.add(Pool(group, members.toList()))
         }
         return OrganizeReport(organized, pools)
+    }
+
+    /** 与 v3 HTML 原型一致：音频/漫画按类型，其余按名称关键词归类。 */
+    private fun resolveSelectedGroup(doc: BookSourceDoc, cleanedName: String): String {
+        if (doc.type == 1) return "有声"
+        if (doc.type == 2) return "漫画"
+        return when {
+            Regex("文库|经典|出版|典藏|古籍").containsMatchIn(cleanedName) -> "出版物"
+            Regex("验证|浏览器|特殊|测试").containsMatchIn(cleanedName) -> "特殊源"
+            Regex("阅读|书屋|小说|文学|书库|书源").containsMatchIn(cleanedName) -> "网络文学"
+            else -> "综合"
+        }
     }
 
     /** 有用户分组就保留，没有就按类型给个中性分组名（旧版默认行为）。 */
