@@ -896,10 +896,9 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
             }
         }
         if (state.busy) LinearProgressIndicator(modifier = Modifier.width(52.dp).height(4.dp))
-        Button(
+        OutlinedButton(
             onClick = onImport,
             enabled = !state.busy,
-            colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
         ) { Text("导入 JSON") }
         OutlinedButton(onClick = { state.showSettings = true }, enabled = !state.busy) { Text("⚙ 校验设置") }
         OutlinedButton(onClick = { state.showReport = true }) { Text("报告") }
@@ -1355,8 +1354,8 @@ private fun DetailPanel(
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     Text("SOURCE #${(source.id + 1).toString().padStart(3, '0')} · ${state.stage.label}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Primary)
-                    Text(preview?.name ?: source.doc.name.ifBlank { "（未命名）" }, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    Text(source.doc.url, fontSize = 10.sp, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Text(preview?.name ?: source.doc.name.ifBlank { "（未命名）" }, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Text(source.doc.url, fontSize = 11.sp, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
                 HorizontalDivider(color = Line)
                 Column(
