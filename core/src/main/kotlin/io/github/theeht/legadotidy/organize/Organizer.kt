@@ -69,11 +69,12 @@ object Organizer {
                 TidyText.display(doc.name, config.maxNameLength)
             } else {
                 var name = doc.name
-                if (OrganizeRule.REMOVE_ADVERTISING_WORDS in rules) {
-                    name = TidyText.removeAdvertisingWords(name)
-                }
+                // Strip decorative suffixes first so advertising terms become matchable at the edges.
                 if (OrganizeRule.CLEAN_DECORATIONS in rules) {
                     name = TidyText.cleanDecorations(name)
+                }
+                if (OrganizeRule.REMOVE_ADVERTISING_WORDS in rules) {
+                    name = TidyText.removeAdvertisingWords(name)
                 }
                 if (OrganizeRule.NORMALIZE_PUNCTUATION in rules) {
                     name = TidyText.normalizeNamePunctuation(name)
