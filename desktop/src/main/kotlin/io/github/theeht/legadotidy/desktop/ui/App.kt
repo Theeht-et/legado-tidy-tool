@@ -640,11 +640,11 @@ fun TidyApp() {
         Surface(Modifier.fillMaxSize(), color = Canvas) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                 Column(
-                    Modifier.widthIn(max = 1720.dp).fillMaxWidth().fillMaxHeight().padding(horizontal = 26.dp, vertical = 22.dp),
+                    Modifier.widthIn(max = 1720.dp).fillMaxWidth().fillMaxHeight().padding(start = 26.dp, end = 26.dp, top = 22.dp, bottom = 26.dp),
                 ) {
                 TopBar(state, onImport = ::importFile)
                 Column(
-                    Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp),
+                    Modifier.weight(1f).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     Stepper(state.stage)
@@ -904,12 +904,22 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
                 )
             }
         }
-        if (state.busy) LinearProgressIndicator(modifier = Modifier.width(52.dp).height(4.dp))
-        OutlinedButton(
-            onClick = onImport,
-            enabled = !state.busy,
-        ) { Text("导入 JSON") }
-        OutlinedButton(onClick = { state.showSettings = true }, enabled = !state.busy) { Text("⚙ 校验设置") }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (state.busy) LinearProgressIndicator(modifier = Modifier.width(52.dp).height(4.dp))
+            OutlinedButton(
+                onClick = onImport,
+                enabled = !state.busy,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 13.dp, vertical = 9.dp),
+            ) { Text("导入 JSON", fontSize = 14.sp) }
+            OutlinedButton(
+                onClick = { state.showSettings = true },
+                enabled = !state.busy,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 13.dp, vertical = 9.dp),
+            ) { Text("⚙ 校验设置", fontSize = 14.sp) }
+        }
     }
 }
 
@@ -1201,13 +1211,13 @@ private fun SourceListPanel(
                     value = state.filterQuery,
                     onValueChange = { state.filterQuery = it },
                     singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(color = BodyText, fontSize = 12.sp),
+                    textStyle = MaterialTheme.typography.bodySmall.copy(color = BodyText, fontSize = 14.sp),
                     modifier = Modifier.width(240.dp).height(40.dp)
                         .clip(RoundedCornerShape(9.dp)).border(1.dp, Line, RoundedCornerShape(9.dp))
                         .background(Color.White).padding(horizontal = 11.dp, vertical = 8.dp),
                     decorationBox = { innerTextField ->
                         Box(contentAlignment = Alignment.CenterStart) {
-                            if (state.filterQuery.isEmpty()) Text("搜索名称、分组或网址…", fontSize = 11.sp, color = Muted)
+                            if (state.filterQuery.isEmpty()) Text("搜索名称、分组或网址…", fontSize = 14.sp, color = Muted)
                             innerTextField()
                         }
                     },
@@ -1216,7 +1226,7 @@ private fun SourceListPanel(
                     onClick = { state.filterQuery = "" },
                     enabled = state.filterQuery.isNotEmpty(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 11.dp, vertical = 7.dp),
-                ) { Text("清除", fontSize = 11.sp) }
+                ) { Text("清除", fontSize = 12.sp) }
             }
             HorizontalDivider(color = Line)
             Row(
@@ -1237,7 +1247,7 @@ private fun SourceListPanel(
                     ) {
                         Text(
                             "$label $count",
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                         )
                     }
@@ -1392,10 +1402,10 @@ private fun SourceRowItem(
     ) {
         Column(Modifier.weight(3.1f).padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(name.ifBlank { "（未命名）" }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(source.doc.url, fontSize = 11.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(source.doc.url, fontSize = 12.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         SmallChip(sourceTypeLabel(source.doc.type), SoftSlate, Color(0xFF57647A), Modifier.weight(1.0f))
-        Text(group.ifBlank { "—" }, Modifier.weight(1.2f), fontSize = 11.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(group.ifBlank { "—" }, Modifier.weight(1.2f), fontSize = 12.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
         SmallChip(status, statusBackground(source.probe?.status), statusColor(source.probe?.status), Modifier.weight(1.2f))
         Text(elapsed, Modifier.weight(0.75f), fontSize = 11.sp, color = Muted, maxLines = 1)
         SmallChip(
@@ -1568,7 +1578,7 @@ private fun BottomActions(
     onCopyImportLink: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 7.dp)
+        Modifier.fillMaxWidth().padding(top = 16.dp)
             .border(1.dp, FooterSurface, RoundedCornerShape(13.dp))
             .clip(RoundedCornerShape(13.dp)).background(FooterSurface)
             .padding(horizontal = 17.dp, vertical = 14.dp),
