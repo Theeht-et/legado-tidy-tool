@@ -52,8 +52,41 @@ class SelectedOrganizerTest {
 
         assertEquals(listOf(1, 0), report.sources.map { it.index })
         assertEquals(listOf("银河书源", "星河书源"), report.sources.map { it.name })
-        assertEquals(listOf("音频", "音频"), report.sources.map { it.group })
+        assertEquals(listOf("有声", "有声"), report.sources.map { it.group })
         assertEquals(listOf(0, 1), report.sources.map { it.rank })
+    }
+
+    @Test
+    fun `响应耗时排序跨分组全局生效且重分组匹配原型规则`() {
+        val slowAudio = doc(
+            """{"bookSourceName":"星河书源","bookSourceUrl":"https://slow.test","bookSourceType":1,"bookSourceGroup":"旧音频"}"""
+        )
+        val fastComic = doc(
+            """{"bookSourceName":"漫画站","bookSourceUrl":"https://fast.test","bookSourceType":2,"bookSourceGroup":"旧漫画"}"""
+        )
+        val middleLibrary = doc(
+            """{"bookSourceName":"古籍文库","bookSourceUrl":"https://middle.test","bookSourceType":0,"bookSourceGroup":"旧文本"}"""
+        )
+        val results = mapOf(
+            0 to ProbeResult(0, ProbeStatus.OK, elapsedMs = 500),
+            1 to ProbeResult(1, ProbeStatus.OK, elapsedMs = 100),
+            2 to ProbeResult(2, ProbeStatus.OK, elapsedMs = 300),
+        )
+
+        val report = Organizer.run(
+            sources = listOf(slowAudio, fastComic, middleLibrary),
+            results = results,
+            config = OrganizeConfig(
+                selectedRules = setOf(
+                    OrganizeRule.REGROUP_BY_TYPE,
+                    OrganizeRule.SORT_BY_RESPONSE_TIME,
+                ),
+            ),
+        )
+
+        assertEquals(listOf(1, 2, 0), report.sources.map { it.index })
+        assertEquals(listOf("漫画", "出版物", "有声"), report.sources.map { it.group })
+        assertEquals(listOf(0, 0, 0), report.sources.map { it.rank })
     }
 
     @Test
