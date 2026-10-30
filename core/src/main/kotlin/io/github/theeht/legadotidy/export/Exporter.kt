@@ -59,7 +59,8 @@ object Exporter {
         return raws.mapIndexed { i, raw ->
             val copy = raw.deepCopy()
             val org = byIndex[i] ?: return@mapIndexed copy
-            if (config.applyCleanNames && org.name.isNotEmpty()) {
+            // Preserve a missing name property, but allow an existing name to be cleaned to empty.
+            if (config.applyCleanNames && (copy.has(SourceField.NAME) || org.name.isNotEmpty())) {
                 copy.addProperty(SourceField.NAME, org.name)
             }
             if (config.applyGroups ?: config.applyGroupAndOrder) {
