@@ -83,13 +83,13 @@ object TidyText {
     fun removeAdvertisingWords(raw: String): String {
         var s = ZERO_WIDTH.replace(raw, "")
         // A bracketed advertising annotation is removed as one unit, including both brackets.
-        repeat(4) {
+        while (true) {
             val previous = s
             s = AD_BRACKETED.replace(s, " ")
             s = AD_STANDALONE.replace(s, " ")
             s = AD_PREFIX.replace(s, "")
             s = AD_SUFFIX.replace(s, "")
-            if (s == previous) return@repeat
+            if (s == previous) break
         }
         s = EMPTY_BRACKETS.replace(s, " ")
         s = WHITESPACE.replace(s, " ")
