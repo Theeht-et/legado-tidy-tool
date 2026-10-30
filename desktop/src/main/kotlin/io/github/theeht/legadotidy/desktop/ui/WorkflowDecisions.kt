@@ -1,5 +1,9 @@
 package io.github.theeht.legadotidy.desktop.ui
 
+import com.google.gson.JsonObject
+import io.github.theeht.legadotidy.model.BookSourceDoc
+import io.github.theeht.legadotidy.model.SourceField
+import io.github.theeht.legadotidy.organize.OrganizeRule
 import java.io.File
 import java.nio.file.Path
 
@@ -80,4 +84,38 @@ internal fun nextSafeExportFileName(
         if (outputPath != inputPath && !outputFile.exists()) return candidate
         suffix++
     }
+}
+
+
+/**
+ * Organizer groups rows by type for display, but that grouping alone must not alter
+ * the JSON array order. Only a checked explicit ordering rule may do that.
+ */
+internal fun usesOrganizerOutputOrder(rules: Set<OrganizeRule>): Boolean =
+    OrganizeRule.SORT_BY_RESPONSE_TIME in rules
+
+/**
+ * The probe engine checks a source using its URL and source type. Name, group and
+ * enable/list metadata do not change the rules being executed.
+ */
+internal fun probeInputsChanged(before: BookSourceDoc, after: BookSourceDoc): Boolean =
+    before.url != after.url || before.type != after.type
+
+private const val LEGACY_ENABLED_FIELD = "bookSourceEnabled"
+
+/** Effective enabled state across the modern and legacy JSON field names. */
+internal fun isDocumentEnabled(doc: BookSourceDoc): Boolean {
+    val legacyEnabled = doc.raw.get(LEGACY_ENABLED_FIELD)?.let { value ->
+        if (value.isJsonNull) null else runCatching { value.asBoolean }.getOrNull()
+    }
+    return doc.enabled && legacyEnabled != false
+}
+
+/**
+ * Write both names when the legacy field exists. Keeping a stale legacy false value
+ * would otherwise make the UI continue to display a source as disabled after editing.
+ */
+internal fun setDocumentEnabled(raw: JsonObject, enabled: Boolean) {
+    raw.addProperty(SourceField.ENABLED, enabled)
+    if (raw.has(LEGACY_ENABLED_FIELD)) raw.addProperty(LEGACY_ENABLED_FIELD, enabled)
 }
