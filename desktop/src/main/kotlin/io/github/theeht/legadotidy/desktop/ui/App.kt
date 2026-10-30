@@ -1444,14 +1444,14 @@ private fun SourceRowItem(
 }
 
 
-private data class SourceDetailField(
+internal data class SourceDetailField(
     val key: String,
     val label: String,
     val value: String,
     val configured: Boolean,
 )
 
-private data class SourceDetailSection(
+internal data class SourceDetailSection(
     val title: String,
     val description: String,
     val fields: List<SourceDetailField>,
@@ -1459,7 +1459,7 @@ private data class SourceDetailSection(
 
 private data class SourceDetailFieldSpec(val key: String, val label: String)
 
-private fun sourceDetailSections(doc: BookSourceDoc): List<SourceDetailSection> {
+internal fun sourceDetailSections(doc: BookSourceDoc): List<SourceDetailSection> {
     val raw = doc.raw
     val knownTopLevelKeys = linkedSetOf<String>()
     val sections = mutableListOf<SourceDetailSection>()
