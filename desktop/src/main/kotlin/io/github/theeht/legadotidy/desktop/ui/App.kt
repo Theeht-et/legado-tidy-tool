@@ -456,12 +456,9 @@ fun TidyApp() {
                     )
                 }
                 val byIndex = report.sources.associateBy { it.index }
-                // Re-grouping and explicit sorting use the organizer's grouped order.
-                // Name-only rules keep the source pool's existing order.
-                val orderedIds = if (
-                    OrganizeRule.REGROUP_BY_TYPE in rules ||
-                    OrganizeRule.SORT_BY_RESPONSE_TIME in rules
-                ) {
+                // Re-grouping changes the group field, not the user's source order.
+                // Only the explicit response-time sorting rule may reorder preview/export rows.
+                val orderedIds = if (usesOrganizerOutputOrder(rules)) {
                     report.sources.mapNotNull { organized ->
                         snapshot.getOrNull(organized.index)?.id
                     }
@@ -793,17 +790,20 @@ fun TidyApp() {
                         )
                         state.preview = all
                     } else {
-                        val changedUrl = url != source.doc.url
+                        val editedProbeInputsChanged = probeInputsChanged(
+                            source.doc,
+                            editedDocument(source.doc, name, url, group, type, enabled),
+                        )
                         val anyMetadataChanged = name != source.doc.name ||
-                            changedUrl ||
+                            url != source.doc.url ||
                             group != source.doc.group ||
                             type != source.doc.type ||
-                            enabled != source.doc.enabled
+                            enabled != isDocumentEnabled(source.doc)
                         updateSource(state, id) { old ->
                             val edited = editedDocument(old.doc, name, url, group, type, enabled)
                             when {
                                 (state.stage == WorkflowStage.PROBE_REVIEW ||
-                                    state.stage == WorkflowStage.ORGANIZE_REVIEW) && changedUrl -> old.copy(
+                                    state.stage == WorkflowStage.ORGANIZE_REVIEW) && editedProbeInputsChanged -> old.copy(
                                     doc = edited,
                                     probe = null,
                                     deleteMarked = false,
@@ -830,7 +830,7 @@ fun TidyApp() {
                             state.notice = "源信息已修改，旧去重建议已重置。请重新开始去重。"
                         } else if (
                             (state.stage == WorkflowStage.PROBE_REVIEW ||
-                                state.stage == WorkflowStage.ORGANIZE_REVIEW) && changedUrl
+                                state.stage == WorkflowStage.ORGANIZE_REVIEW) && editedProbeInputsChanged
                         ) {
                             state.completed = state.sources.count { it.probe != null }
                             state.total = state.sources.size
@@ -840,7 +840,7 @@ fun TidyApp() {
                                 state.preview = null
                                 state.previewOrder = emptyList()
                             }
-                            state.notice = "URL 已修改，该书源需要重新校验；已返回校验审核阶段。"
+                            state.notice = "书源地址或类型已修改，该书源需要重新校验；已返回校验审核阶段。"
                         }
                     }
                     editingId = null
@@ -1987,10 +1987,7 @@ private fun statusBackground(status: ProbeStatus?): Color = when (status) {
 }
 
 private fun WorkflowSource.isDisabledForDisplay(): Boolean {
-    val legacyEnabled = doc.raw.get("bookSourceEnabled")?.let { value ->
-        if (value.isJsonNull) null else runCatching { value.asBoolean }.getOrNull()
-    }
-    return !doc.enabled || legacyEnabled == false
+    return !isDocumentEnabled(doc)
 }
 
 private fun buildSourceRows(state: WorkflowState): List<SourceListRow> {
@@ -2077,7 +2074,7 @@ private fun editedDocument(
     if (url != doc.url) raw.addProperty(SourceField.URL, url)
     if (group != doc.group) raw.addProperty(SourceField.GROUP, group)
     if (type != doc.type) raw.addProperty(SourceField.TYPE, type)
-    if (enabled != doc.enabled) raw.addProperty(SourceField.ENABLED, enabled)
+    if (enabled != isDocumentEnabled(doc)) setDocumentEnabled(raw, enabled)
     return BookSourceDoc(raw)
 }
 
