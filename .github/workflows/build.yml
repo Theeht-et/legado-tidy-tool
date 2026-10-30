@@ -121,6 +121,17 @@ jobs:
       - name: 组装便携目录
         run: gradle :desktop:portable --console=plain
 
+      - name: 验证便携 JVM 启动与环境隔离
+        shell: pwsh
+        run: |
+          $env:_JAVA_OPTIONS = "-Xbootclasspath/p:invalid-test.jar"
+          $env:JAVA_TOOL_OPTIONS = "-Xbootclasspath/p:invalid-test.jar"
+          $env:JDK_JAVA_OPTIONS = "-Xbootclasspath/p:invalid-test.jar"
+          & cmd.exe /c 'call "desktop\build\portable\legado-tidy\legado-tidy.bat" --runtime-check'
+          if ($LASTEXITCODE -ne 0) {
+            throw "便携 JRE 启动失败，或启动器未隔离外部 JVM 参数。"
+          }
+
       # 直接上传便携目录；GitHub Artifact 本身会生成下载 ZIP，避免再嵌套一层 ZIP。
       - uses: actions/upload-artifact@v4
         with:
