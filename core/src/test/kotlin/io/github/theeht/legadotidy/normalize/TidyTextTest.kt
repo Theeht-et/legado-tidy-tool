@@ -51,16 +51,25 @@ class TidyTextTest {
     }
 
     @Test
-    fun `广告清理只移除常见宣传尾缀和括号内容`() {
+    fun `广告清理与 v3 原型的前后缀规则一致`() {
         assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源（官方推荐） - 广告"))
-        assertEquals("站点", TidyText.removeAdvertisingWords("站点 · 福利"))
-        assertEquals("推荐书源", TidyText.removeAdvertisingWords("推荐书源"))
-        assertEquals("小说推荐", TidyText.removeAdvertisingWords("小说推荐"))
+        assertEquals("站点", TidyText.removeAdvertisingWords("站点 - 福利"))
+        assertEquals("书源", TidyText.removeAdvertisingWords("推荐书源"))
+        assertEquals("小说", TidyText.removeAdvertisingWords("小说推荐"))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源 VIP"))
+        assertEquals("星河书源", TidyText.removeAdvertisingWords("星河书源 AD"))
     }
 
     @Test
-    fun `名称标点整理合并多余分隔符并规范空格`() {
-        assertEquals("星河书源 | 官方", TidyText.normalizeNamePunctuation(" 星河书源  ||   官方 "))
+    fun `装饰清理不截断长名称`() {
+        val longName = "星河小说书源".repeat(12)
+        assertEquals(longName, TidyText.cleanDecorations("📚 $longName ✨"))
+    }
+
+    @Test
+    fun `名称标点整理遵循原型的重复标点规则`() {
+        assertEquals("星河书源 || 官方", TidyText.normalizeNamePunctuation(" 星河书源  ||   官方 "))
+        assertEquals("星河书源 官方", TidyText.normalizeNamePunctuation("星河书源——官方"))
     }
 
 }
