@@ -636,12 +636,14 @@ fun TidyApp() {
 
     MaterialTheme(colorScheme = LightColors) {
         Surface(Modifier.fillMaxSize(), color = Canvas) {
-            Column(Modifier.fillMaxSize()) {
-                TopBar(state, onImport = ::importFile)
-                HorizontalDivider(color = Line)
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                 Column(
-                    Modifier.weight(1f).fillMaxWidth().padding(horizontal = 26.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    Modifier.widthIn(max = 1720.dp).fillMaxHeight().padding(horizontal = 26.dp, vertical = 22.dp),
+                ) {
+                TopBar(state, onImport = ::importFile)
+                Column(
+                    Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     Stepper(state.stage)
                     KpiRow(state)
@@ -750,6 +752,7 @@ fun TidyApp() {
                         }
                     },
                 )
+                }
             }
         }
     }
@@ -858,12 +861,12 @@ fun TidyApp() {
 @Composable
 private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 22.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().padding(bottom = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Row(
-            Modifier.widthIn(min = 225.dp),
+            Modifier.widthIn(min = 245.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(11.dp),
         ) {
@@ -875,23 +878,23 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
                 Text("书", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
             }
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text("书源整理工具", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink)
-                Text("Legado Tidy Tool · 分阶段审核", fontSize = 11.sp, color = Muted)
+                Text("书源整理工具", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Ink)
+                Text("Legado Tidy Tool · 分阶段审核", fontSize = 12.sp, color = Muted)
             }
         }
         Row(
             Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(10.dp))
-                .background(Color.White, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
+                .background(Color.White, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             Text("▤", fontSize = 18.sp, color = Muted)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text(state.inputFile?.name ?: "尚未导入书源 JSON", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(state.inputFile?.name ?: "尚未导入书源 JSON", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     if (state.inputFile == null) "导入本地文件，按阶段审核后导出"
                     else "${state.inputCount} 个书源 · ${state.stage.label}",
-                    fontSize = 10.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    fontSize = 12.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -901,7 +904,6 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
             enabled = !state.busy,
         ) { Text("导入 JSON") }
         OutlinedButton(onClick = { state.showSettings = true }, enabled = !state.busy) { Text("⚙ 校验设置") }
-        OutlinedButton(onClick = { state.showReport = true }) { Text("报告") }
     }
 }
 
@@ -924,7 +926,7 @@ private fun Stepper(stage: WorkflowStage) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
-                    Box(Modifier.size(28.dp).clip(RoundedCornerShape(9.dp)).background(badgeColor), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(29.dp).clip(RoundedCornerShape(9.dp)).background(badgeColor), contentAlignment = Alignment.Center) {
                         Text("${index + 1}", color = badgeTextColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
@@ -956,7 +958,7 @@ private fun KpiRow(state: WorkflowState) {
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
             ) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(label, color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     Text(value, color = Ink, fontSize = 25.sp, fontWeight = FontWeight.Bold)
                     Text(hint, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -976,60 +978,74 @@ private fun OrganizeRulePanel(
     onMarkDisabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(modifier.border(1.dp, Color(0xFFDCE5FB), RoundedCornerShape(11.dp)), colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FBFF)), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
-        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Card(
+        modifier.border(1.dp, Color(0xFFDCE5FB), RoundedCornerShape(11.dp)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FBFF)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("整理规则", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
+                Text("整理规则", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Ink)
                 Spacer(Modifier.width(8.dp))
-                Text("仅执行已勾选的规则；未勾选项保持原样", fontSize = 10.sp, color = Muted)
+                Text("仅执行已勾选的规则；未勾选项保持原样", fontSize = 11.sp, color = Muted)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OrganizeRule.entries.take(3).forEach { rule -> RuleCheckbox(rule, rule in state.selectedRules, onRuleChange, Modifier.weight(1f)) }
+                RuleCheckbox(
+                    OrganizeRule.CLEAN_DECORATIONS,
+                    OrganizeRule.CLEAN_DECORATIONS in state.selectedRules,
+                    onRuleChange,
+                    Modifier.weight(1f),
+                )
+                RuleCheckbox(
+                    OrganizeRule.REMOVE_ADVERTISING_WORDS,
+                    OrganizeRule.REMOVE_ADVERTISING_WORDS in state.selectedRules,
+                    onRuleChange,
+                    Modifier.weight(1f),
+                )
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RuleCheckbox(
+                    OrganizeRule.NORMALIZE_PUNCTUATION,
+                    OrganizeRule.NORMALIZE_PUNCTUATION in state.selectedRules,
+                    onRuleChange,
+                    Modifier.weight(1f),
+                )
+                RuleOptionCard(
+                    title = "标记已禁用书源为删除",
+                    description = "只打删除标记，确认进入导出阶段时才从当前书源池移除。",
+                    checked = markDisabledForDeletion,
+                    onCheckedChange = onMarkDisabledChange,
+                    modifier = Modifier.weight(1f),
+                )
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                Row(
-                    Modifier.weight(1f).border(1.dp, if (markDisabledForDeletion) Color(0xFFF0C8CC) else Line, RoundedCornerShape(9.dp))
-                        .background(if (markDisabledForDeletion) SoftRed else Color.White, RoundedCornerShape(9.dp))
-                        .padding(horizontal = 4.dp, vertical = 5.dp).heightIn(min = 58.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Checkbox(checked = markDisabledForDeletion, onCheckedChange = onMarkDisabledChange)
-                    Column(Modifier.weight(1f).padding(end = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("标记已禁用书源为删除", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text("只添加待删除标记；进入导出阶段前可撤销。", fontSize = 9.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    }
-                }
                 Column(
-                    Modifier.weight(1.15f).border(1.dp, Line, RoundedCornerShape(9.dp)).background(Color.White, RoundedCornerShape(9.dp)).padding(7.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                    Modifier.weight(1f).border(1.dp, Line, RoundedCornerShape(9.dp))
+                        .background(Color.White, RoundedCornerShape(9.dp)).padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
-                    Text("分组规则", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Row(
-                            Modifier.weight(1f).clip(RoundedCornerShape(7.dp))
-                                .background(if (OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules) SoftBlue else Color.Transparent)
-                                .clickable { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(
-                                selected = OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules,
-                                onClick = { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
-                            )
-                            Text("保留原有", fontSize = 9.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        Row(
-                            Modifier.weight(1f).clip(RoundedCornerShape(7.dp))
-                                .background(if (OrganizeRule.REGROUP_BY_TYPE in state.selectedRules) SoftBlue else Color.Transparent)
-                                .clickable { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(
-                                selected = OrganizeRule.REGROUP_BY_TYPE in state.selectedRules,
-                                onClick = { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
-                            )
-                            Text("按类型", fontSize = 9.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
+                    Text("分组规则", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RuleRadio(
+                            label = "保留原有分组",
+                            selected = OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules,
+                            onClick = { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
+                        )
+                        RuleRadio(
+                            label = "重新分组",
+                            selected = OrganizeRule.REGROUP_BY_TYPE in state.selectedRules,
+                            onClick = { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
+                        )
                     }
+                    Text(
+                        "重新分组按书源类型和名称关键词分类，未命中时归入综合。",
+                        fontSize = 11.sp,
+                        color = Muted,
+                        lineHeight = 15.sp,
+                    )
                 }
                 RuleCheckbox(
                     OrganizeRule.SORT_BY_RESPONSE_TIME,
@@ -1038,20 +1054,85 @@ private fun OrganizeRulePanel(
                     Modifier.weight(1f),
                 )
             }
-            Text("「保留原有分组」与「按书源类型重新分组」互斥；响应时间排序使用本轮校验耗时。", fontSize = 10.sp, color = Muted)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("默认建议：清理名称装饰与广告词，规范标点，保留现有分组。", Modifier.weight(1f).padding(end = 8.dp), fontSize = 9.sp, color = Muted)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "默认建议：清理名称装饰与广告词，规范标点，保留现有分组。",
+                    Modifier.weight(1f).padding(end = 8.dp),
+                    fontSize = 11.sp,
+                    color = Muted,
+                )
                 Button(
                     onClick = onGeneratePreview,
                     enabled = state.sources.isNotEmpty() && !state.busy,
                     colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 7.dp),
-                ) { Text("按所选规则生成整理预览", fontSize = 10.sp) }
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 13.dp, vertical = 9.dp),
+                ) { Text("按所选规则生成整理预览", fontSize = 12.sp) }
             }
         }
     }
 }
 
+@Composable
+private fun RuleOptionCard(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier.clip(RoundedCornerShape(9.dp))
+            .border(1.dp, if (checked) Color(0xFFB8CCFF) else Line, RoundedCornerShape(9.dp))
+            .background(if (checked) SoftBlue else Color.White, RoundedCornerShape(9.dp))
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 10.dp, vertical = 10.dp)
+            .heightIn(min = 58.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
+    ) {
+        RuleCheckMark(checked)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text(description, fontSize = 11.sp, color = Muted, lineHeight = 15.sp)
+        }
+    }
+}
+
+@Composable
+private fun RuleCheckMark(checked: Boolean) {
+    Box(
+        Modifier.size(14.dp).clip(RoundedCornerShape(3.dp))
+            .background(if (checked) Primary else Color.White)
+            .border(1.dp, if (checked) Primary else Color(0xFFB8C1D0), RoundedCornerShape(3.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (checked) Text("✓", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun RuleRadio(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.clip(RoundedCornerShape(7.dp)).clickable(onClick = onClick).padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            Modifier.size(14.dp).clip(RoundedCornerShape(50))
+                .border(1.dp, if (selected) Primary else Color(0xFF9AA5B5), RoundedCornerShape(50)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) Box(
+                Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(Primary),
+            )
+        }
+        Text(label, fontSize = 11.sp, color = BodyText)
+    }
+}
 
 @Composable
 private fun RuleCheckbox(
@@ -1061,25 +1142,20 @@ private fun RuleCheckbox(
     modifier: Modifier = Modifier,
 ) {
     val description = when (rule) {
-        OrganizeRule.CLEAN_DECORATIONS -> "移除图标、装饰字符和首尾多余符号"
-        OrganizeRule.REMOVE_ADVERTISING_WORDS -> "清理常见宣传标签，尽量保留站点名"
-        OrganizeRule.NORMALIZE_PUNCTUATION -> "规范空格、重复感叹号与多余标点"
-        OrganizeRule.KEEP_ORIGINAL_GROUPS -> "保持导入时已有的书源分组"
-        OrganizeRule.REGROUP_BY_TYPE -> "按文本、音频等书源类型重新分组"
-        OrganizeRule.SORT_BY_RESPONSE_TIME -> "响应较快的书源排在前面，未测耗时排最后"
+        OrganizeRule.CLEAN_DECORATIONS -> "移除图标、装饰字符及首尾多余符号，尽量保留站点主体名称。"
+        OrganizeRule.REMOVE_ADVERTISING_WORDS -> "清理精品、高速、推荐、免广告、VIP 等常见宣传标签。"
+        OrganizeRule.NORMALIZE_PUNCTUATION -> "去除首尾标点、重复感叹号及多余空格。"
+        OrganizeRule.KEEP_ORIGINAL_GROUPS -> "保持导入时已有的书源分组。"
+        OrganizeRule.REGROUP_BY_TYPE -> "按书源类型和名称关键词重新分组。"
+        OrganizeRule.SORT_BY_RESPONSE_TIME -> "响应较快的书源排在前面；未获得耗时的书源排在最后。"
     }
-    Row(
-        modifier.border(1.dp, if (checked) Color(0xFFB8CCFF) else Line, RoundedCornerShape(9.dp))
-            .background(if (checked) SoftBlue else Color.White, RoundedCornerShape(9.dp))
-            .padding(horizontal = 4.dp, vertical = 5.dp).heightIn(min = 58.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(checked = checked, onCheckedChange = { onRuleChange(rule, it) })
-        Column(Modifier.weight(1f).padding(end = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(rule.label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(description, fontSize = 9.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-    }
+    RuleOptionCard(
+        title = rule.label,
+        description = description,
+        checked = checked,
+        onCheckedChange = { onRuleChange(rule, it) },
+        modifier = modifier,
+    )
 }
 
 
@@ -1098,7 +1174,7 @@ private fun SourceListPanel(
     Card(modifier.border(1.dp, Line, RoundedCornerShape(14.dp)), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 17.dp, vertical = 15.dp),
+                Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 19.dp, vertical = 17.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -1120,7 +1196,7 @@ private fun SourceListPanel(
                     onValueChange = { state.filterQuery = it },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodySmall.copy(color = BodyText, fontSize = 12.sp),
-                    modifier = Modifier.width(240.dp).height(38.dp)
+                    modifier = Modifier.width(240.dp).height(40.dp)
                         .clip(RoundedCornerShape(9.dp)).border(1.dp, Line, RoundedCornerShape(9.dp))
                         .background(Color.White).padding(horizontal = 11.dp, vertical = 8.dp),
                     decorationBox = { innerTextField ->
@@ -1138,7 +1214,7 @@ private fun SourceListPanel(
             }
             HorizontalDivider(color = Line)
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(1.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1247,7 +1323,7 @@ private fun SourceListPanel(
 @Composable
 private fun TableHeader() {
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFFFBFCFE)).padding(horizontal = 12.dp, vertical = 9.dp),
+        Modifier.fillMaxWidth().background(Color(0xFFFBFCFE)).padding(horizontal = 10.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("源名 / URL", Modifier.weight(3.1f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
@@ -1486,10 +1562,10 @@ private fun BottomActions(
     onCopyImportLink: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 26.dp, vertical = 7.dp)
+        Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 7.dp)
             .border(1.dp, FooterSurface, RoundedCornerShape(13.dp))
             .clip(RoundedCornerShape(13.dp)).background(FooterSurface)
-            .padding(horizontal = 17.dp, vertical = 13.dp),
+            .padding(horizontal = 17.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
