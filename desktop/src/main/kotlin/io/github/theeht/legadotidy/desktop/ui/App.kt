@@ -685,6 +685,7 @@ fun TidyApp() {
     CompositionLocalProvider(
         LocalTextStyle provides TextStyle(
             fontFamily = FontFamily.SansSerif,
+            fontSize = 14.sp,
             color = Ink,
             letterSpacing = 0.sp,
         ),
