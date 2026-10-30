@@ -73,7 +73,8 @@ class SourceDetailFieldsTest {
         assertEquals("{\n  \"nested\": \"kept\"\n}", fields.getValue("futureTopLevelField").value)
         assertFalse(fields.containsKey("enabled"), "详情页不重复显示书源启用状态")
         assertFalse(fields.containsKey("enabledExplore"), "详情页不重复显示发现启用状态")
-        assertFalse(fields.getValue("ruleReview.enabled").configured)
+        assertTrue(fields.getValue("ruleReview.enabled").configured)
+        assertEquals("false", fields.getValue("ruleReview.enabled").value)
         assertFalse(fields.getValue("ruleSearch.checkKeyWord").configured)
     }
 
