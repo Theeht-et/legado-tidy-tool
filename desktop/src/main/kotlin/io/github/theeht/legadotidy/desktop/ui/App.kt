@@ -139,11 +139,11 @@ private val LightColors = lightColorScheme(
 )
 
 private enum class WorkflowStage(val label: String, val help: String) {
-    IMPORT("导入", "导入书源文件"),
-    DEDUP_REVIEW("去重审核", "系统已推荐保留项；请检查重复组"),
-    PROBE_REVIEW("校验审核", "真实引擎校验完成后，请检查待删除建议"),
-    ORGANIZE_REVIEW("整理预览", "先选择规则，再生成可编辑预览"),
-    EXPORT("导出", "导出当前已确认的书源工作集"),
+    IMPORT("导入书源", "文件与数据"),
+    DEDUP_REVIEW("去重审核", "自动建议保留项"),
+    PROBE_REVIEW("书源校验", "状态与删除标记"),
+    ORGANIZE_REVIEW("整理审核", "按勾选规则整理"),
+    EXPORT("导出结果", "生成 JSON"),
 }
 
 private data class WorkflowSource(
@@ -409,6 +409,8 @@ fun TidyApp() {
             return
         }
         if (!commitMarkedDeletions(state)) return
+        state.duplicateGroups = emptyList()
+        state.duplicateReport = null
         state.stage = WorkflowStage.PROBE_REVIEW
         state.sourceFilter = "全部"
         state.sources.indices.forEach { index ->
@@ -638,7 +640,7 @@ fun TidyApp() {
         Surface(Modifier.fillMaxSize(), color = Canvas) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                 Column(
-                    Modifier.widthIn(max = 1720.dp).fillMaxHeight().padding(horizontal = 26.dp, vertical = 22.dp),
+                    Modifier.widthIn(max = 1720.dp).fillMaxWidth().fillMaxHeight().padding(horizontal = 26.dp, vertical = 22.dp),
                 ) {
                 TopBar(state, onImport = ::importFile)
                 Column(
@@ -893,7 +895,11 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
                 Text(state.inputFile?.name ?: "尚未导入书源 JSON", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     if (state.inputFile == null) "导入本地文件，按阶段审核后导出"
-                    else "${state.inputCount} 个书源 · ${state.stage.label}",
+                    else "${state.sources.size} 个当前书源 · " + when (state.stage) {
+                        WorkflowStage.IMPORT -> "待开始"
+                        WorkflowStage.EXPORT -> "待导出"
+                        else -> "处理中"
+                    },
                     fontSize = 12.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
