@@ -563,9 +563,7 @@ fun TidyApp() {
                 it == OrganizeRule.REMOVE_ADVERTISING_WORDS ||
                 it == OrganizeRule.NORMALIZE_PUNCTUATION
         } || preview.values.any { it.nameEdited }
-        state.applyGroups = OrganizeRule.KEEP_ORIGINAL_GROUPS in rules ||
-            OrganizeRule.REGROUP_BY_TYPE in rules ||
-            preview.values.any { it.groupEdited }
+        state.applyGroups = shouldApplyGroups(rules, preview.values.any { it.groupEdited })
         state.applyOrder = OrganizeRule.SORT_BY_RESPONSE_TIME in rules
 
         // Manual group edits can change which group a source belongs to. Recalculate
@@ -1457,6 +1455,27 @@ internal data class SourceDetailSection(
     val fields: List<SourceDetailField>,
 )
 
+internal enum class SourceDetailTab(
+    val label: String,
+    val sectionTitles: Set<String>,
+) {
+    OVERVIEW("概览", emptySet()),
+    BASIC("基本", setOf("基本信息", "请求与登录", "备注与运行数据")),
+    SEARCH("搜索", setOf("搜索配置", "搜索规则")),
+    EXPLORE("发现", setOf("发现配置", "发现规则")),
+    BOOK_INFO("书籍信息", setOf("书籍信息规则")),
+    TOC("目录", setOf("目录规则")),
+    CONTENT("正文", setOf("正文规则")),
+    REVIEW("段评", setOf("段评规则")),
+    SCRIPTS("脚本", setOf("JavaScript 与扩展")),
+    EXTRA("扩展", setOf("其他 / 上游扩展字段")),
+}
+
+internal fun sourceDetailSectionsForTab(
+    sections: List<SourceDetailSection>,
+    tab: SourceDetailTab,
+): List<SourceDetailSection> = sections.filter { it.title in tab.sectionTitles }
+
 private data class SourceDetailFieldSpec(val key: String, val label: String)
 
 internal fun sourceDetailSections(doc: BookSourceDoc): List<SourceDetailSection> {
@@ -1679,6 +1698,8 @@ private fun DetailPanel(
             val preview = state.preview?.get(source.id)
                 .takeIf { state.stage == WorkflowStage.ORGANIZE_REVIEW || state.stage == WorkflowStage.EXPORT }
             val detailSections = remember(source.id, source.doc.raw, preview) { sourceDetailSections(source.doc) }
+            var selectedDetailTab by remember(source.id) { mutableStateOf(SourceDetailTab.OVERVIEW) }
+            val selectedDetailSections = sourceDetailSectionsForTab(detailSections, selectedDetailTab)
             Column(Modifier.fillMaxSize()) {
                 Row(
                     Modifier.fillMaxWidth().background(Color.White)
@@ -1713,94 +1734,50 @@ private fun DetailPanel(
                     DetailMetric("响应耗时", source.probe?.let { "${it.elapsedMs} ms" } ?: "暂无", Modifier.weight(1f))
                 }
                 HorizontalDivider(color = Line)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SourceDetailTab.values().forEach { tab ->
+                        val selected = selectedDetailTab == tab
+                        Column(
+                            Modifier.clip(RoundedCornerShape(8.dp))
+                                .clickable { selectedDetailTab = tab }
+                                .padding(horizontal = 11.dp, vertical = 5.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                tab.label,
+                                fontSize = 12.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (selected) Primary else Muted,
+                                maxLines = 1,
+                            )
+                            Box(
+                                Modifier.fillMaxWidth().height(2.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(if (selected) Primary else Color.Transparent),
+                            )
+                        }
+                    }
+                }
+                HorizontalDivider(color = Line)
                 Column(
-                    Modifier.weight(1f).verticalScroll(rememberScrollState())
+                    Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
                         .padding(horizontal = 18.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text("审核与处理信息", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
-                    Card(
-                        Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = if (source.deleteMarked) SoftRed else SoftNeutral),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    ) {
-                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text(
-                                if (source.deleteMarked) "当前标记：待删除" else "当前建议：${source.suggestion}",
-                                fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                                color = if (source.deleteMarked) Bad else Ink,
-                            )
-                            Text(
-                                when {
-                                    source.deleteMarked -> "该书源会在确认进入下一阶段时从当前工作池移除。"
-                                    source.probe?.status == ProbeStatus.OK -> "校验成功；仍可根据规则完整度与重复候选情况人工判断。"
-                                    source.probe?.status?.let { it == ProbeStatus.TIMEOUT || it == ProbeStatus.NETWORK || it == ProbeStatus.HTTP_ERROR } == true ->
-                                        "网络或服务响应异常不代表书源一定失效，建议人工复核。"
-                                    else -> "系统建议仅供审核参考，确认阶段前可以修改标记。"
-                                },
-                                fontSize = 11.sp, color = Muted, lineHeight = 16.sp,
-                            )
-                            source.probe?.let { result ->
-                                if (!result.detail.isNullOrBlank()) {
-                                    HorizontalDivider(color = Line)
-                                    Text("校验详情", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink)
-                                    Text(result.detail.orEmpty(), fontSize = 11.sp, color = BodyText, lineHeight = 16.sp)
-                                }
-                                result.httpCode?.let { Text("HTTP 状态码：$it", fontSize = 10.sp, color = Muted) }
-                            }
-                        }
+                    if (selectedDetailTab == SourceDetailTab.OVERVIEW) {
+                        DetailOverviewContent(source, preview)
+                    } else {
+                        DetailSectionsContent(
+                            tab = selectedDetailTab,
+                            sections = selectedDetailSections,
+                        )
                     }
-                    if (preview != null) {
-                        Text("整理预览", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.Top) {
-                            Column(
-                                Modifier.weight(1f).clip(RoundedCornerShape(9.dp)).background(SoftRed).padding(11.dp),
-                                verticalArrangement = Arrangement.spacedBy(5.dp),
-                            ) {
-                                Text("修改前", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Bad)
-                                Text(source.doc.name.ifBlank { "（未命名）" }, fontSize = 11.sp, color = BodyText)
-                                Text(source.doc.group.ifBlank { "未分组" }, fontSize = 10.sp, color = Muted)
-                            }
-                            Column(
-                                Modifier.weight(1f).clip(RoundedCornerShape(9.dp)).background(SoftGreen).padding(11.dp),
-                                verticalArrangement = Arrangement.spacedBy(5.dp),
-                            ) {
-                                Text("预览结果", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ok)
-                                Text(preview.name.ifBlank { "（未命名）" }, fontSize = 11.sp, color = BodyText)
-                                Text(preview.group.ifBlank { "未分组" }, fontSize = 10.sp, color = Muted)
-                            }
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("上游书源编辑字段", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
-                        SmallChip("${detailSections.sumOf { it.fields.size }} 项", SoftBlue, Primary)
-                    }
-                    Text(
-                        "按上游 BookSource 的编辑区块整理。未配置字段也会列出；规则组显示已知字段及源文件中实际存在的扩展字段。",
-                        fontSize = 10.sp, color = Muted, lineHeight = 15.sp,
-                    )
-                    detailSections.forEach { section ->
-                        Column(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                                .border(1.dp, Line, RoundedCornerShape(10.dp))
-                                .background(Color.White).padding(11.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(section.title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
-                                SmallChip("${section.fields.size} 项", SoftNeutral, Muted)
-                            }
-                            Text(section.description, fontSize = 10.sp, color = Muted)
-                            section.fields.chunked(2).forEach { pair ->
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                                    DetailValueCard(pair[0], Modifier.weight(1f))
-                                    if (pair.size > 1) DetailValueCard(pair[1], Modifier.weight(1f))
-                                    else Spacer(Modifier.weight(1f))
-                                }
-                            }
-                        }
-                    }
-                    Text("字段展示以导入 JSON 为准；未知字段不会被丢弃，导出时仍由原始 JSON 数据保留。", fontSize = 10.sp, color = Muted)
                 }
                 HorizontalDivider(color = Line)
                 Row(
@@ -1833,6 +1810,115 @@ private fun DetailPanel(
             }
         }
     }
+}
+
+@Composable
+private fun DetailOverviewContent(source: WorkflowSource, preview: PreviewSource?) {
+    Text("审核与处理信息", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = if (source.deleteMarked) SoftRed else SoftNeutral),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(
+                if (source.deleteMarked) "当前标记：待删除" else "当前建议：\${source.suggestion}",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (source.deleteMarked) Bad else Ink,
+            )
+            Text(
+                when {
+                    source.deleteMarked -> "该书源会在确认进入下一阶段时从当前工作池移除。"
+                    source.probe?.status == ProbeStatus.OK -> "校验成功；仍可根据规则完整度与重复候选情况人工判断。"
+                    source.probe?.status?.let { it == ProbeStatus.TIMEOUT || it == ProbeStatus.NETWORK || it == ProbeStatus.HTTP_ERROR } == true ->
+                        "网络或服务响应异常不代表书源一定失效，建议人工复核。"
+                    else -> "系统建议仅供审核参考，确认阶段前可以修改标记。"
+                },
+                fontSize = 11.sp,
+                color = Muted,
+                lineHeight = 16.sp,
+            )
+            source.probe?.let { result ->
+                if (!result.detail.isNullOrBlank()) {
+                    HorizontalDivider(color = Line)
+                    Text("校验详情", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    Text(result.detail.orEmpty(), fontSize = 11.sp, color = BodyText, lineHeight = 16.sp)
+                }
+                result.httpCode?.let { Text("HTTP 状态码：$it", fontSize = 10.sp, color = Muted) }
+            }
+        }
+    }
+    if (preview != null) {
+        Text("整理预览", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(
+                Modifier.weight(1f).clip(RoundedCornerShape(9.dp)).background(SoftRed).padding(11.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Text("修改前", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Bad)
+                Text(source.doc.name.ifBlank { "（未命名）" }, fontSize = 11.sp, color = BodyText)
+                Text(source.doc.group.ifBlank { "未分组" }, fontSize = 10.sp, color = Muted)
+            }
+            Column(
+                Modifier.weight(1f).clip(RoundedCornerShape(9.dp)).background(SoftGreen).padding(11.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Text("预览结果", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ok)
+                Text(preview.name.ifBlank { "（未命名）" }, fontSize = 11.sp, color = BodyText)
+                Text(preview.group.ifBlank { "未分组" }, fontSize = 10.sp, color = Muted)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailSectionsContent(
+    tab: SourceDetailTab,
+    sections: List<SourceDetailSection>,
+) {
+    Text(tab.label, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
+    if (sections.isEmpty()) {
+        Text("该分类没有可展示的字段。", fontSize = 11.sp, color = Muted)
+    }
+    sections.forEach { section ->
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                .border(1.dp, Line, RoundedCornerShape(10.dp))
+                .background(Color.White).padding(11.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(section.title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
+                SmallChip("\${section.fields.size} 项", SoftNeutral, Muted)
+            }
+            Text(section.description, fontSize = 10.sp, color = Muted)
+            section.fields.chunked(2).forEach { pair ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    DetailValueCard(pair[0], Modifier.weight(1f))
+                    if (pair.size > 1) DetailValueCard(pair[1], Modifier.weight(1f))
+                    else Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+    Text(
+        "字段展示以导入 JSON 为准；未知字段不会被丢弃，导出时仍由原始 JSON 数据保留。",
+        fontSize = 10.sp,
+        color = Muted,
+    )
 }
 
 @Composable
@@ -2391,8 +2477,7 @@ private fun sourceFilterCount(state: WorkflowState, filter: String): Int = when 
     "待校验" -> state.sources.count { it.probe == null }
     "校验通过" -> state.sources.count { it.probe?.status == ProbeStatus.OK }
     "异常 / 复核" -> state.sources.count {
-        val status = it.probe?.status
-        status != null && status != ProbeStatus.OK && status != ProbeStatus.SKIPPED
+        shouldShowInExceptionReview(it.probe?.status, it.deleteMarked)
     }
     "待删除" -> state.sources.count { it.deleteMarked }
     else -> state.sources.size
@@ -2409,10 +2494,7 @@ private fun sourceMatchesFilter(state: WorkflowState, source: WorkflowSource): B
         "重复候选" -> source.duplicateGroup != null
         "待校验" -> source.probe == null
         "校验通过" -> source.probe?.status == ProbeStatus.OK
-        "异常 / 复核" -> {
-            val status = source.probe?.status
-            status != null && status != ProbeStatus.OK && status != ProbeStatus.SKIPPED
-        }
+        "异常 / 复核" -> shouldShowInExceptionReview(source.probe?.status, source.deleteMarked)
         "待删除" -> source.deleteMarked
         else -> true
     }
