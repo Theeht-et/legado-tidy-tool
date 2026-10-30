@@ -1150,7 +1150,7 @@ private fun SourceListPanel(
                         modifier = Modifier.clip(RoundedCornerShape(8.dp))
                             .background(if (selected) SoftBlue else Color.Transparent)
                             .border(1.dp, if (selected) Color(0xFFD8E4FF) else Color.Transparent, RoundedCornerShape(8.dp)),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 5.dp, vertical = 5.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                         colors = ButtonDefaults.textButtonColors(contentColor = if (selected) Primary else Muted),
                     ) {
                         Text(
@@ -1250,13 +1250,13 @@ private fun TableHeader() {
         Modifier.fillMaxWidth().background(Color(0xFFFBFCFE)).padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("源名 / URL", Modifier.weight(2.2f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("类型", Modifier.weight(0.55f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("分组", Modifier.weight(0.8f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("状态", Modifier.weight(1.15f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("耗时", Modifier.weight(0.65f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("建议", Modifier.weight(0.9f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("操作", Modifier.width(110.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("源名 / URL", Modifier.weight(3.1f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("类型", Modifier.weight(1.0f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("分组", Modifier.weight(1.2f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("状态", Modifier.weight(1.2f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("耗时", Modifier.weight(0.75f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("建议", Modifier.weight(1.4f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("操作", Modifier.weight(1.7f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
     }
 }
 
@@ -1299,6 +1299,7 @@ private fun SourceRowItem(
     val elapsed = source.probe?.let { if (it.elapsedMs >= 1000) "${"%.1f".format(it.elapsedMs / 1000.0)}s" else "${it.elapsedMs}ms" } ?: "—"
     val advice = when {
         source.deleteMarked -> "待删除"
+        state.stage == WorkflowStage.IMPORT -> "等待去重"
         source.suggestion.isNotBlank() -> source.suggestion
         else -> "待审核"
     }
@@ -1307,21 +1308,21 @@ private fun SourceRowItem(
             .clickable { onDetail(source.id) }.padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(2.2f).padding(end = 7.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.weight(3.1f).padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(name.ifBlank { "（未命名）" }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(source.doc.url, fontSize = 11.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        SmallChip(sourceTypeLabel(source.doc.type), SoftSlate, Color(0xFF57647A), Modifier.weight(0.65f))
-        Text(group.ifBlank { "—" }, Modifier.weight(0.8f), fontSize = 11.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        SmallChip(status, statusBackground(source.probe?.status), statusColor(source.probe?.status), Modifier.weight(1.15f))
-        Text(elapsed, Modifier.weight(0.65f), fontSize = 11.sp, color = Muted, maxLines = 1)
+        SmallChip(sourceTypeLabel(source.doc.type), SoftSlate, Color(0xFF57647A), Modifier.weight(1.0f))
+        Text(group.ifBlank { "—" }, Modifier.weight(1.2f), fontSize = 11.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        SmallChip(status, statusBackground(source.probe?.status), statusColor(source.probe?.status), Modifier.weight(1.2f))
+        Text(elapsed, Modifier.weight(0.75f), fontSize = 11.sp, color = Muted, maxLines = 1)
         SmallChip(
             advice,
             if (source.deleteMarked) SoftRed else if (source.probe?.status == ProbeStatus.OK) SoftGreen else SoftSlate,
             if (source.deleteMarked) Bad else if (source.probe?.status == ProbeStatus.OK) Ok else Muted,
-            Modifier.weight(0.9f),
+            Modifier.weight(1.4f),
         )
-        Row(Modifier.width(110.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.weight(1.7f), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             TableActionButton("详情", onClick = { onDetail(source.id) })
             TableActionButton("编辑", onClick = { onEdit(source.id) }, enabled = !state.busy && state.stage != WorkflowStage.EXPORT)
         }
@@ -2004,11 +2005,17 @@ private fun SmallChip(
     textColor: Color,
     modifier: Modifier = Modifier,
 ) {
-    Box(
-        modifier.clip(RoundedCornerShape(6.dp)).background(backgroundColor).padding(horizontal = 6.dp, vertical = 4.dp),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Text(text, fontSize = 10.sp, color = textColor, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    Box(modifier, contentAlignment = Alignment.CenterStart) {
+        Text(
+            text,
+            Modifier.clip(RoundedCornerShape(6.dp))
+                .background(backgroundColor)
+                .padding(horizontal = 7.dp, vertical = 4.dp),
+            fontSize = 11.sp,
+            color = textColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
