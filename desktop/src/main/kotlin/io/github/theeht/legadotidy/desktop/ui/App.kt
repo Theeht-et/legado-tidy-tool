@@ -37,6 +37,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -47,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -58,7 +60,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -103,25 +107,31 @@ import java.io.File
 import java.nio.file.Path
 import javax.swing.JFileChooser
 
-private val Primary = Color(0xFF3565C9)
-private val Ok = Color(0xFF16845B)
-private val Warn = Color(0xFF9A6417)
-private val Bad = Color(0xFFC43C48)
-private val Muted = Color(0xFF748096)
-private val Line = Color(0xFFD9E0E9)
-private val Canvas = Color(0xFFF5F7FA)
-private val SoftBlue = Color(0xFFEAF0FB)
+private val Primary = Color(0xFF2D5DB8)
+private val PrimaryDeep = Color(0xFF244B98)
+private val Ok = Color(0xFF146B49)
+private val Warn = Color(0xFF83520B)
+private val Bad = Color(0xFFB52E3D)
+// Secondary text remains secondary, but now has enough contrast to stay crisp on light surfaces.
+private val Muted = Color(0xFF536277)
+private val Line = Color(0xFFCCD5E1)
+private val Canvas = Color(0xFFF3F6FA)
+private val SoftBlue = Color(0xFFE8EFFB)
+private val SoftBlueBorder = Color(0xFFC5D4EF)
+private val SelectedSurface = Color(0xFFEAF1FF)
+private val ControlBorder = Color(0xFFC3CEDB)
 
-private val Ink = Color(0xFF24344D)
-private val BodyText = Color(0xFF344054)
-private val SoftGreen = Color(0xFFE8F7F0)
-private val SoftAmber = Color(0xFFFFF5DF)
-private val SoftRed = Color(0xFFFFF0F0)
-private val SoftNeutral = Color(0xFFF7F9FC)
-private val SoftSlate = Color(0xFFF0F2F6)
-private val FooterSurface = Color(0xFF17233A)
-private val FooterButton = Color(0xFF263652)
-private val FooterPrimary = Color(0xFF5C86F5)
+private val Ink = Color(0xFF172B45)
+private val BodyText = Color(0xFF29394F)
+private val SoftGreen = Color(0xFFE9F5EE)
+private val SoftGreenBorder = Color(0xFFB6D5C3)
+private val SoftAmber = Color(0xFFFFF3DC)
+private val SoftRed = Color(0xFFFFEEEE)
+private val SoftNeutral = Color(0xFFF5F7FA)
+private val SoftSlate = Color(0xFFEDF1F6)
+private val FooterSurface = Color(0xFF16263D)
+private val FooterButton = Color(0xFF263B59)
+private val FooterPrimary = Color(0xFF315FBE)
 
 private val LightColors = lightColorScheme(
     primary = Primary,
@@ -672,6 +682,13 @@ fun TidyApp() {
         }
     }
 
+    CompositionLocalProvider(
+        LocalTextStyle provides TextStyle(
+            fontFamily = FontFamily.SansSerif,
+            color = Ink,
+            letterSpacing = 0.sp,
+        ),
+    ) {
     MaterialTheme(colorScheme = LightColors) {
         Surface(Modifier.fillMaxSize(), color = Canvas) {
             BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -694,7 +711,7 @@ fun TidyApp() {
                             colors = CardDefaults.cardColors(containerColor = SoftRed),
                             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                         ) {
-                            Text(it, Modifier.fillMaxWidth().padding(10.dp), color = Bad, fontSize = 12.sp)
+                            Text(it, Modifier.fillMaxWidth().padding(10.dp), color = Bad, fontSize = 13.sp)
                         }
                     }
                     if (state.busy && state.total > 0 && state.stage == WorkflowStage.PROBE_REVIEW) {
@@ -703,7 +720,7 @@ fun TidyApp() {
                                 progress = { if (state.total == 0) 0f else state.completed.toFloat() / state.total },
                                 modifier = Modifier.fillMaxWidth().height(5.dp),
                             )
-                            Text("校验进度：${state.completed}/${state.total}", fontSize = 11.sp, color = Muted)
+                            Text("校验进度：${state.completed}/${state.total}", fontSize = 12.sp, color = Muted)
                         }
                     }
                     SourceListPanel(
@@ -884,6 +901,7 @@ fun TidyApp() {
             )
         }
     }
+    }
 }
 
 @Composable
@@ -900,14 +918,14 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
         ) {
             Box(
                 Modifier.size(32.dp).clip(RoundedCornerShape(10.dp))
-                    .background(Brush.linearGradient(listOf(Color(0xFF4779F4), Color(0xFF2D56C8)))),
+                    .background(Brush.linearGradient(listOf(Primary, PrimaryDeep))),
                 contentAlignment = Alignment.Center,
             ) {
                 Text("书", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             }
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text("书源整理工具", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
-                Text("Legado Tidy Tool · 分阶段审核", fontSize = 10.sp, color = Muted)
+                Text("Legado Tidy Tool · 分阶段审核", fontSize = 11.sp, color = Muted)
             }
         }
         Row(
@@ -916,9 +934,9 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("▤", fontSize = 15.sp, color = Muted)
+            Text("▤", fontSize = 16.sp, color = Muted)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text(state.inputFile?.name ?: "尚未导入书源 JSON", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(state.inputFile?.name ?: "尚未导入书源 JSON", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     if (state.inputFile == null) "导入本地文件，按阶段审核后导出"
                     else "${state.sources.size} 个当前书源 · " + when (state.stage) {
@@ -926,7 +944,7 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
                         WorkflowStage.EXPORT -> "待导出"
                         else -> "处理中"
                     },
-                    fontSize = 12.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    fontSize = 13.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -939,12 +957,12 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
                 onClick = onImport,
                 enabled = !state.busy,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 3.dp),
-            ) { Text("导入 JSON", fontSize = 12.sp) }
+            ) { Text("导入 JSON", fontSize = 13.sp) }
             OutlinedButton(
                 onClick = { state.showSettings = true },
                 enabled = !state.busy,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 3.dp),
-            ) { Text("⚙ 校验设置", fontSize = 12.sp) }
+            ) { Text("⚙ 校验设置", fontSize = 13.sp) }
         }
     }
 }
@@ -972,14 +990,14 @@ private fun WorkflowStageStrip(stage: WorkflowStage, modifier: Modifier = Modifi
                 ) {
                     Text(
                         if (completed) "✓" else "${index + 1}",
-                        fontSize = 8.sp,
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (completed || current) Color.White else Muted,
                     )
                 }
                 Text(
                     item.label,
-                    fontSize = 9.sp,
+                    fontSize = 10.sp,
                     fontWeight = if (current) FontWeight.Bold else FontWeight.Normal,
                     color = if (current) Primary else if (completed) Ink else Muted,
                     maxLines = 1,
@@ -1014,9 +1032,9 @@ private fun KpiRow(state: WorkflowState) {
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
             ) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(label, color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                    Text(label, color = BodyText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     Text(value, color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                    Text(hint, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(hint, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -1031,7 +1049,7 @@ private fun OrganizeRulePanel(
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier.border(1.dp, Color(0xFFDCE5FB), RoundedCornerShape(9.dp)),
+        modifier.border(1.dp, SoftBlueBorder, RoundedCornerShape(9.dp)),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FBFF)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
@@ -1040,9 +1058,9 @@ private fun OrganizeRulePanel(
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("整理规则", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink)
+                Text("整理规则", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
                 Spacer(Modifier.width(7.dp))
-                Text("勾选项才执行", fontSize = 9.sp, color = Muted)
+                Text("勾选项才执行", fontSize = 10.sp, color = Muted)
             }
             FlowRow(
                 Modifier.fillMaxWidth(),
@@ -1072,7 +1090,7 @@ private fun OrganizeRulePanel(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("分组", fontSize = 10.sp, color = Muted)
+                    Text("分组", fontSize = 11.sp, color = Muted)
                     RuleRadio(
                         label = "保留原组",
                         selected = OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules,
@@ -1100,10 +1118,10 @@ private fun RuleCheckMark(checked: Boolean) {
     Box(
         Modifier.size(12.dp).clip(RoundedCornerShape(3.dp))
             .background(if (checked) Primary else Color.White)
-            .border(1.dp, if (checked) Primary else Color(0xFFB8C1D0), RoundedCornerShape(3.dp)),
+            .border(1.dp, if (checked) Primary else ControlBorder, RoundedCornerShape(3.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        if (checked) Text("✓", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        if (checked) Text("✓", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1116,14 +1134,14 @@ private fun RuleRadio(label: String, selected: Boolean, onClick: () -> Unit) {
     ) {
         Box(
             Modifier.size(14.dp).clip(RoundedCornerShape(50))
-                .border(1.dp, if (selected) Primary else Color(0xFF9AA5B5), RoundedCornerShape(50)),
+                .border(1.dp, if (selected) Primary else Muted, RoundedCornerShape(50)),
             contentAlignment = Alignment.Center,
         ) {
             if (selected) Box(
                 Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(Primary),
             )
         }
-        Text(label, fontSize = 11.sp, color = BodyText)
+        Text(label, fontSize = 12.sp, color = BodyText)
     }
 }
 
@@ -1151,7 +1169,7 @@ private fun CompactRuleChip(
 ) {
     Row(
         modifier.clip(RoundedCornerShape(7.dp))
-            .border(1.dp, if (checked) Color(0xFFB8CCFF) else Line, RoundedCornerShape(7.dp))
+            .border(1.dp, if (checked) SoftBlueBorder else Line, RoundedCornerShape(7.dp))
             .background(if (checked) SoftBlue else Color.White)
             .clickable(onClick = onClick)
             .padding(horizontal = 7.dp, vertical = 4.dp),
@@ -1159,7 +1177,7 @@ private fun CompactRuleChip(
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         RuleCheckMark(checked)
-        Text(label, fontSize = 10.sp, color = if (checked) Primary else BodyText, maxLines = 1)
+        Text(label, fontSize = 11.sp, color = if (checked) Primary else BodyText, maxLines = 1)
     }
 }
 
@@ -1183,13 +1201,18 @@ private fun SourceListPanel(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("书源池", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    Text("书源池", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Ink)
                 }
                 BasicTextField(
                     value = state.filterQuery,
                     onValueChange = { state.filterQuery = it },
                     singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(color = BodyText, fontSize = 11.sp),
+                    textStyle = MaterialTheme.typography.bodySmall.copy(
+                        color = BodyText,
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.SansSerif,
+                        letterSpacing = 0.sp,
+                    ),
                     modifier = Modifier.width(214.dp).height(30.dp)
                         .clip(RoundedCornerShape(8.dp)).border(1.dp, Line, RoundedCornerShape(8.dp))
                         .background(Color.White),
@@ -1199,13 +1222,13 @@ private fun SourceListPanel(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            Text("⌕", fontSize = 15.sp, color = Muted)
+                            Text("⌕", fontSize = 16.sp, color = Muted)
                             Box(
                                 Modifier.weight(1f).fillMaxHeight(),
                                 contentAlignment = Alignment.CenterStart,
                             ) {
                                 if (state.filterQuery.isEmpty()) {
-                                    Text("搜索源名或 URL", fontSize = 11.sp, color = Muted, maxLines = 1)
+                                    Text("搜索源名或 URL", fontSize = 12.sp, color = Muted, maxLines = 1)
                                 }
                                 innerTextField()
                             }
@@ -1216,7 +1239,7 @@ private fun SourceListPanel(
                     onClick = { state.filterQuery = "" },
                     enabled = state.filterQuery.isNotEmpty(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 11.dp, vertical = 4.dp),
-                ) { Text("清除", fontSize = 12.sp) }
+                ) { Text("清除", fontSize = 13.sp) }
             }
             HorizontalDivider(color = Line)
             Row(
@@ -1230,12 +1253,12 @@ private fun SourceListPanel(
                     Box(
                         Modifier.clip(RoundedCornerShape(7.dp))
                             .background(if (selected) SoftBlue else Color.Transparent)
-                            .border(1.dp, if (selected) Color(0xFFD8E4FF) else Color.Transparent, RoundedCornerShape(7.dp))
+                            .border(1.dp, if (selected) SoftBlueBorder else Color.Transparent, RoundedCornerShape(7.dp))
                             .clickable { state.sourceFilter = label }
                             .padding(horizontal = 7.dp, vertical = 3.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("$label $count", fontSize = 10.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) Primary else Muted, maxLines = 1)
+                        Text("$label $count", fontSize = 11.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) Primary else Muted, maxLines = 1)
                     }
                 }
                 if (state.stage == WorkflowStage.DEDUP_REVIEW) {
@@ -1243,7 +1266,7 @@ private fun SourceListPanel(
                         val duplicateCount = state.duplicateGroups.sumOf { it.sourceIds.size }
                         Text(
                             "全部分组 · ${state.duplicateGroups.size} 组 · ${duplicateCount} 个重复候选",
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             color = Muted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -1270,7 +1293,7 @@ private fun SourceListPanel(
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("尚未导入书源", fontSize = 16.sp, color = BodyText)
-                        Text("点击右上角「导入 JSON」选择书源文件。", fontSize = 12.sp, color = Muted)
+                        Text("点击右上角「导入 JSON」选择书源文件。", fontSize = 13.sp, color = Muted)
                     }
                 }
             } else {
@@ -1278,8 +1301,8 @@ private fun SourceListPanel(
                 if (rows.isEmpty()) {
                     Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text("没有符合条件的书源", fontSize = 14.sp, color = BodyText)
-                            Text("试试切换筛选条件或搜索词。", fontSize = 11.sp, color = Muted)
+                            Text("没有符合条件的书源", fontSize = 15.sp, color = BodyText)
+                            Text("试试切换筛选条件或搜索词。", fontSize = 12.sp, color = Muted)
                         }
                     }
                 } else {
@@ -1297,19 +1320,19 @@ private fun SourceListPanel(
                                         "当前显示 ${row.visibleCount}/${row.group.sourceIds.size} 个候选"
                                     }
                                     Row(
-                                        Modifier.fillMaxWidth().background(Color(0xFFF1F5FF)).padding(horizontal = 10.dp, vertical = 5.dp),
+                                        Modifier.fillMaxWidth().background(SoftBlue).padding(horizontal = 10.dp, vertical = 5.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Text(
                                             "重复组 ${row.group.number} · ${row.group.kind.label}",
-                                            fontSize = 11.sp,
+                                            fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color(0xFF3156A7),
                                         )
                                         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                                             Text(
                                                 "$countLabel · 待删除 ${row.visibleMarkedCount}",
-                                                fontSize = 10.sp,
+                                                fontSize = 11.sp,
                                                 color = Muted,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
@@ -1319,7 +1342,7 @@ private fun SourceListPanel(
                                             onClick = { onCompare(row.group.number) },
                                             enabled = !state.busy,
                                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-                                        ) { Text("对比重复组", fontSize = 10.sp) }
+                                        ) { Text("对比重复组", fontSize = 11.sp) }
                                     }
                                 }
                                 is SourceListRow.SourceEntry -> SourceRowItem(state = state, source = row.source, onDetail = onDetail, onEdit = onEdit)
@@ -1345,17 +1368,17 @@ private fun SourceListPanel(
 @Composable
 private fun TableHeader() {
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFFFBFCFE)).padding(horizontal = 9.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().background(SoftNeutral).padding(horizontal = 9.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("源名", Modifier.weight(1.55f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("URL", Modifier.weight(2.15f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("类型", Modifier.weight(0.65f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("分组", Modifier.weight(0.9f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("耗时", Modifier.weight(0.6f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("状态", Modifier.weight(0.95f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("建议", Modifier.weight(1.1f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
-        Text("操作", Modifier.weight(1.35f), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("源名", Modifier.weight(1.55f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("URL", Modifier.weight(2.15f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("类型", Modifier.weight(0.65f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("分组", Modifier.weight(0.9f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("耗时", Modifier.weight(0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("状态", Modifier.weight(0.95f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("建议", Modifier.weight(1.1f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
+        Text("操作", Modifier.weight(1.35f), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Muted)
     }
 }
 
@@ -1370,7 +1393,7 @@ private fun TableActionButton(label: String, onClick: () -> Unit, enabled: Boole
             .padding(horizontal = 8.dp, vertical = 5.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, fontSize = 11.sp, color = if (enabled) Primary else Muted)
+        Text(label, fontSize = 12.sp, color = if (enabled) Primary else Muted)
     }
 }
 
@@ -1403,14 +1426,14 @@ private fun SourceRowItem(
         else -> "待审核"
     }
     Row(
-        Modifier.fillMaxWidth().background(if (selected) Color(0xFFF0F5FF) else Color.White)
+        Modifier.fillMaxWidth().background(if (selected) SelectedSurface else Color.White)
             .clickable { state.selectedId = source.id }.padding(horizontal = 9.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             name.ifBlank { "（未命名）" },
             Modifier.weight(1.55f).padding(end = 5.dp),
-            fontSize = 12.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             color = Ink,
             maxLines = 1,
@@ -1419,14 +1442,14 @@ private fun SourceRowItem(
         Text(
             source.doc.url.ifBlank { "—" },
             Modifier.weight(2.15f).padding(end = 5.dp),
-            fontSize = 10.sp,
-            color = Muted,
+            fontSize = 11.sp,
+            color = BodyText,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        SmallChip(sourceTypeLabel(source.doc.type), SoftSlate, Color(0xFF57647A), Modifier.weight(0.65f))
-        Text(group.ifBlank { "—" }, Modifier.weight(0.9f), fontSize = 11.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(elapsed, Modifier.weight(0.6f), fontSize = 10.sp, color = Muted, maxLines = 1)
+        SmallChip(sourceTypeLabel(source.doc.type), SoftSlate, Muted, Modifier.weight(0.65f))
+        Text(group.ifBlank { "—" }, Modifier.weight(0.9f), fontSize = 12.sp, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(elapsed, Modifier.weight(0.6f), fontSize = 11.sp, color = Muted, maxLines = 1)
         SmallChip(status, statusBackground(source.probe?.status), statusColor(source.probe?.status), Modifier.weight(0.95f))
         SmallChip(
             advice,
@@ -1692,7 +1715,7 @@ private fun DetailPanel(
     ) {
         if (source == null) {
             Box(Modifier.fillMaxSize().padding(18.dp), contentAlignment = Alignment.Center) {
-                Text("选择一条书源查看详情。", fontSize = 12.sp, color = Muted)
+                Text("选择一条书源查看详情。", fontSize = 13.sp, color = Muted)
             }
         } else {
             val preview = state.preview?.get(source.id)
@@ -1710,17 +1733,17 @@ private fun DetailPanel(
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text(
                             "SOURCE #${(source.id + 1).toString().padStart(3, '0')}  /  ${state.stage.label}",
-                            fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Primary,
+                            fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Primary,
                         )
                         Text(
                             preview?.name ?: source.doc.name.ifBlank { "（未命名书源）" },
                             fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Ink,
                         )
-                        Text(source.doc.url.ifBlank { "未配置书源地址" }, fontSize = 11.sp, color = Muted)
+                        Text(source.doc.url.ifBlank { "未配置书源地址" }, fontSize = 12.sp, color = BodyText)
                     }
                     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         SmallChip(source.probe?.status?.label ?: "待校验", statusBackground(source.probe?.status), statusColor(source.probe?.status))
-                        TextButton(onClick = onDismiss) { Text("关闭", fontSize = 12.sp) }
+                        TextButton(onClick = onDismiss) { Text("关闭", fontSize = 13.sp) }
                     }
                 }
                 HorizontalDivider(color = Line)
@@ -1729,7 +1752,6 @@ private fun DetailPanel(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     DetailMetric("书源类型", sourceTypeLabel(source.doc.type), Modifier.weight(1f))
-                    DetailMetric("启用状态", if (source.isDisabledForDisplay()) "已禁用" else "已启用", Modifier.weight(1f))
                     DetailMetric("已配置规则字段", source.doc.ruleCompleteness.toString(), Modifier.weight(1f))
                     DetailMetric("响应耗时", source.probe?.let { "${it.elapsedMs} ms" } ?: "暂无", Modifier.weight(1f))
                 }
@@ -1751,7 +1773,7 @@ private fun DetailPanel(
                         ) {
                             Text(
                                 tab.label,
-                                fontSize = 12.sp,
+                                fontSize = 13.sp,
                                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                                 color = if (selected) Primary else Muted,
                                 maxLines = 1,
@@ -1814,7 +1836,7 @@ private fun DetailPanel(
 
 @Composable
 private fun DetailOverviewContent(source: WorkflowSource, preview: PreviewSource?) {
-    Text("审核与处理信息", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
+    Text("审核与处理信息", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Ink)
     Card(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = if (source.deleteMarked) SoftRed else SoftNeutral),
@@ -1823,7 +1845,7 @@ private fun DetailOverviewContent(source: WorkflowSource, preview: PreviewSource
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(
                 if (source.deleteMarked) "当前标记：待删除" else "当前建议：${source.suggestion}",
-                fontSize = 12.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = if (source.deleteMarked) Bad else Ink,
             )
@@ -1835,22 +1857,22 @@ private fun DetailOverviewContent(source: WorkflowSource, preview: PreviewSource
                         "网络或服务响应异常不代表书源一定失效，建议人工复核。"
                     else -> "系统建议仅供审核参考，确认阶段前可以修改标记。"
                 },
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 color = Muted,
                 lineHeight = 16.sp,
             )
             source.probe?.let { result ->
                 if (!result.detail.isNullOrBlank()) {
                     HorizontalDivider(color = Line)
-                    Text("校验详情", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink)
-                    Text(result.detail.orEmpty(), fontSize = 11.sp, color = BodyText, lineHeight = 16.sp)
+                    Text("校验详情", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    Text(result.detail.orEmpty(), fontSize = 12.sp, color = BodyText, lineHeight = 16.sp)
                 }
-                result.httpCode?.let { Text("HTTP 状态码：$it", fontSize = 10.sp, color = Muted) }
+                result.httpCode?.let { Text("HTTP 状态码：$it", fontSize = 11.sp, color = Muted) }
             }
         }
     }
     if (preview != null) {
-        Text("整理预览", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
+        Text("整理预览", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Ink)
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(9.dp),
@@ -1860,17 +1882,17 @@ private fun DetailOverviewContent(source: WorkflowSource, preview: PreviewSource
                 Modifier.weight(1f).clip(RoundedCornerShape(9.dp)).background(SoftRed).padding(11.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                Text("修改前", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Bad)
-                Text(source.doc.name.ifBlank { "（未命名）" }, fontSize = 11.sp, color = BodyText)
-                Text(source.doc.group.ifBlank { "未分组" }, fontSize = 10.sp, color = Muted)
+                Text("修改前", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Bad)
+                Text(source.doc.name.ifBlank { "（未命名）" }, fontSize = 12.sp, color = BodyText)
+                Text(source.doc.group.ifBlank { "未分组" }, fontSize = 11.sp, color = Muted)
             }
             Column(
                 Modifier.weight(1f).clip(RoundedCornerShape(9.dp)).background(SoftGreen).padding(11.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                Text("预览结果", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ok)
-                Text(preview.name.ifBlank { "（未命名）" }, fontSize = 11.sp, color = BodyText)
-                Text(preview.group.ifBlank { "未分组" }, fontSize = 10.sp, color = Muted)
+                Text("预览结果", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ok)
+                Text(preview.name.ifBlank { "（未命名）" }, fontSize = 12.sp, color = BodyText)
+                Text(preview.group.ifBlank { "未分组" }, fontSize = 11.sp, color = Muted)
             }
         }
     }
@@ -1881,9 +1903,9 @@ private fun DetailSectionsContent(
     tab: SourceDetailTab,
     sections: List<SourceDetailSection>,
 ) {
-    Text(tab.label, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
+    Text(tab.label, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Ink)
     if (sections.isEmpty()) {
-        Text("该分类没有可展示的字段。", fontSize = 11.sp, color = Muted)
+        Text("该分类没有可展示的字段。", fontSize = 12.sp, color = Muted)
     }
     sections.forEach { section ->
         Column(
@@ -1897,10 +1919,10 @@ private fun DetailSectionsContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(section.title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
+                Text(section.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Ink)
                 SmallChip("${section.fields.size} 项", SoftNeutral, Muted)
             }
-            Text(section.description, fontSize = 10.sp, color = Muted)
+            Text(section.description, fontSize = 11.sp, color = Muted)
             section.fields.chunked(2).forEach { pair ->
                 Row(
                     Modifier.fillMaxWidth(),
@@ -1916,7 +1938,7 @@ private fun DetailSectionsContent(
     }
     Text(
         "字段展示以导入 JSON 为准；未知字段不会被丢弃，导出时仍由原始 JSON 数据保留。",
-        fontSize = 10.sp,
+        fontSize = 11.sp,
         color = Muted,
     )
 }
@@ -1927,8 +1949,8 @@ private fun DetailMetric(label: String, value: String, modifier: Modifier = Modi
         modifier.clip(RoundedCornerShape(8.dp)).background(SoftNeutral).padding(horizontal = 11.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Text(label, fontSize = 10.sp, color = Muted)
-        Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+        Text(label, fontSize = 11.sp, color = Muted)
+        Text(value, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink)
     }
 }
 
@@ -1936,16 +1958,16 @@ private fun DetailMetric(label: String, value: String, modifier: Modifier = Modi
 private fun DetailValueCard(field: SourceDetailField, modifier: Modifier = Modifier) {
     Column(
         modifier.clip(RoundedCornerShape(8.dp)).border(1.dp, Line, RoundedCornerShape(8.dp))
-            .background(if (field.configured) SoftNeutral else Color(0xFFFAFBFC))
+            .background(if (field.configured) SoftNeutral else SoftNeutral)
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(field.label, Modifier.weight(1f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-            Text(if (field.configured) "已配置" else "未配置", fontSize = 9.sp, color = if (field.configured) Ok else Muted)
+            Text(field.label, Modifier.weight(1f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text(if (field.configured) "已配置" else "未配置", fontSize = 10.sp, color = if (field.configured) Ok else Muted)
         }
-        Text(field.key, fontSize = 9.sp, color = Muted)
-        Text(field.value, fontSize = 10.sp, color = if (field.configured) BodyText else Muted, lineHeight = 15.sp)
+        Text(field.key, fontSize = 10.sp, color = Muted)
+        Text(field.value, fontSize = 11.sp, color = if (field.configured) BodyText else Muted, lineHeight = 15.sp)
     }
 }
 
@@ -1956,8 +1978,8 @@ private fun DetailField(label: String, value: String) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Text(label, Modifier.width(110.dp), fontSize = 11.sp, color = Muted)
-        Text(value.ifBlank { "—" }, Modifier.weight(1f), fontSize = 12.sp, color = Ink)
+        Text(label, Modifier.width(110.dp), fontSize = 12.sp, color = Muted)
+        Text(value.ifBlank { "—" }, Modifier.weight(1f), fontSize = 13.sp, color = Ink)
     }
 }
 
@@ -1997,13 +2019,13 @@ private fun BottomActions(
                         onClick = onShowImportInfo,
                         enabled = state.inputFile != null && !state.busy,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-                    ) { Text("导入信息", fontSize = 11.sp) }
+                    ) { Text("导入信息", fontSize = 12.sp) }
                     Button(
                         onClick = onStartDedup,
                         enabled = state.sources.isNotEmpty() && !state.busy,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
-                    ) { Text("开始去重", fontSize = 11.sp) }
+                    ) { Text("开始去重", fontSize = 12.sp) }
                 }
                 WorkflowStage.DEDUP_REVIEW -> {
                     Button(
@@ -2011,31 +2033,31 @@ private fun BottomActions(
                         enabled = state.sources.isNotEmpty() && !state.busy,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
-                    ) { Text("确认去重并进入校验", fontSize = 11.sp) }
+                    ) { Text("确认去重并进入校验", fontSize = 12.sp) }
                 }
                 WorkflowStage.PROBE_REVIEW -> {
                     OutlinedButton(
                         onClick = { state.sourceFilter = "异常 / 复核" },
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-                    ) { Text("异常项", fontSize = 11.sp) }
+                    ) { Text("异常项", fontSize = 12.sp) }
                     if (state.busy) {
                         OutlinedButton(
                             onClick = onStop,
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-                        ) { Text("停止", fontSize = 11.sp) }
+                        ) { Text("停止", fontSize = 12.sp) }
                     } else if (state.sources.any { it.probe == null }) {
                         Button(
                             onClick = onContinueValidation,
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
-                        ) { Text("继续校验", fontSize = 11.sp) }
+                        ) { Text("继续校验", fontSize = 12.sp) }
                     } else {
                         Button(
                             onClick = onConfirmValidation,
                             enabled = state.sources.isNotEmpty(),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
-                        ) { Text("确认校验并进入整理", fontSize = 11.sp) }
+                        ) { Text("确认校验并进入整理", fontSize = 12.sp) }
                     }
                 }
                 WorkflowStage.ORGANIZE_REVIEW -> {
@@ -2043,50 +2065,50 @@ private fun BottomActions(
                         OutlinedButton(
                             onClick = { state.sourceFilter = "待删除" },
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-                        ) { Text("待删除项", fontSize = 11.sp) }
+                        ) { Text("待删除项", fontSize = 12.sp) }
                         Button(
                             onClick = onGeneratePreview,
                             enabled = state.sources.isNotEmpty() && !state.busy,
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
-                        ) { Text("生成预览", fontSize = 11.sp) }
+                        ) { Text("生成预览", fontSize = 12.sp) }
                     } else {
                         OutlinedButton(
                             onClick = onGeneratePreview,
                             enabled = !state.busy,
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-                        ) { Text("重新生成", fontSize = 11.sp) }
+                        ) { Text("重新生成", fontSize = 12.sp) }
                         Button(
                             onClick = onConfirmOrganize,
                             enabled = !state.busy,
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
-                        ) { Text("确认整理并导出", fontSize = 11.sp) }
+                        ) { Text("确认整理并导出", fontSize = 12.sp) }
                     }
                 }
                 WorkflowStage.EXPORT -> {
                     OutlinedButton(
                         onClick = { state.showReport = true },
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-                    ) { Text("最终清单", fontSize = 11.sp) }
+                    ) { Text("最终清单", fontSize = 12.sp) }
                     if (DirectLink.isUsable(state.directUrl)) {
                         OutlinedButton(
                             onClick = onCopyImportLink,
                             enabled = !state.busy,
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-                        ) { Text("复制导入链接", fontSize = 11.sp) }
+                        ) { Text("复制导入链接", fontSize = 12.sp) }
                     }
                     OutlinedButton(
                         onClick = onOpenFolder,
                         enabled = !state.busy,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-                    ) { Text("打开目录", fontSize = 11.sp) }
+                    ) { Text("打开目录", fontSize = 12.sp) }
                     Button(
                         onClick = onExport,
                         enabled = state.sources.isNotEmpty() && !state.busy,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
-                    ) { Text(if (state.exported == null) "导出 JSON" else "再次导出", fontSize = 11.sp) }
+                    ) { Text(if (state.exported == null) "导出 JSON" else "再次导出", fontSize = 12.sp) }
                 }
             }
         }
@@ -2109,7 +2131,7 @@ private fun ImportInfoDialog(state: WorkflowState, onDismiss: () -> Unit) {
                 DetailField("导入时书源数", state.inputCount.toString())
                 DetailField("当前工作池", state.sources.size.toString())
                 DetailField("从工作池移除", state.removedCount.toString())
-                Text("阶段确认只修改本次内存工作集。原始导入文件不会被覆盖。", fontSize = 12.sp, color = Muted)
+                Text("阶段确认只修改本次内存工作集。原始导入文件不会被覆盖。", fontSize = 13.sp, color = Muted)
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
@@ -2162,12 +2184,12 @@ private fun SettingsDialog(state: WorkflowState, onDismiss: () -> Unit, onChoose
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = state.skipProbe, onCheckedChange = { state.skipProbe = it })
                     Spacer(Modifier.width(8.dp))
-                    Text("跳过真实校验", fontSize = 12.sp)
+                    Text("跳过真实校验", fontSize = 13.sp)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = state.withToc, onCheckedChange = { state.withToc = it })
                     Spacer(Modifier.width(8.dp))
-                    Text("校验时继续检查目录（更慢）", fontSize = 12.sp)
+                    Text("校验时继续检查目录（更慢）", fontSize = 13.sp)
                 }
                 OutlinedTextField(
                     value = state.exportDir,
@@ -2212,12 +2234,12 @@ private fun ReportDialog(state: WorkflowState, onDismiss: () -> Unit) {
                 DetailField("已从工作池移除", state.removedCount.toString())
                 DetailField("待删除标记", state.sources.count { it.deleteMarked }.toString())
                 HorizontalDivider(color = Line)
-                Text("校验分类", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                if (counts.isEmpty()) Text("尚无校验结果", color = Muted, fontSize = 12.sp)
+                Text("校验分类", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                if (counts.isEmpty()) Text("尚无校验结果", color = Muted, fontSize = 13.sp)
                 counts.forEach { (status, count) ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(status.label, Modifier.weight(1f), fontSize = 12.sp, color = statusColor(status))
-                        Text(count.toString(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text(status.label, Modifier.weight(1f), fontSize = 13.sp, color = statusColor(status))
+                        Text(count.toString(), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 if (state.stage == WorkflowStage.EXPORT || state.preview != null) {
@@ -2279,7 +2301,7 @@ private fun CompareGroupDialog(
                         Text("对比重复组 ${group.number}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
                         Text(
                             "相同 URL · ${candidates.size} 个候选",
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             color = Muted,
                         )
                     }
@@ -2290,7 +2312,7 @@ private fun CompareGroupDialog(
                     Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
-                    Text("比较与 HTML 原型一致：核对 URL、类型、分组、启用状态、权重和规则字段数，再选择保留项。", fontSize = 11.sp, color = Muted)
+                    Text("比较与 HTML 原型一致：核对 URL、类型、分组、启用状态、权重和规则字段数，再选择保留项。", fontSize = 12.sp, color = Muted)
                     FlowRow(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -2303,13 +2325,13 @@ private fun CompareGroupDialog(
                             Card(
                                 Modifier.weight(1f).widthIn(min = 230.dp).border(
                                     1.dp,
-                                    if (isPreferred) Color(0xFFB8D9CB) else Line,
+                                    if (isPreferred) SoftGreenBorder else Line,
                                     RoundedCornerShape(11.dp),
                                 ),
                                 shape = RoundedCornerShape(11.dp),
                                 colors = CardDefaults.cardColors(
                                     containerColor = when {
-                                        isPreferred -> Color(0xFFFBFFFD)
+                                        isPreferred -> SoftGreen
                                         proposedKeep -> SoftGreen
                                         else -> SoftAmber
                                     },
@@ -2334,7 +2356,7 @@ private fun CompareGroupDialog(
                                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                             Text(
                                                 source.doc.name.ifBlank { "（未命名）" },
-                                                fontSize = 12.sp,
+                                                fontSize = 13.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = Ink,
                                                 maxLines = 2,
@@ -2347,7 +2369,7 @@ private fun CompareGroupDialog(
                                                     recommended -> "系统推荐保留"
                                                     else -> "当前选择保留"
                                                 },
-                                                fontSize = 10.sp,
+                                                fontSize = 11.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = if (proposedKeep) Ok else Bad,
                                             )
@@ -2367,7 +2389,7 @@ private fun CompareGroupDialog(
                                     HorizontalDivider(color = Line)
                                     Text(
                                         "系统建议：${if (recommended) "保留" else "删除"}",
-                                        fontSize = 10.sp,
+                                        fontSize = 11.sp,
                                         color = if (recommended) Ok else Muted,
                                         fontWeight = FontWeight.SemiBold,
                                     )
@@ -2384,7 +2406,7 @@ private fun CompareGroupDialog(
                 ) {
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = keepAll, onCheckedChange = { keepAll = it }, enabled = !state.busy)
-                        Text("本组全部保留（认为它们并不重复）", fontSize = 11.sp, color = BodyText)
+                        Text("本组全部保留（认为它们并不重复）", fontSize = 12.sp, color = BodyText)
                     }
                     OutlinedButton(onClick = onDismiss) { Text("取消") }
                     Spacer(Modifier.width(7.dp))
@@ -2449,14 +2471,14 @@ private fun EditSourceDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Switch(checked = enabled, onCheckedChange = { enabled = it })
                         Spacer(Modifier.width(8.dp))
-                        Text("启用书源", fontSize = 12.sp)
+                        Text("启用书源", fontSize = 13.sp)
                     }
                 }
                 OutlinedTextField(value = group, onValueChange = { group = it }, label = { Text("分组") }, modifier = Modifier.fillMaxWidth())
                 if (previewMode) {
-                    Text("这里只编辑预览值；点击「确认整理并进入导出」后才会应用。", fontSize = 11.sp, color = Muted)
+                    Text("这里只编辑预览值；点击「确认整理并进入导出」后才会应用。", fontSize = 12.sp, color = Muted)
                 } else {
-                    Text("只修改已填写的字段，其余未知 JSON 字段会原样保留。", fontSize = 11.sp, color = Muted)
+                    Text("只修改已填写的字段，其余未知 JSON 字段会原样保留。", fontSize = 12.sp, color = Muted)
                 }
             }
         },
@@ -2514,7 +2536,7 @@ private fun SmallChip(
             Modifier.clip(RoundedCornerShape(6.dp))
                 .background(backgroundColor)
                 .padding(horizontal = 7.dp, vertical = 4.dp),
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             color = textColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
