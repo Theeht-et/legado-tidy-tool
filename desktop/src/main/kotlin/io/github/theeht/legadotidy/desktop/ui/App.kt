@@ -717,29 +717,62 @@ fun TidyApp() {
                     ),
                 ) {
                 TopBar(state, onImport = ::importFile)
-                WorkflowStageStrip(state.stage, Modifier.padding(top = 4.dp, bottom = 4.dp))
                 Column(
                     Modifier.weight(1f).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     state.error?.let {
                         Card(
+                            modifier = Modifier.fillMaxWidth()
+                                .border(1.dp, Bad.copy(alpha = 0.22f), RoundedCornerShape(8.dp)),
+                            shape = RoundedCornerShape(8.dp),
                             colors = CardDefaults.cardColors(containerColor = SoftRed),
                             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                         ) {
-                            Text(it, Modifier.fillMaxWidth().padding(10.dp), color = Bad, fontSize = UiTypography.body)
+                            Text(it, Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp), color = Bad, fontSize = UiTypography.body)
+                        }
+                    }
+                    if (state.error == null && !state.busy) {
+                        state.notice?.takeIf { it.isNotBlank() }?.let { message ->
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                                    .background(SoftBlue)
+                                    .border(1.dp, SoftBlueBorder, RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text("✓", fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = Primary)
+                                Text(
+                                    message,
+                                    Modifier.weight(1f),
+                                    fontSize = UiTypography.label,
+                                    color = Ink,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                     if (state.busy && state.total > 0 && state.stage == WorkflowStage.PROBE_REVIEW) {
-                        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Column(
+                            Modifier.width(245.dp).padding(start = 2.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
                             LinearProgressIndicator(
                                 progress = { if (state.total == 0) 0f else state.completed.toFloat() / state.total },
                                 modifier = Modifier.fillMaxWidth().height(5.dp),
                             )
-                            Text("校验进度：${state.completed}/${state.total}", fontSize = UiTypography.label, color = Muted)
+                            Text("校验进度：${state.completed}/${state.total}", fontSize = UiTypography.label, color = BodyText)
                         }
                     }
-                    SourceListPanel(
+                    Row(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        WorkflowStageCard(state.stage)
+                        SourceListPanel(
                             state = state,
                             onDetail = { id -> state.selectedId = id; detailDialogId = id },
                             onEdit = { editingId = it },
@@ -758,8 +791,9 @@ fun TidyApp() {
                                     state.notice = "整理规则已变化，请重新生成预览。"
                                 }
                             },
-                            modifier = Modifier.weight(1f).fillMaxSize(),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                         )
+                    }
                 }
                 BottomActions(
                     state = state,
@@ -985,57 +1019,46 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
 
 
 @Composable
-private fun WorkflowStageStrip(stage: WorkflowStage, modifier: Modifier = Modifier) {
-    Row(
-        modifier.fillMaxWidth()
+private fun WorkflowStageCard(stage: WorkflowStage) {
+    val stageNumber = stage.ordinal + 1
+    Column(
+        Modifier.width(132.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(Color.White)
             .border(1.dp, Line, RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 10.dp, vertical = 11.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-        WorkflowStage.values().forEachIndexed { index, item ->
-            val completed = index < stage.ordinal
-            val current = index == stage.ordinal
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box(
+                Modifier.size(22.dp).clip(RoundedCornerShape(50)).background(SoftBlue),
+                contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    Modifier.size(18.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(
-                            when {
-                                current -> Primary
-                                completed -> SoftBlue
-                                else -> SoftSlate
-                            },
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        if (completed) "✓" else "${index + 1}",
-                        fontSize = UiTypography.caption,
-                        fontWeight = FontWeight.Bold,
-                        color = if (current) Color.White else if (completed) Primary else Muted,
-                    )
-                }
                 Text(
-                    item.label,
+                    stageNumber.toString(),
                     fontSize = UiTypography.label,
-                    fontWeight = if (current) FontWeight.Bold else FontWeight.Medium,
-                    color = if (current) Primary else if (completed) Ink else Muted,
-                    maxLines = 1,
+                    fontWeight = FontWeight.Bold,
+                    color = Primary,
                 )
             }
-            if (index < WorkflowStage.values().lastIndex) {
-                Box(
-                    Modifier.weight(1f).height(1.dp)
-                        .background(if (completed) SoftBlueBorder else Line),
-                )
-            }
+            Text("当前阶段", fontSize = UiTypography.caption, color = Muted)
         }
+        Text(
+            stage.label,
+            fontSize = UiTypography.emphasis,
+            fontWeight = FontWeight.Bold,
+            color = Ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            "阶段 $stageNumber / ${WorkflowStage.values().size}",
+            fontSize = UiTypography.caption,
+            color = Muted,
+        )
     }
 }
 
@@ -1284,7 +1307,7 @@ private fun SourceListPanel(
                             .padding(horizontal = 7.dp, vertical = 3.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("$label $count", fontSize = UiTypography.caption, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) Primary else Muted, maxLines = 1)
+                        Text("$label $count", fontSize = UiTypography.label, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium, color = if (selected) Primary else BodyText, maxLines = 1)
                     }
                 }
                 if (state.stage == WorkflowStage.DEDUP_REVIEW) {
@@ -1292,8 +1315,8 @@ private fun SourceListPanel(
                         val duplicateCount = state.duplicateGroups.sumOf { it.sourceIds.size }
                         Text(
                             "全部分组 · ${state.duplicateGroups.size} 组 · ${duplicateCount} 个重复候选",
-                            fontSize = UiTypography.caption,
-                            color = Muted,
+                            fontSize = UiTypography.label,
+                            color = BodyText,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -1397,14 +1420,14 @@ private fun TableHeader() {
         Modifier.fillMaxWidth().background(SoftNeutral).padding(horizontal = 9.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("源名", Modifier.weight(1.55f), fontSize = UiTypography.caption, fontWeight = FontWeight.Bold, color = Muted)
-        Text("URL", Modifier.weight(2.15f), fontSize = UiTypography.caption, fontWeight = FontWeight.Bold, color = Muted)
-        Text("类型", Modifier.weight(0.65f), fontSize = UiTypography.caption, fontWeight = FontWeight.Bold, color = Muted)
-        Text("分组", Modifier.weight(0.9f), fontSize = UiTypography.caption, fontWeight = FontWeight.Bold, color = Muted)
-        Text("耗时", Modifier.weight(0.6f), fontSize = UiTypography.caption, fontWeight = FontWeight.Bold, color = Muted)
-        Text("状态", Modifier.weight(0.95f), fontSize = UiTypography.caption, fontWeight = FontWeight.Bold, color = Muted)
-        Text("建议", Modifier.weight(1.1f), fontSize = UiTypography.caption, fontWeight = FontWeight.Bold, color = Muted)
-        Text("操作", Modifier.weight(1.35f), fontSize = UiTypography.caption, fontWeight = FontWeight.Bold, color = Muted)
+        Text("源名", Modifier.weight(1.55f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("URL", Modifier.weight(2.15f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("类型", Modifier.weight(0.65f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("分组", Modifier.weight(0.9f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("耗时", Modifier.weight(0.6f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("状态", Modifier.weight(0.95f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("建议", Modifier.weight(1.1f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("操作", Modifier.weight(1.35f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
     }
 }
 
@@ -1468,8 +1491,9 @@ private fun SourceRowItem(
         Text(
             source.doc.url.ifBlank { "—" },
             Modifier.weight(2.15f).padding(end = 5.dp),
-            fontSize = UiTypography.caption,
-            color = BodyText,
+            fontSize = UiTypography.label,
+            fontWeight = FontWeight.Medium,
+            color = Ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -1576,16 +1600,16 @@ internal fun sourceDetailSections(doc: BookSourceDoc): List<SourceDetailSection>
         sections += SourceDetailSection(title, description, fields)
     }
 
-    addTop("基本信息", "书源身份、分类与启用设置。", listOf(
+    addTop("基本信息", "书源身份与分类信息。", listOf(
         SourceDetailFieldSpec("bookSourceName", "书源名称"),
         SourceDetailFieldSpec("bookSourceUrl", "书源地址"),
         SourceDetailFieldSpec("bookSourceGroup", "书源分组"),
         SourceDetailFieldSpec("bookSourceType", "书源类型"),
         SourceDetailFieldSpec("bookUrlPattern", "详情页 URL 正则"),
         SourceDetailFieldSpec("customOrder", "手动排序"),
-        SourceDetailFieldSpec("enabled", "是否启用"),
-        SourceDetailFieldSpec("enabledExplore", "启用发现"),
     ))
+    // 总开关仍留在原始 JSON 与编辑流程中，但详情页不再重复展示启用状态。
+    knownTopLevelKeys += setOf("enabled", "enabledExplore")
     addTop("请求与登录", "请求头、并发、Cookie 与登录流程配置。", listOf(
         SourceDetailFieldSpec("header", "请求头"),
         SourceDetailFieldSpec("concurrentRate", "并发率"),
@@ -1937,8 +1961,7 @@ private fun DetailSectionsContent(
     sections.forEach { section ->
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
-                .border(1.dp, Line, RoundedCornerShape(8.dp))
-                .background(Color.White).padding(11.dp),
+                .background(SoftNeutral).padding(11.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
@@ -1949,7 +1972,7 @@ private fun DetailSectionsContent(
                 Text(section.title, fontSize = UiTypography.body, fontWeight = FontWeight.Bold, color = Ink)
                 SmallChip("${section.fields.size} 项", SoftNeutral, Muted)
             }
-            Text(section.description, fontSize = UiTypography.caption, color = Muted)
+            Text(section.description, fontSize = UiTypography.label, color = BodyText)
             section.fields.chunked(2).forEach { pair ->
                 Row(
                     Modifier.fillMaxWidth(),
@@ -1977,15 +2000,16 @@ private fun DetailMetric(label: String, value: String, modifier: Modifier = Modi
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Text(label, fontSize = UiTypography.caption, color = Muted)
-        Text(value, fontSize = UiTypography.body, fontWeight = FontWeight.SemiBold, color = Ink)
+        Text(value, fontSize = UiTypography.emphasis, fontWeight = FontWeight.SemiBold, color = Ink)
     }
 }
 
 @Composable
 private fun DetailValueCard(field: SourceDetailField, modifier: Modifier = Modifier) {
     Column(
-        modifier.clip(RoundedCornerShape(8.dp)).border(1.dp, Line, RoundedCornerShape(8.dp))
-            .background(if (field.configured) SoftNeutral else SoftNeutral)
+        modifier.clip(RoundedCornerShape(8.dp))
+            .border(1.dp, if (field.configured) Line else SoftSlate, RoundedCornerShape(8.dp))
+            .background(if (field.configured) Color.White else SoftSlate)
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
@@ -1994,7 +2018,12 @@ private fun DetailValueCard(field: SourceDetailField, modifier: Modifier = Modif
             Text(if (field.configured) "已配置" else "未配置", fontSize = UiTypography.caption, color = if (field.configured) Ok else Muted)
         }
         Text(field.key, fontSize = UiTypography.caption, color = Muted)
-        Text(field.value, fontSize = UiTypography.caption, color = if (field.configured) BodyText else Muted, lineHeight = 15.sp)
+        Text(
+            field.value,
+            fontSize = UiTypography.body,
+            color = if (field.configured) Ink else Muted,
+            lineHeight = 18.sp,
+        )
     }
 }
 
@@ -2149,7 +2178,7 @@ private fun ImportInfoDialog(state: WorkflowState, onDismiss: () -> Unit) {
         titleContentColor = Ink,
         textContentColor = BodyText,
         tonalElevation = 8.dp,
-        title = { Text("导入信息") },
+        title = { Text("导入信息", fontSize = UiTypography.sectionTitle, fontWeight = FontWeight.Bold, color = Ink) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 DetailField("文件", state.inputFile?.absolutePath ?: "尚未导入")
@@ -2172,7 +2201,7 @@ private fun SettingsDialog(state: WorkflowState, onDismiss: () -> Unit, onChoose
         titleContentColor = Ink,
         textContentColor = BodyText,
         tonalElevation = 8.dp,
-        title = { Text("处理设置") },
+        title = { Text("处理设置", fontSize = UiTypography.sectionTitle, fontWeight = FontWeight.Bold, color = Ink) },
         text = {
             Column(
                 Modifier.widthIn(max = 540.dp).heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
@@ -2247,7 +2276,7 @@ private fun ReportDialog(state: WorkflowState, onDismiss: () -> Unit) {
         titleContentColor = Ink,
         textContentColor = BodyText,
         tonalElevation = 8.dp,
-        title = { Text("本次处理报告") },
+        title = { Text("本次处理报告", fontSize = UiTypography.sectionTitle, fontWeight = FontWeight.Bold, color = Ink) },
         text = {
             Column(
                 Modifier.widthIn(max = 540.dp).heightIn(max = 500.dp).verticalScroll(rememberScrollState()),
@@ -2337,8 +2366,7 @@ private fun CompareGroupDialog(
                     Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
-                    Text("比较与 HTML 原型一致：核对 URL、类型、分组、启用状态、权重和规则字段数，再选择保留项。", fontSize = UiTypography.label, color = Muted)
-                    FlowRow(
+                        FlowRow(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
