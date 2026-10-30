@@ -644,6 +644,7 @@ fun TidyApp() {
             state.error = "无法检查导出文件名：${error.message ?: error::class.java.simpleName}"
             return
         }
+        state.notice = null
         state.busy = true
         val snapshot = state.sources.toList()
         val preview = state.preview.orEmpty()
