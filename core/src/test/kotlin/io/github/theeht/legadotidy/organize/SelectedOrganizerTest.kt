@@ -132,6 +132,29 @@ class SelectedOrganizerTest {
         assertEquals(listOf(0, 1, 2, 3, 4), report.sources.map { it.rank })
     }
 
+    @Test
+    fun `先清理末尾装饰再清除广告词避免组合规则漏项`() {
+        val source = doc(
+            """{"bookSourceName":"📚 星河书源 - 官方推荐 ✨","bookSourceUrl":"https://example.test","bookSourceType":0,"bookSourceGroup":"原分组"}"""
+        )
+
+        val report = Organizer.run(
+            sources = listOf(source),
+            results = emptyMap(),
+            config = OrganizeConfig(
+                selectedRules = setOf(
+                    OrganizeRule.CLEAN_DECORATIONS,
+                    OrganizeRule.REMOVE_ADVERTISING_WORDS,
+                    OrganizeRule.NORMALIZE_PUNCTUATION,
+                    OrganizeRule.KEEP_ORIGINAL_GROUPS,
+                ),
+            ),
+        )
+
+        assertEquals("星河书源", report.sources.single().name)
+        assertEquals("原分组", report.sources.single().group)
+    }
+
     private fun doc(json: String): BookSourceDoc =
         BookSourceDoc(JsonParser.parseString(json).asJsonObject)
 }
