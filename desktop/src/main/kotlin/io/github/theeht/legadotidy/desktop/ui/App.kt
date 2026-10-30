@@ -783,7 +783,7 @@ fun TidyApp() {
                 properties = DialogProperties(usePlatformDefaultWidth = false),
             ) {
                 Surface(
-                    modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 680.dp).heightIn(max = 760.dp),
+                    modifier = Modifier.fillMaxWidth(0.96f).widthIn(max = 1180.dp).heightIn(min = 560.dp, max = 920.dp),
                     shape = RoundedCornerShape(15.dp),
                     color = Color.White,
                     shadowElevation = 24.dp,
@@ -1444,6 +1444,218 @@ private fun SourceRowItem(
 }
 
 
+private data class SourceDetailField(
+    val key: String,
+    val label: String,
+    val value: String,
+    val configured: Boolean,
+)
+
+private data class SourceDetailSection(
+    val title: String,
+    val description: String,
+    val fields: List<SourceDetailField>,
+)
+
+private data class SourceDetailFieldSpec(val key: String, val label: String)
+
+internal fun sourceDetailSections(doc: BookSourceDoc): List<SourceDetailSection> {
+    val raw = doc.raw
+    val knownTopLevelKeys = linkedSetOf<String>()
+    val sections = mutableListOf<SourceDetailSection>()
+
+    fun field(key: String, label: String, element: com.google.gson.JsonElement?): SourceDetailField {
+        if (element == null || element.isJsonNull) return SourceDetailField(key, label, "未配置", false)
+        val value = if (element.isJsonPrimitive) {
+            val primitive = element.asJsonPrimitive
+            if (primitive.isString) primitive.asString else primitive.toString()
+        } else {
+            com.google.gson.GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(element)
+        }
+        val configured = when {
+            element.isJsonPrimitive -> value.isNotBlank()
+            element.isJsonObject -> element.asJsonObject.size() > 0
+            element.isJsonArray -> element.asJsonArray.size() > 0
+            else -> true
+        }
+        return SourceDetailField(key, label, value.ifBlank { "未配置" }, configured)
+    }
+
+    fun addTop(title: String, description: String, specs: List<SourceDetailFieldSpec>) {
+        specs.forEach { knownTopLevelKeys += it.key }
+        sections += SourceDetailSection(title, description, specs.map { field(it.key, it.label, raw.get(it.key)) })
+    }
+
+    fun addRule(key: String, title: String, description: String, specs: List<SourceDetailFieldSpec>) {
+        knownTopLevelKeys += key
+        val original = raw.get(key)
+        val obj = when {
+            original == null || original.isJsonNull -> null
+            original.isJsonObject -> original.asJsonObject
+            original.isJsonPrimitive && original.asJsonPrimitive.isString -> runCatching {
+                com.google.gson.JsonParser.parseString(original.asString).takeIf { it.isJsonObject }?.asJsonObject
+            }.getOrNull()
+            else -> null
+        }
+        val known = specs.mapTo(linkedSetOf()) { it.key }
+        val fields = specs.map { field("$key.\${it.key}", it.label, obj?.get(it.key)) }.toMutableList()
+        obj?.entrySet()?.filterNot { it.key in known }?.forEach { (nestedKey, value) ->
+            fields += field("$key.$nestedKey", "$nestedKey（上游扩展）", value)
+        }
+        if (obj == null && original != null && !original.isJsonNull) {
+            fields += field(key, "原始规则内容", original)
+        }
+        sections += SourceDetailSection(title, description, fields)
+    }
+
+    addTop("基本信息", "书源身份、分类与启用设置。", listOf(
+        SourceDetailFieldSpec("bookSourceName", "书源名称"),
+        SourceDetailFieldSpec("bookSourceUrl", "书源地址"),
+        SourceDetailFieldSpec("bookSourceGroup", "书源分组"),
+        SourceDetailFieldSpec("bookSourceType", "书源类型"),
+        SourceDetailFieldSpec("bookUrlPattern", "详情页 URL 正则"),
+        SourceDetailFieldSpec("customOrder", "手动排序"),
+        SourceDetailFieldSpec("enabled", "是否启用"),
+        SourceDetailFieldSpec("enabledExplore", "启用发现"),
+    ))
+    addTop("请求与登录", "请求头、并发、Cookie 与登录流程配置。", listOf(
+        SourceDetailFieldSpec("header", "请求头"),
+        SourceDetailFieldSpec("concurrentRate", "并发率"),
+        SourceDetailFieldSpec("enabledCookieJar", "自动保存 Cookie"),
+        SourceDetailFieldSpec("loginUrl", "登录地址"),
+        SourceDetailFieldSpec("loginUi", "登录界面配置"),
+        SourceDetailFieldSpec("loginCheckJs", "登录状态检测 JS"),
+    ))
+    addTop("搜索配置", "搜索入口地址。", listOf(SourceDetailFieldSpec("searchUrl", "搜索 URL")))
+    addRule("ruleSearch", "搜索规则", "搜索列表、书名、作者、简介及校验关键字等。", listOf(
+        SourceDetailFieldSpec("checkKeyWord", "校验关键字"),
+        SourceDetailFieldSpec("bookList", "书籍列表规则"),
+        SourceDetailFieldSpec("name", "书名规则"),
+        SourceDetailFieldSpec("author", "作者规则"),
+        SourceDetailFieldSpec("intro", "简介规则"),
+        SourceDetailFieldSpec("kind", "分类规则"),
+        SourceDetailFieldSpec("lastChapter", "最新章节规则"),
+        SourceDetailFieldSpec("updateTime", "更新时间规则"),
+        SourceDetailFieldSpec("bookUrl", "书籍详情 URL 规则"),
+        SourceDetailFieldSpec("coverUrl", "封面 URL 规则"),
+        SourceDetailFieldSpec("wordCount", "字数规则"),
+    ))
+    addTop("发现配置", "发现入口与筛选配置。", listOf(
+        SourceDetailFieldSpec("exploreUrl", "发现 URL"),
+        SourceDetailFieldSpec("exploreScreen", "发现筛选规则"),
+    ))
+    addRule("ruleExplore", "发现规则", "发现列表及列表项的书籍信息提取规则。", listOf(
+        SourceDetailFieldSpec("bookList", "书籍列表规则"),
+        SourceDetailFieldSpec("name", "书名规则"),
+        SourceDetailFieldSpec("author", "作者规则"),
+        SourceDetailFieldSpec("intro", "简介规则"),
+        SourceDetailFieldSpec("kind", "分类规则"),
+        SourceDetailFieldSpec("lastChapter", "最新章节规则"),
+        SourceDetailFieldSpec("updateTime", "更新时间规则"),
+        SourceDetailFieldSpec("bookUrl", "书籍详情 URL 规则"),
+        SourceDetailFieldSpec("coverUrl", "封面 URL 规则"),
+        SourceDetailFieldSpec("wordCount", "字数规则"),
+    ))
+    addRule("ruleBookInfo", "书籍信息规则", "书籍详情页字段与初始化逻辑。", listOf(
+        SourceDetailFieldSpec("init", "初始化规则"),
+        SourceDetailFieldSpec("name", "书名规则"),
+        SourceDetailFieldSpec("author", "作者规则"),
+        SourceDetailFieldSpec("intro", "简介规则"),
+        SourceDetailFieldSpec("kind", "分类规则"),
+        SourceDetailFieldSpec("lastChapter", "最新章节规则"),
+        SourceDetailFieldSpec("updateTime", "更新时间规则"),
+        SourceDetailFieldSpec("coverUrl", "封面 URL 规则"),
+        SourceDetailFieldSpec("tocUrl", "目录 URL 规则"),
+        SourceDetailFieldSpec("wordCount", "字数规则"),
+        SourceDetailFieldSpec("canReName", "允许重命名规则"),
+        SourceDetailFieldSpec("downloadUrls", "下载地址规则"),
+    ))
+    addRule("ruleToc", "目录规则", "章节列表、章节名称、章节地址与目录更新处理。", listOf(
+        SourceDetailFieldSpec("preUpdateJs", "更新前 JS"),
+        SourceDetailFieldSpec("chapterList", "章节列表规则"),
+        SourceDetailFieldSpec("chapterName", "章节名称规则"),
+        SourceDetailFieldSpec("chapterUrl", "章节 URL 规则"),
+        SourceDetailFieldSpec("formatJs", "格式化 JS"),
+        SourceDetailFieldSpec("isVolume", "分卷规则"),
+        SourceDetailFieldSpec("isVip", "VIP 章节规则"),
+        SourceDetailFieldSpec("isPay", "付费章节规则"),
+        SourceDetailFieldSpec("updateTime", "更新时间规则"),
+        SourceDetailFieldSpec("nextTocUrl", "下一页目录 URL"),
+    ))
+    addRule("ruleContent", "正文规则", "正文提取、替换、图片处理、回调与批量下载配置。", listOf(
+        SourceDetailFieldSpec("content", "正文规则"),
+        SourceDetailFieldSpec("subContent", "副正文规则"),
+        SourceDetailFieldSpec("title", "正文标题规则"),
+        SourceDetailFieldSpec("nextContentUrl", "下一页正文 URL"),
+        SourceDetailFieldSpec("webJs", "网页 JS"),
+        SourceDetailFieldSpec("sourceRegex", "正文替换前正则"),
+        SourceDetailFieldSpec("replaceRegex", "正文替换规则"),
+        SourceDetailFieldSpec("imageStyle", "图片样式"),
+        SourceDetailFieldSpec("imageDecode", "图片解密 JS"),
+        SourceDetailFieldSpec("payAction", "购买操作"),
+        SourceDetailFieldSpec("callBackJs", "事件回调 JS"),
+        SourceDetailFieldSpec("contentBatch", "批量正文规则"),
+        SourceDetailFieldSpec("maxBatchSize", "最大批量数量"),
+    ))
+    addRule("ruleReview", "段评规则", "段评列表、内容、回复及相关接口规则。", listOf(
+        SourceDetailFieldSpec("reviewUrl", "段评 URL"),
+        SourceDetailFieldSpec("avatarRule", "头像规则"),
+        SourceDetailFieldSpec("contentRule", "段评内容规则"),
+        SourceDetailFieldSpec("postTimeRule", "发布时间规则"),
+        SourceDetailFieldSpec("reviewQuoteUrl", "段评回复 URL"),
+        SourceDetailFieldSpec("voteUpUrl", "点赞 URL"),
+        SourceDetailFieldSpec("voteDownUrl", "点踩 URL"),
+        SourceDetailFieldSpec("postReviewUrl", "发送回复 URL"),
+        SourceDetailFieldSpec("postQuoteUrl", "发送段评回复 URL"),
+        SourceDetailFieldSpec("deleteUrl", "删除段评 URL"),
+        SourceDetailFieldSpec("enabled", "启用段评"),
+        SourceDetailFieldSpec("reviewSummaryUrl", "段评摘要 URL"),
+        SourceDetailFieldSpec("summaryListRule", "摘要列表规则"),
+        SourceDetailFieldSpec("summaryParagraphIndexRule", "摘要段落索引规则"),
+        SourceDetailFieldSpec("summaryParagraphDataRule", "摘要段落内容规则"),
+        SourceDetailFieldSpec("summaryCountRule", "摘要数量规则"),
+        SourceDetailFieldSpec("reviewDetailUrl", "段评详情 URL"),
+        SourceDetailFieldSpec("reviewDetailNextPageUrl", "段评详情下一页 URL"),
+        SourceDetailFieldSpec("detailListRule", "详情列表规则"),
+        SourceDetailFieldSpec("detailIdRule", "详情 ID 规则"),
+        SourceDetailFieldSpec("detailAvatarRule", "详情头像规则"),
+        SourceDetailFieldSpec("detailNameRule", "详情名称规则"),
+        SourceDetailFieldSpec("detailBadgeRule", "详情徽章规则"),
+        SourceDetailFieldSpec("detailContentRule", "详情内容规则"),
+        SourceDetailFieldSpec("replyListRule", "回复列表规则"),
+        SourceDetailFieldSpec("replyIdRule", "回复 ID 规则"),
+        SourceDetailFieldSpec("replyAvatarRule", "回复头像规则"),
+        SourceDetailFieldSpec("replyNameRule", "回复名称规则"),
+        SourceDetailFieldSpec("replyBadgeRule", "回复徽章规则"),
+        SourceDetailFieldSpec("replyContentRule", "回复内容规则"),
+    ))
+    addTop("JavaScript 与扩展", "脚本库、主脚本、封面解密与事件回调。", listOf(
+        SourceDetailFieldSpec("jsLib", "JS 库"),
+        SourceDetailFieldSpec("coverDecodeJs", "封面解密 JS"),
+        SourceDetailFieldSpec("mainJs", "书源主 JS"),
+        SourceDetailFieldSpec("eventListener", "事件监听"),
+        SourceDetailFieldSpec("customButton", "自定义按钮"),
+    ))
+    addTop("备注与运行数据", "书源备注、变量说明及运行统计数据。", listOf(
+        SourceDetailFieldSpec("bookSourceComment", "书源备注"),
+        SourceDetailFieldSpec("variableComment", "变量说明"),
+        SourceDetailFieldSpec("lastUpdateTime", "最后更新时间"),
+        SourceDetailFieldSpec("respondTime", "响应耗时记录"),
+        SourceDetailFieldSpec("weight", "智能排序权重"),
+    ))
+
+    val extra = raw.entrySet().filterNot { it.key in knownTopLevelKeys }
+        .map { (key, value) -> field(key, key, value) }
+    if (extra.isNotEmpty()) {
+        sections += SourceDetailSection(
+            "其他 / 上游扩展字段",
+            "以下字段不属于当前固定字段清单，仍从原始 JSON 完整读取并展示。",
+            extra,
+        )
+    }
+    return sections
+}
+
 @Composable
 private fun DetailPanel(
     state: WorkflowState,
@@ -1464,130 +1676,192 @@ private fun DetailPanel(
                 Text("选择一条书源查看详情。", fontSize = 12.sp, color = Muted)
             }
         } else {
-            val preview = state.preview?.get(source.id).takeIf { state.stage == WorkflowStage.ORGANIZE_REVIEW || state.stage == WorkflowStage.EXPORT }
+            val preview = state.preview?.get(source.id)
+                .takeIf { state.stage == WorkflowStage.ORGANIZE_REVIEW || state.stage == WorkflowStage.EXPORT }
+            val detailSections = remember(source.id, source.doc.raw, preview) { sourceDetailSections(source.doc) }
             Column(Modifier.fillMaxSize()) {
                 Row(
-                    Modifier.fillMaxWidth().background(Color.White).padding(start = 18.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
+                    Modifier.fillMaxWidth().background(Color.White)
+                        .padding(start = 20.dp, end = 12.dp, top = 15.dp, bottom = 13.dp),
                     verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text("SOURCE #${(source.id + 1).toString().padStart(3, '0')} · ${state.stage.label}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Primary)
-                        Text(preview?.name ?: source.doc.name.ifBlank { "（未命名）" }, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                        Text(source.doc.url, fontSize = 11.sp, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            "SOURCE #\${(source.id + 1).toString().padStart(3, '0')}  /  \${state.stage.label}",
+                            fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Primary,
+                        )
+                        Text(
+                            preview?.name ?: source.doc.name.ifBlank { "（未命名书源）" },
+                            fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Ink,
+                        )
+                        Text(source.doc.url.ifBlank { "未配置书源地址" }, fontSize = 11.sp, color = Muted)
                     }
-                    TextButton(onClick = onDismiss) { Text("×", fontSize = 20.sp, color = Muted) }
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        SmallChip(source.probe?.status?.label ?: "待校验", statusBackground(source.probe?.status), statusColor(source.probe?.status))
+                        TextButton(onClick = onDismiss) { Text("关闭", fontSize = 12.sp) }
+                    }
+                }
+                HorizontalDivider(color = Line)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    DetailMetric("书源类型", sourceTypeLabel(source.doc.type), Modifier.weight(1f))
+                    DetailMetric("启用状态", if (source.isDisabledForDisplay()) "已禁用" else "已启用", Modifier.weight(1f))
+                    DetailMetric("已配置规则字段", source.doc.ruleCompleteness.toString(), Modifier.weight(1f))
+                    DetailMetric("响应耗时", source.probe?.let { "\${it.elapsedMs} ms" } ?: "暂无", Modifier.weight(1f))
                 }
                 HorizontalDivider(color = Line)
                 Column(
-                    Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(17.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    Modifier.weight(1f).verticalScroll(rememberScrollState())
+                        .padding(horizontal = 18.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("基本信息", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
-                        val statusLabel = source.probe?.status?.label ?: "待校验"
-                        SmallChip(statusLabel, statusBackground(source.probe?.status), statusColor(source.probe?.status))
-                    }
-                    DetailField("类型", sourceTypeLabel(source.doc.type))
-                    DetailField("源分组", preview?.group ?: source.doc.group.ifBlank { "未分组" })
-                    DetailField("启用状态", if (source.isDisabledForDisplay()) "禁用" else "启用")
-                    DetailField("搜索规则", if (source.doc.canSearch) "已配置 / 待引擎确认" else "未发现常规搜索规则")
-                    DetailField("规则字段", source.doc.ruleCompleteness.toString())
-                    DetailField("校验状态", source.probe?.status?.label ?: "尚未校验")
-                    DetailField("响应耗时", source.probe?.let { "${it.elapsedMs} ms" } ?: "—")
-                    source.probe?.httpCode?.let { DetailField("HTTP 状态码", it.toString()) }
-                    if (!source.probe?.detail.isNullOrBlank()) {
-                        HorizontalDivider(color = Line)
-                        Text("校验详情", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink)
-                        Text(source.probe?.detail.orEmpty(), fontSize = 11.sp, color = BodyText, lineHeight = 17.sp)
-                    }
-                    HorizontalDivider(color = Line)
-                    Text("本阶段建议", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    Text("审核与处理信息", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
                     Card(
                         Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (source.deleteMarked) SoftRed else SoftNeutral,
-                        ),
+                        colors = CardDefaults.cardColors(containerColor = if (source.deleteMarked) SoftRed else SoftNeutral),
                         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                     ) {
-                        Column(Modifier.fillMaxWidth().padding(11.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text(
-                                if (source.deleteMarked) "标记为待删除" else source.suggestion,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (source.deleteMarked) Bad else BodyText,
+                                if (source.deleteMarked) "当前标记：待删除" else "当前建议：\${source.suggestion}",
+                                fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                                color = if (source.deleteMarked) Bad else Ink,
                             )
                             Text(
                                 when {
                                     source.deleteMarked -> "该书源会在确认进入下一阶段时从当前工作池移除。"
                                     source.probe?.status == ProbeStatus.OK -> "校验成功；仍可根据规则完整度与重复候选情况人工判断。"
-                                    source.probe?.status?.let { it == ProbeStatus.TIMEOUT || it == ProbeStatus.NETWORK || it == ProbeStatus.HTTP_ERROR } == true -> "网络或服务响应异常不代表书源一定失效，建议人工复核。"
+                                    source.probe?.status?.let { it == ProbeStatus.TIMEOUT || it == ProbeStatus.NETWORK || it == ProbeStatus.HTTP_ERROR } == true ->
+                                        "网络或服务响应异常不代表书源一定失效，建议人工复核。"
                                     else -> "系统建议仅供审核参考，确认阶段前可以修改标记。"
                                 },
-                                fontSize = 10.sp,
-                                color = Muted,
-                                lineHeight = 15.sp,
+                                fontSize = 11.sp, color = Muted, lineHeight = 16.sp,
                             )
+                            source.probe?.let { result ->
+                                if (!result.detail.isNullOrBlank()) {
+                                    HorizontalDivider(color = Line)
+                                    Text("校验详情", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ink)
+                                    Text(result.detail.orEmpty(), fontSize = 11.sp, color = BodyText, lineHeight = 16.sp)
+                                }
+                                result.httpCode?.let { Text("HTTP 状态码：$it", fontSize = 10.sp, color = Muted) }
+                            }
                         }
                     }
                     if (preview != null) {
-                        HorizontalDivider(color = Line)
-                        Text("整理预览", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(7.dp),
-                            verticalAlignment = Alignment.Top,
-                        ) {
+                        Text("整理预览", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.Top) {
                             Column(
-                                Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(Color(0xFFFFF1F1)).padding(9.dp),
+                                Modifier.weight(1f).clip(RoundedCornerShape(9.dp)).background(SoftRed).padding(11.dp),
                                 verticalArrangement = Arrangement.spacedBy(5.dp),
                             ) {
-                                Text("修改前", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Bad)
-                                Text(source.doc.name.ifBlank { "（未命名）" }, fontSize = 10.sp, color = BodyText, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                                Text(source.doc.group.ifBlank { "未分组" }, fontSize = 9.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text("修改前", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Bad)
+                                Text(source.doc.name.ifBlank { "（未命名）" }, fontSize = 11.sp, color = BodyText)
+                                Text(source.doc.group.ifBlank { "未分组" }, fontSize = 10.sp, color = Muted)
                             }
                             Column(
-                                Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(Color(0xFFEAF8F0)).padding(9.dp),
+                                Modifier.weight(1f).clip(RoundedCornerShape(9.dp)).background(SoftGreen).padding(11.dp),
                                 verticalArrangement = Arrangement.spacedBy(5.dp),
                             ) {
-                                Text("规则结果", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Ok)
-                                Text(preview.name.ifBlank { "（未命名）" }, fontSize = 10.sp, color = BodyText, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                                Text(preview.group.ifBlank { "未分组" }, fontSize = 9.sp, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text("预览结果", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Ok)
+                                Text(preview.name.ifBlank { "（未命名）" }, fontSize = 11.sp, color = BodyText)
+                                Text(preview.group.ifBlank { "未分组" }, fontSize = 10.sp, color = Muted)
                             }
                         }
-                        Text("仅已勾选的规则生效；确认进入导出阶段后，标记删除项才会移出当前书源池。", fontSize = 10.sp, color = Muted)
                     }
-                    Text("操作", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
-                    OutlinedButton(
-                        onClick = { onEdit(source.id) },
-                        enabled = !state.busy && state.stage != WorkflowStage.EXPORT,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (preview != null && state.stage == WorkflowStage.ORGANIZE_REVIEW) "编辑整理结果" else "编辑书源") }
-                    if ((state.stage == WorkflowStage.DEDUP_REVIEW || state.stage == WorkflowStage.PROBE_REVIEW || state.stage == WorkflowStage.ORGANIZE_REVIEW) && !state.busy) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("上游书源编辑字段", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink)
+                        SmallChip("\${detailSections.sumOf { it.fields.size }} 项", SoftBlue, Primary)
+                    }
+                    Text(
+                        "按上游 BookSource 的编辑区块整理。未配置字段也会列出；规则组显示已知字段及源文件中实际存在的扩展字段。",
+                        fontSize = 10.sp, color = Muted, lineHeight = 15.sp,
+                    )
+                    detailSections.forEach { section ->
+                        Column(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                .border(1.dp, Line, RoundedCornerShape(10.dp))
+                                .background(Color.White).padding(11.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(section.title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Ink)
+                                SmallChip("\${section.fields.size} 项", SoftNeutral, Muted)
+                            }
+                            Text(section.description, fontSize = 10.sp, color = Muted)
+                            section.fields.chunked(2).forEach { pair ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                                    DetailValueCard(pair[0], Modifier.weight(1f))
+                                    if (pair.size > 1) DetailValueCard(pair[1], Modifier.weight(1f))
+                                    else Spacer(Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                    Text("字段展示以导入 JSON 为准；未知字段不会被丢弃，导出时仍由原始 JSON 数据保留。", fontSize = 10.sp, color = Muted)
+                }
+                HorizontalDivider(color = Line)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (
+                        state.stage == WorkflowStage.DEDUP_REVIEW ||
+                        state.stage == WorkflowStage.PROBE_REVIEW ||
+                        state.stage == WorkflowStage.ORGANIZE_REVIEW
+                    ) {
                         OutlinedButton(
                             onClick = { onToggleDelete(source.id) },
-                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !state.busy,
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = if (source.deleteMarked) Ok else Bad),
                         ) { Text(if (source.deleteMarked) "撤销删除标记" else "标记为删除") }
                     }
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = { onEdit(source.id) },
+                        enabled = !state.busy && state.stage != WorkflowStage.EXPORT,
+                    ) { Text(if (preview != null && state.stage == WorkflowStage.ORGANIZE_REVIEW) "编辑整理结果" else "编辑常用字段") }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(containerColor = FooterPrimary, contentColor = Color.White),
+                    ) { Text("完成") }
                 }
             }
         }
     }
 }
 
-
 @Composable
-private fun DetailField(label: String, value: String) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Top,
+private fun DetailMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier.clip(RoundedCornerShape(8.dp)).background(SoftNeutral).padding(horizontal = 11.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Text(label, Modifier.width(82.dp), fontSize = 11.sp, color = Muted)
-        Text(value.ifBlank { "—" }, Modifier.weight(1f), fontSize = 12.sp, color = Ink)
+        Text(label, fontSize = 10.sp, color = Muted)
+        Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink)
     }
 }
 
+@Composable
+private fun DetailValueCard(field: SourceDetailField, modifier: Modifier = Modifier) {
+    Column(
+        modifier.clip(RoundedCornerShape(8.dp)).border(1.dp, Line, RoundedCornerShape(8.dp))
+            .background(if (field.configured) SoftNeutral else Color(0xFFFAFBFC))
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(field.label, Modifier.weight(1f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text(if (field.configured) "已配置" else "未配置", fontSize = 9.sp, color = if (field.configured) Ok else Muted)
+        }
+        Text(field.key, fontSize = 9.sp, color = Muted)
+        Text(field.value, fontSize = 10.sp, color = if (field.configured) BodyText else Muted, lineHeight = 15.sp)
+    }
+}
 
 @Composable
 private fun BottomActions(
