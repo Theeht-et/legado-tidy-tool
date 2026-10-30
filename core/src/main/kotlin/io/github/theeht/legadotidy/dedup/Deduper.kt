@@ -51,6 +51,8 @@ data class DedupReport(
  */
 object Deduper {
 
+    private val URL_SCHEME = Regex("^https?://")
+
     fun run(sources: List<BookSourceDoc>, config: DedupConfig = DedupConfig()): DedupReport {
         val n = sources.size
         if (n <= 1) return DedupReport(emptyList(), n)
@@ -146,7 +148,7 @@ object Deduper {
      */
     private fun canonicalSourceUrl(raw: String): String = raw.trim()
         .lowercase()
-        .replace(Regex("^https?://"), "")
+        .replace(URL_SCHEME, "")
         .removePrefix("www.")
         .substringBefore('?')
         .substringBefore('#')
