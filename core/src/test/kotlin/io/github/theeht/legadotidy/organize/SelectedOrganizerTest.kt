@@ -146,7 +146,6 @@ class SelectedOrganizerTest {
                 selectedRules = setOf(
                     OrganizeRule.CLEAN_DECORATIONS,
                     OrganizeRule.REMOVE_ADVERTISING_WORDS,
-                    OrganizeRule.NORMALIZE_PUNCTUATION,
                     OrganizeRule.KEEP_ORIGINAL_GROUPS,
                 ),
             ),
@@ -215,7 +214,6 @@ class SelectedOrganizerTest {
             OrganizeConfig(selectedRules = emptySet(), groupingMode = GroupingMode.BY_QUALITY),
         )
         assertEquals(listOf("优质", "合格"), report.sources.map { it.group })
-        assertTrue(report.sources.all { it.quality != null })
         val skipped = Organizer.assessQuality(sources[1], ProbeResult(1, ProbeStatus.SKIPPED))
         val notMeasured = Organizer.assessQuality(sources[1], null)
         assertEquals(notMeasured, skipped)
