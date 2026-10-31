@@ -419,11 +419,20 @@ fun TidyApp() {
         val exploreMode = state.exploreMode
         val entry = if (exploreMode) ProbeEntry.EXPLORE else ProbeEntry.SEARCH
         val depth = if (state.withToc) ProbeDepth.FULL_CHAIN else ProbeDepth.SEARCH
+        val keyword = state.keyword
+        val timeoutMs = state.timeoutSeconds.coerceAtLeast(1) * 1000L
+        val maxExplorePages = state.explorePages
         val concurrency = state.concurrency.coerceIn(1, 2000)
         val snapshot = state.sources.toList()
         val pending = snapshot.filter { source ->
             val previous = source.probe
-            previous == null || previous.entry != entry || previous.depth != depth
+            previous == null ||
+                previous.entry != entry ||
+                previous.depth != depth ||
+                previous.keyword != keyword ||
+                previous.timeoutMs != timeoutMs ||
+                (entry == ProbeEntry.EXPLORE && previous.maxExplorePages != maxExplorePages) ||
+                (!skipProbe && previous.status == ProbeStatus.SKIPPED)
         }
         state.completed = snapshot.size - pending.size
         state.notice = if (skipProbe) "按设置跳过真实校验。" else {
@@ -431,11 +440,11 @@ fun TidyApp() {
         }
         val options = ProbeOptions(
             depth = depth,
-            timeoutMs = state.timeoutSeconds.coerceAtLeast(1) * 1000L,
-            keyword = state.keyword,
+            timeoutMs = timeoutMs,
+            keyword = keyword,
             proxy = state.proxy.takeIf { it.isNotBlank() },
             entry = entry,
-            maxExplorePages = state.explorePages,
+            maxExplorePages = maxExplorePages,
         )
         activeJob = scope.launch {
             try {
@@ -452,6 +461,9 @@ fun TidyApp() {
                                     detail = "未配置上游发现入口（需要 exploreUrl）",
                                     entry = entry,
                                     depth = depth,
+                                    keyword = keyword,
+                                    timeoutMs = timeoutMs,
+                                    maxExplorePages = maxExplorePages,
                                 )
                                 !exploreMode && !source.doc.canSearch -> ProbeResult(
                                     index,
@@ -459,10 +471,15 @@ fun TidyApp() {
                                     detail = "未配置上游搜索入口（普通源需要 searchUrl，JS 源需要 mainJs）",
                                     entry = entry,
                                     depth = depth,
+                                    keyword = keyword,
+                                    timeoutMs = timeoutMs,
+                                    maxExplorePages = maxExplorePages,
                                 )
                                 skipProbe -> ProbeResult(
                                     index, ProbeStatus.SKIPPED, detail = "按设置跳过校验",
                                     entry = entry, depth = depth,
+                                    keyword = keyword, timeoutMs = timeoutMs,
+                                    maxExplorePages = maxExplorePages,
                                 )
                                 else -> {
                                     try {
@@ -474,6 +491,8 @@ fun TidyApp() {
                                             index, ProbeStatus.ERROR,
                                             detail = e.message ?: e::class.java.simpleName,
                                             entry = entry, depth = depth,
+                                            keyword = keyword, timeoutMs = timeoutMs,
+                                            maxExplorePages = maxExplorePages,
                                         )
                                     }
                                 }
