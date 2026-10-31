@@ -191,14 +191,15 @@ class SelectedOrganizerTest {
             doc("""{"bookSourceName":"音频源","bookSourceUrl":"https://audio.test","bookSourceType":1,"bookSourceGroup":"旧组"}"""),
             doc("""{"bookSourceName":"图片源","bookSourceUrl":"https://image.test","bookSourceType":2,"bookSourceGroup":"其他旧组"}"""),
             doc("""{"bookSourceName":"文件源","bookSourceUrl":"https://file.test","bookSourceType":3}"""),
+            doc("""{"bookSourceName":"视频源","bookSourceUrl":"https://video.test","bookSourceType":4}"""),
         )
         fun groups(mode: GroupingMode) = Organizer.run(
             sources, emptyMap(), OrganizeConfig(selectedRules = emptySet(), groupingMode = mode),
         ).sources.associate { it.index to it.group }
 
-        assertEquals(listOf("旧组", "旧组", "其他旧组", ""), groups(GroupingMode.KEEP_ORIGINAL).values.toList())
-        assertEquals(listOf("未分组", "未分组", "未分组", "未分组"), groups(GroupingMode.NO_SMART_GROUPING).values.toList())
-        assertEquals(listOf("文本", "音频", "图片", "文件"), groups(GroupingMode.BY_TYPE).values.toList())
+        assertEquals(listOf("旧组", "旧组", "其他旧组", "", ""), groups(GroupingMode.KEEP_ORIGINAL).values.toList())
+        assertEquals(listOf("未分组", "未分组", "未分组", "未分组", "未分组"), groups(GroupingMode.NO_SMART_GROUPING).values.toList())
+        assertEquals(listOf("文本", "音频", "图片", "文件", "视频"), groups(GroupingMode.BY_TYPE).values.toList())
     }
 
     @Test
