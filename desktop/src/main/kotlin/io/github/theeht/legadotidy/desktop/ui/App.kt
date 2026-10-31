@@ -1381,7 +1381,7 @@ private fun SourceRowItem(
     val preview = state.preview?.get(source.id).takeIf { state.stage == WorkflowStage.ORGANIZE_REVIEW || state.stage == WorkflowStage.EXPORT }
     val name = preview?.name ?: source.doc.name
     val group = preview?.group ?: source.doc.group
-    val compareNames = state.stage == WorkflowStage.ORGANIZE_REVIEW && preview != null
+    val compareNames = state.stage == WorkflowStage.ORGANIZE_REVIEW && state.preview != null
     val status = source.probe?.status?.label ?: if (state.stage == WorkflowStage.IMPORT || state.stage == WorkflowStage.DEDUP_REVIEW) "待校验" else "未校验"
     val elapsed = source.probe?.let { if (it.elapsedMs >= 1000) "${"%.1f".format(it.elapsedMs / 1000.0)}s" else "${it.elapsedMs}ms" } ?: "—"
     val advice = when {
