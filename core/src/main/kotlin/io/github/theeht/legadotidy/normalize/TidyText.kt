@@ -26,9 +26,9 @@ object TidyText {
     private val AD_SUFFIX = Regex("[：:_ -]*(?:$AD_TERMS)$", RegexOption.IGNORE_CASE)
     private val AD_STANDALONE = Regex("""\b(?:VIP|AD|ADS)\b""", RegexOption.IGNORE_CASE)
     // "MD" is only a marker when immediately followed by a decorative symbol.
-    private val DECORATIVE_MD_PREFIX = Regex("""(?i)^md(?=\s*[+＋])""")
+    private val DECORATIVE_MD_PREFIX = Regex("""(?i)^md(?=[\p{So}\p{Sk}\uFE0F\u200D]+[+＋])""")
     // Remove only a standalone cookie suffix; never strip arbitrary English substrings.
-    private val COOKIE_SUFFIX = Regex("""(?i)(?<=\s)cookie$""")
+    private val COOKIE_AFTER_DECORATION = Regex("""(?i)([\p{So}\p{Sk}\uFE0F\u200D]+)\s*cookie$""")
     private val HASH_SUFFIX = Regex("""[#＃][\s\S]*$""")
     private val DECORATIVE_SYMBOLS = Regex("[★☆◆◇■□●○✦✧✪✿❖※♛♚♔♕♡♥❤⚡🔥✨🌟☀️☘️]+")
     // Preserve paired brackets for the text-cleaning rule; trim only decorative edge separators.
@@ -101,7 +101,7 @@ object TidyText {
             val previous = s
             s = AD_BRACKETED.replace(s, " ")
             s = AD_STANDALONE.replace(s, " ")
-            s = COOKIE_SUFFIX.replace(s, " ")
+            s = COOKIE_AFTER_DECORATION.replace(s, "$1")
             s = AD_PREFIX.replace(s, "")
             s = AD_SUFFIX.replace(s, "")
             if (s == previous) break
