@@ -241,7 +241,20 @@ class MockSiteProbeTest {
         val result = LegadoProbeEngine().probe(0, jsDoc, options(ProbeDepth.FULL_CHAIN))
 
         assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
-        assertEquals(2, result.bookCount)
+        // bookCount is the number of search hits (one book); chapter count belongs to TOC.
+        assertEquals(1, result.bookCount)
+        assertEquals(
+            1,
+            result.stageResults.first {
+                it.stage == io.github.theeht.legadotidy.probe.ProbeStage.SEARCH
+            }.itemCount,
+        )
+        assertEquals(
+            2,
+            result.stageResults.first {
+                it.stage == io.github.theeht.legadotidy.probe.ProbeStage.TOC
+            }.itemCount,
+        )
         assertEquals(
             listOf(
                 io.github.theeht.legadotidy.probe.ProbeStage.SEARCH,
