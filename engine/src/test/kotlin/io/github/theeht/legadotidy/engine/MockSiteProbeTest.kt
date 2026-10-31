@@ -36,6 +36,7 @@ class MockSiteProbeTest {
     private lateinit var server: HttpServer
     private var port: Int = 0
     private val explorePagesRequested = java.util.Collections.synchronizedList(mutableListOf<Int>())
+    private val explorePageTokensRequested = java.util.Collections.synchronizedList(mutableListOf<String>())
 
     @BeforeTest
     fun start() {
@@ -43,14 +44,22 @@ class MockSiteProbeTest {
         port = server.address.port
 
         server.createContext("/explore") { exchange ->
-            val page = exchange.requestURI.rawQuery
-                ?.substringAfter("page=", "1")
-                ?.toIntOrNull() ?: 1
-            explorePagesRequested += page
+            val pageToken = exchange.requestURI.rawQuery
+                ?.substringAfter("page=", "1") ?: "1"
+            val page = pageToken.toIntOrNull() ?: 1
+            if (exchange.requestURI.path == "/explore-map") {
+                explorePageTokensRequested += pageToken
+            } else {
+                explorePagesRequested += page
+            }
             val ids = when (exchange.requestURI.path) {
                 "/explore-limit" -> when (page) {
                     1 -> listOf(11, 12)
                     else -> listOf(13, 14)
+                }
+                "/explore-map" -> when (pageToken) {
+                    "one" -> listOf(21)
+                    else -> listOf(22)
                 }
                 else -> when (page) {
                     1 -> listOf(1, 2)
@@ -335,6 +344,26 @@ class MockSiteProbeTest {
             },
         )
         assertTrue(result.stageResults.last().detail.orEmpty().contains("没有新增书籍"))
+    }
+
+    @Test
+    fun `发现 URL 的页码映射在超过映射项后沿用最后一项`() = runBlocking {
+        explorePageTokensRequested.clear()
+        val source = exploreDoc("/explore-map?page=<one,two>")
+        val result = LegadoProbeEngine().probe(
+            0,
+            source,
+            ProbeOptions(
+                depth = ProbeDepth.SEARCH,
+                entry = ProbeEntry.EXPLORE,
+                maxExplorePages = 5,
+                timeoutMs = 10_000,
+            ),
+        )
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertEquals(2, result.bookCount)
+        assertEquals(listOf("one", "two", "two"), explorePageTokensRequested.toList())
     }
 
     @Test
