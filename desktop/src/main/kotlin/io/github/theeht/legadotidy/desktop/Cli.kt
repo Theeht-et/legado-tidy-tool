@@ -150,7 +150,7 @@ private fun parseArgs(args: Array<String>): Options? {
             "--timeout" -> timeout = args.getOrNull(++i)?.toLongOrNull() ?: timeout
             "--limit" -> limit = args.getOrNull(++i)?.toIntOrNull() ?: limit
             "--concurrency" -> concurrency = args.getOrNull(++i)?.toIntOrNull() ?: concurrency
-            "--proxy" -> proxy = args.getOrNull(++i)?.takeIf { it.isNotBlank() }
+            "--proxy" -> proxy = args.getOrNull(++i)?.trim()?.takeIf { it.isNotEmpty() }
             "--skip-probe" -> skipProbe = true
             "--with-toc" -> withToc = true
             "--full-chain" -> fullChain = true
@@ -192,7 +192,7 @@ private fun printUsage() {
           --timeout <秒>       单个书源超时，默认 20
           --limit <N>          只处理前 N 个（调试用）
           --concurrency <N>    并发书源数，默认 100（上限 2000）
-          --proxy <地址>       代理，如 http://127.0.0.1:7890
+          --proxy <地址>       本轮默认代理；书源 header.proxy 优先，如 http://127.0.0.1:7890
           --skip-probe         跳过 S2 校验（只做去重与整理，秒级完成）
           --with-toc           从所选入口（搜索或发现）继续校验详情与目录
           --full-chain         从所选入口（搜索或发现）完整校验详情、目录与第一条有效章节正文（最慢）
