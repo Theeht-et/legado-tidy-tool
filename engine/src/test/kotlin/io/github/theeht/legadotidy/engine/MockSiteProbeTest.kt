@@ -61,6 +61,7 @@ class MockSiteProbeTest {
                     "one" -> listOf(21)
                     else -> listOf(22)
                 }
+                "/explore-full" -> if (page == 1) listOf(1) else emptyList()
                 else -> when (page) {
                     1 -> listOf(1, 2)
                     2 -> listOf(2, 3)
@@ -68,7 +69,8 @@ class MockSiteProbeTest {
                 }
             }
             val html = ids.joinToString("") { id ->
-                "<a href='/discovered/$id'>发现书 $id</a>"
+                val href = if (exchange.requestURI.path == "/explore-full") "/book/1/" else "/discovered/$id"
+                "<a href='$href'>发现书 $id</a>"
             }
             respond(exchange, "<html><body>$html</body></html>")
         }
@@ -317,6 +319,40 @@ class MockSiteProbeTest {
             }
         """.trimIndent()
         return BookSourceDoc(SourceIO.parse(json).single())
+    }
+
+    @Test
+    fun `发现结果继续复用详情目录和正文校验链`() = runBlocking {
+        explorePagesRequested.clear()
+        val source = exploreDoc("/explore-full?page={{page}}")
+        val result = LegadoProbeEngine().probe(
+            0,
+            source,
+            ProbeOptions(
+                depth = ProbeDepth.FULL_CHAIN,
+                entry = ProbeEntry.EXPLORE,
+                maxExplorePages = 5,
+                timeoutMs = 10_000,
+            ),
+        )
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertEquals(1, result.bookCount)
+        assertEquals(listOf(1, 2), explorePagesRequested.toList())
+        assertEquals(
+            listOf(
+                io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE_CATEGORIES,
+                io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE,
+                io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE,
+                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
+                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
+                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
+            ),
+            result.stageResults.map { it.stage },
+        )
+        assertTrue(result.stageResults.all {
+            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
     }
 
     @Test
