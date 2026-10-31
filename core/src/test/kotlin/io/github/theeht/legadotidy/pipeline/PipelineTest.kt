@@ -56,8 +56,15 @@ class PipelineTest {
     @Test
     fun `没有搜索规则的源直接标为不可校验`() = runBlocking {
         val sources = listOf(Docs.doc("无搜索", "https://a.com", searchUrl = "", bookList = ""))
-        val result = Pipeline(FakeEngine()).run(sources, PipelineConfig(skipProbe = false))
+        val result = Pipeline(FakeEngine()).run(
+            sources,
+            PipelineConfig(
+                probe = ProbeOptions(proxy = " http://127.0.0.1:7890 "),
+                skipProbe = false,
+            ),
+        )
         assertEquals(ProbeStatus.NO_SEARCH_URL, result.probeResults.getValue(0).status)
+        assertEquals("http://127.0.0.1:7890", result.probeResults.getValue(0).proxy)
     }
 
 
