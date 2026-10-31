@@ -34,8 +34,6 @@ object TidyText {
     private val DECORATIVE_SYMBOLS = Regex("""[★☆◆◇■□●○✦✧✪✿❖※♛♚♔♕♡♥❤⚡🔥✨🌟☀️☘️]+""")
     private val DECORATION_PREFIX = Regex("""^[\s|｜·•!！:：_=~～—–-]+""")
     private val DECORATION_SUFFIX = Regex("""[\s|｜·•!！:：_=~～—–-]+$""")
-    private val REPEATED_NAME_PUNCTUATION = Regex("""[!！。．·•]{2,}""")
-    private val REPEATED_DASHES = Regex("""[_~～—–-]{2,}""")
     private val EMPTY_BRACKETS = Regex("""[【［\[（(「『]+\s*[】］\]）)」』]+""")
     private val EDGE_NAME_PUNCTUATION = Regex("""^[\s,，。:：;；|｜]+|[\s,，。:：;；|｜]+$""")
 
@@ -153,16 +151,6 @@ object TidyText {
         s = WHITESPACE.replace(s, " ")
         s = EDGE_NAME_PUNCTUATION.replace(s, "")
         return s.trim(' ', '-', '_', '+', '＋', '|', '｜', '·', '・', '—', '–', ':', '：')
-    }
-
-    fun normalizeNamePunctuation(raw: String): String {
-        var s = ZERO_WIDTH.replace(raw, "")
-        s = REPEATED_NAME_PUNCTUATION.replace(s, "")
-        s = REPEATED_DASHES.replace(s, " ")
-        s = EMPTY_BRACKETS.replace(s, "")
-        s = WHITESPACE.replace(s, " ")
-        s = EDGE_NAME_PUNCTUATION.replace(s, "").trim()
-        return s.ifEmpty { raw.trim() }
     }
 
     fun ruleText(raw: String): String {
