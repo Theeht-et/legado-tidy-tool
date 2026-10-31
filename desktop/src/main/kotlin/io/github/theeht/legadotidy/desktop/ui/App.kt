@@ -1477,7 +1477,10 @@ private fun SourceRowItem(
             overflow = TextOverflow.Ellipsis,
         )
         SmallChip(sourceTypeLabel(source.doc.type), SoftSlate, Muted, Modifier.weight(0.65f))
-        Text(group.ifBlank { "—" }, Modifier.weight(0.9f), fontSize = UiTypography.label, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        val groupLabel = if (OrganizeRule.REGROUP_BY_QUALITY in state.selectedRules) {
+            preview?.quality?.let { group + " · " + it.score + "分" } ?: group.ifBlank { "—" }
+        } else group.ifBlank { "—" }
+        Text(groupLabel, Modifier.weight(0.9f), fontSize = UiTypography.label, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(elapsed, Modifier.weight(0.6f), fontSize = UiTypography.caption, color = Muted, maxLines = 1)
         SmallChip(status, probeStyle.background, probeStyle.foreground, Modifier.weight(0.95f))
         SmallChip(
