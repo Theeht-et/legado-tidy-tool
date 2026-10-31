@@ -9,8 +9,8 @@ import java.util.Locale
 
 /** UI 可显式选择的整理规则。 */
 enum class OrganizeRule(val label: String) {
-    CLEAN_DECORATIONS("清理图标与装饰"),
-    REMOVE_ADVERTISING_WORDS("清理广告宣传词"),
+    CLEAN_DECORATIONS("清理各类emoji/符号"),
+    REMOVE_ADVERTISING_WORDS("清理多余文字"),
     NORMALIZE_PUNCTUATION("规范标点与空格"),
     KEEP_ORIGINAL_GROUPS("保留原有分组"),
     REGROUP_BY_TYPE("按类型与名称归类"),
@@ -69,7 +69,7 @@ object Organizer {
                 TidyText.display(doc.name, config.maxNameLength)
             } else {
                 var name = doc.name
-                // Strip decorative suffixes first so advertising terms become matchable at the edges.
+                // Remove standalone symbols first; cleanDecorations preserves paired brackets for text matching.
                 if (OrganizeRule.CLEAN_DECORATIONS in rules) {
                     name = TidyText.cleanDecorations(name)
                 }
