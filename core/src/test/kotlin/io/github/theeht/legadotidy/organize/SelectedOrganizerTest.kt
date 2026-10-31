@@ -212,7 +212,7 @@ class SelectedOrganizerTest {
             sources, results,
             OrganizeConfig(selectedRules = emptySet(), groupingMode = GroupingMode.BY_QUALITY),
         )
-        assertEquals(listOf("良好", "合格"), report.sources.map { it.group })
+        assertEquals(listOf("优质", "合格"), report.sources.map { it.group })
         assertTrue(report.sources.all { it.quality != null })
     }
 
