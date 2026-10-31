@@ -419,7 +419,7 @@ fun TidyApp() {
         val snapshot = state.sources.toList()
         val pending = snapshot.filter { it.probe == null }
         val options = ProbeOptions(
-            depth = if (state.withToc) ProbeDepth.WITH_TOC else ProbeDepth.SEARCH,
+            depth = if (state.withToc) ProbeDepth.FULL_CHAIN else ProbeDepth.SEARCH,
             timeoutMs = state.timeoutSeconds.coerceAtLeast(1) * 1000L,
             keyword = state.keyword,
             proxy = state.proxy.takeIf { it.isNotBlank() },
@@ -436,7 +436,7 @@ fun TidyApp() {
                                 !source.doc.canSearch -> ProbeResult(
                                     index,
                                     ProbeStatus.NO_SEARCH_URL,
-                                    detail = "未配置可执行的搜索规则（searchUrl + ruleSearch.bookList 或 mainJs）",
+                                    detail = "未配置上游搜索入口（普通源需要 searchUrl，JS 源需要 mainJs）",
                                 )
                                 skipProbe -> ProbeResult(index, ProbeStatus.SKIPPED, detail = "按设置跳过校验")
                                 else -> {
@@ -1894,10 +1894,28 @@ private fun DetailOverviewContent(source: WorkflowSource) {
                 lineHeight = 16.sp,
             )
             source.probe?.let { result ->
-                if (!result.detail.isNullOrBlank()) {
+                if (!result.detail.isNullOrBlank() || result.stageResults.isNotEmpty()) {
                     HorizontalDivider(color = Line)
                     Text("校验详情", fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = Ink)
-                    Text(result.detail.orEmpty(), fontSize = UiTypography.label, color = BodyText, lineHeight = 16.sp)
+                    result.stageResults.forEach { stage ->
+                        val count = if (stage.itemCount > 0) " · ${stage.itemCount} 项" else ""
+                        Text(
+                            "${stage.stage.label}：${stage.status.label}${count} · ${stage.elapsedMs}ms",
+                            fontSize = UiTypography.caption,
+                            color = when (stage.status) {
+                                io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS -> Ok
+                                io.github.theeht.legadotidy.probe.ProbeStageStatus.FAILED,
+                                io.github.theeht.legadotidy.probe.ProbeStageStatus.EMPTY -> Warn
+                                io.github.theeht.legadotidy.probe.ProbeStageStatus.NOT_RUN -> Muted
+                            },
+                        )
+                        stage.detail?.takeIf { it.isNotBlank() }?.let {
+                            Text(it, fontSize = UiTypography.caption, color = Muted, lineHeight = 15.sp)
+                        }
+                    }
+                    result.detail?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, fontSize = UiTypography.label, color = BodyText, lineHeight = 16.sp)
+                    }
                 }
                 result.httpCode?.let { Text("HTTP 状态码：$it", fontSize = UiTypography.caption, color = Muted) }
             }
@@ -2233,7 +2251,7 @@ private fun SettingsDialog(state: WorkflowState, onDismiss: () -> Unit, onChoose
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = state.withToc, onCheckedChange = { state.withToc = it })
                     Spacer(Modifier.width(8.dp))
-                    Text("校验时继续检查目录（更慢）", fontSize = UiTypography.body, color = Ink)
+                    Text("继续校验详情、目录和正文（完整链路，更慢）", fontSize = UiTypography.body, color = Ink)
                 }
                 OutlinedTextField(
                     value = state.exportDir,
@@ -2613,7 +2631,7 @@ private data class ProbeStatusStyle(val background: Color, val foreground: Color
 
 private fun probeStatusStyle(status: ProbeStatus?): ProbeStatusStyle = when (status) {
     ProbeStatus.OK -> ProbeStatusStyle(SoftGreen, Ok)
-    ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> ProbeStatusStyle(SoftAmber, Warn)
+    ProbeStatus.PARTIAL, ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> ProbeStatusStyle(SoftAmber, Warn)
     ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS, ProbeStatus.ERROR ->
         ProbeStatusStyle(SoftRed, Bad)
     else -> ProbeStatusStyle(SoftSlate, Muted)

@@ -107,9 +107,15 @@ class BookSourceDoc(val raw: JsonObject) {
         return RuleGroup(objectValue)
     }
 
-    /** 能否按常规规则发起搜索；JS 书源由上游 mainJs 流程处理。 */
+    /**
+     * 是否具备上游 WebBook.searchBookAwait 的搜索入口。
+     *
+     * 上游只要求普通源的 searchUrl 非空；BookList 会自行处理 bookUrlPattern
+     * 详情页直出和 bookList 为空时的详情页回退，不能在这里提前判为无搜索规则。
+     * JS 源则由 mainJs 分流到 JsSourceBook.searchAwait。
+     */
     val canSearch: Boolean
-        get() = mainJs.isNotEmpty() || (searchUrl.isNotEmpty() && ruleSearch["bookList"].isNotEmpty())
+        get() = mainJs.isNotBlank() || searchUrl.isNotBlank()
 
     /** 是否包含上游规则组或 JS 主脚本。可选规则组缺失不视为格式错误。 */
     val hasAnyRule: Boolean

@@ -40,6 +40,18 @@ class BookSourceDocTest {
     }
 
     @Test
+    fun `上游允许仅配置 searchUrl 并交给 BookList 处理详情页回退`() {
+        val source = doc(
+            """{
+              "searchUrl":"https://example.test/search",
+              "ruleBookInfo":{"name":"h1"}
+            }"""
+        )
+
+        assertTrue(source.canSearch)
+    }
+
+    @Test
     fun `兼容以 JSON 字符串存储的规则组`() {
         val source = doc(
             """{"ruleSearch":"{\"bookList\":\"div.book\",\"name\":\"a\",\"wordCount\":\".count\"}"}"""

@@ -137,6 +137,9 @@ class WorkflowDecisionsTest {
         assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.NETWORK))
         assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.TIMEOUT))
         assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.SKIPPED))
+        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.PARTIAL))
+        assertTrue(shouldShowInExceptionReview(ProbeStatus.PARTIAL, deleteMarked = false))
+        assertFalse(shouldShowInExceptionReview(ProbeStatus.PARTIAL, deleteMarked = true))
     }
 
     @Test
@@ -156,7 +159,9 @@ class WorkflowDecisionsTest {
         assertFalse(matches("待校验", status = ProbeStatus.OK))
         assertTrue(matches("校验通过", status = ProbeStatus.OK))
         assertFalse(matches("校验通过", status = ProbeStatus.NETWORK))
+        assertFalse(matches("校验通过", status = ProbeStatus.PARTIAL))
         assertTrue(matches("异常 / 复核", status = ProbeStatus.NETWORK))
+        assertTrue(matches("异常 / 复核", status = ProbeStatus.PARTIAL))
         assertFalse(matches("异常 / 复核", status = ProbeStatus.NETWORK, deleted = true))
         assertFalse(matches("异常 / 复核", status = ProbeStatus.OK))
         assertFalse(matches("异常 / 复核", status = ProbeStatus.SKIPPED))

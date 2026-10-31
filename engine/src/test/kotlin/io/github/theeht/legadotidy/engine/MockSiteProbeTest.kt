@@ -7,6 +7,7 @@ import io.github.theeht.legadotidy.model.SourceIO
 import io.github.theeht.legadotidy.probe.ProbeDepth
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeStatus
+import io.legado.app.utils.GSON
 import kotlinx.coroutines.runBlocking
 import java.net.InetSocketAddress
 import kotlin.test.AfterTest
@@ -57,9 +58,7 @@ class MockSiteProbeTest {
             )
         }
 
-        // 详情页直接带目录：真实站点里「详情页即目录页」是最常见的一种。
-        // 想覆盖「目录在单独页面」，加一个 ruleBookInfo.tocUrl 就行；
-        // 这里只求把链路跑通，所以取更简单的那种。
+        // 详情页直接带目录：覆盖上游先取书籍详情、再取目录的真实调用顺序。
         server.createContext("/book/1/") { exchange ->
             respond(
                 exchange,
@@ -74,6 +73,17 @@ class MockSiteProbeTest {
                     <li><a href="/book/1/c2">第二章</a></li>
                   </ul>
                 </body></html>
+                """.trimIndent(),
+            )
+        }
+
+        server.createContext("/book/1/c1") { exchange ->
+            respond(
+                exchange,
+                """
+                <!DOCTYPE html>
+                <html><head><meta charset="utf-8"></head>
+                <body><div class="content">这是第一章的正文内容。</div></body></html>
                 """.trimIndent(),
             )
         }
@@ -112,6 +122,9 @@ class MockSiteProbeTest {
             "chapterList": "class.ch@tag.li",
             "chapterName": "tag.a@text",
             "chapterUrl": "tag.a@href"
+          },
+          "ruleContent": {
+            "content": "class.content@text"
           }
         }
     """.trimIndent()
@@ -138,6 +151,122 @@ class MockSiteProbeTest {
 
         assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
         assertEquals("目录 2 章", result.detail)
+        assertTrue(result.stageResults.any {
+            it.stage == io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO &&
+                it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
+    }
+
+    @Test
+    fun `全链路校验会依次完成搜索详情目录和正文`() = runBlocking {
+        val result = LegadoProbeEngine().probe(0, doc(), options(ProbeDepth.FULL_CHAIN))
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertEquals(
+            listOf(
+                io.github.theeht.legadotidy.probe.ProbeStage.SEARCH,
+                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
+                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
+                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
+            ),
+            result.stageResults.map { it.stage },
+        )
+        assertTrue(result.stageResults.all {
+            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
+        assertTrue(result.detail.orEmpty().contains("正文校验成功"))
+    }
+
+    @Test
+    fun `正文解析失败时保留前序成功阶段并返回部分通过`() = runBlocking {
+        val brokenJson = sourceJson().replace(
+            "\"class.content@text\"",
+            "\"class.missing-content@text\"",
+        )
+        val brokenDoc = BookSourceDoc(SourceIO.parse(brokenJson).single())
+
+        val result = LegadoProbeEngine().probe(0, brokenDoc, options(ProbeDepth.FULL_CHAIN))
+
+        assertEquals(ProbeStatus.PARTIAL, result.status, "详情：${result.detail}")
+        assertEquals(
+            listOf(
+                io.github.theeht.legadotidy.probe.ProbeStage.SEARCH,
+                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
+                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
+                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
+            ),
+            result.stageResults.map { it.stage },
+        )
+        assertTrue(result.stageResults.take(3).all {
+            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
+        assertEquals(
+            io.github.theeht.legadotidy.probe.ProbeStageStatus.FAILED,
+            result.stageResults.last().status,
+        )
+    }
+
+    @Test
+    fun `JS 书源按上游函数链完成搜索详情目录和正文`() = runBlocking {
+        val mainJs = """
+            function search(key, page) {
+                return [{
+                    name: "JS 书源书",
+                    author: "JS 作者",
+                    bookUrl: baseUrl + "/js-book/",
+                    tocUrl: baseUrl + "/js-book/"
+                }];
+            }
+            // getBookInfo 是上游可选函数；缺失时应沿用搜索阶段字段。
+            function getChapters(book) {
+                return [
+                    { title: "JS 第一章", url: baseUrl + "/js-chapter/1" },
+                    { title: "JS 第二章", url: baseUrl + "/js-chapter/2" }
+                ];
+            }
+            function getContent(chapter, book, nextChapterUrl) {
+                return "JS 正文：" + chapter.title;
+            }
+        """.trimIndent()
+        val json = """
+            {
+              "bookSourceName": "本地 JS 书源",
+              "bookSourceUrl": "http://127.0.0.1:$port",
+              "bookSourceType": 0,
+              "mainJs": ${GSON.toJson(mainJs)}
+            }
+        """.trimIndent()
+        val jsDoc = BookSourceDoc(SourceIO.parse(json).single())
+
+        val result = LegadoProbeEngine().probe(0, jsDoc, options(ProbeDepth.FULL_CHAIN))
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        // bookCount is the number of search hits (one book); chapter count belongs to TOC.
+        assertEquals(1, result.bookCount)
+        assertEquals(
+            1,
+            result.stageResults.first {
+                it.stage == io.github.theeht.legadotidy.probe.ProbeStage.SEARCH
+            }.itemCount,
+        )
+        assertEquals(
+            2,
+            result.stageResults.first {
+                it.stage == io.github.theeht.legadotidy.probe.ProbeStage.TOC
+            }.itemCount,
+        )
+        assertEquals(
+            listOf(
+                io.github.theeht.legadotidy.probe.ProbeStage.SEARCH,
+                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
+                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
+                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
+            ),
+            result.stageResults.map { it.stage },
+        )
+        assertTrue(result.stageResults.all {
+            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
     }
 
     @Test
