@@ -175,10 +175,10 @@ class LegadoProbeEngine(
                 stageResults += bookInfo
 
                 val selectedBook = book
-                if (selectedBook == null) {
-                    addNotRun(ProbeStage.TOC, "无法从搜索结果构造 Book，目录阶段未执行")
+                if (bookInfo.status != ProbeStageStatus.SUCCESS || selectedBook == null) {
+                    addNotRun(ProbeStage.TOC, "书籍详情阶段未成功，目录阶段未执行")
                     if (options.depth == ProbeDepth.FULL_CHAIN) {
-                        addNotRun(ProbeStage.CONTENT, "目录阶段未执行")
+                        addNotRun(ProbeStage.CONTENT, "书籍详情或目录阶段未成功，正文阶段未执行")
                     }
                     return@withTimeout result(
                         ProbeStatus.PARTIAL,
