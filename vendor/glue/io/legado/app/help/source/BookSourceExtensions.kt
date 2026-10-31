@@ -46,6 +46,33 @@ private fun BookSource.getExploreKindsKey(): String {
  * 仅缓存锁的实现改为 ConcurrentHashMap，避免多个校验协程首次访问同一来源时
  * 因上游 lazy HashMap 初始化竞争而拿到不同 Mutex。
  */
+private fun BookSource.getOrCreateExploreInfoMap(): InfoMap {
+    return exploreInfoMapList[bookSourceUrl] ?: InfoMap(bookSourceUrl).also {
+        exploreInfoMapList.put(bookSourceUrl, it)
+    }
+}
+
+/**
+ * ExploreAdapter initializes toggle/select defaults while building its controls.
+ * Those defaults can be read by @js category URLs, so a headless probe must apply
+ * the same first-render state before calling WebBook.exploreBookAwait.
+ */
+fun BookSource.initializeExploreInfoMap(kinds: List<ExploreKind>) {
+    val infoMap = getOrCreateExploreInfoMap()
+    kinds.forEach { kind ->
+        if (kind.type == ExploreKind.Type.toggle || kind.type == ExploreKind.Type.select) {
+            val chars = kind.chars?.filterNotNull() ?: listOf("chars", "is null")
+            if (infoMap[kind.title].isNullOrEmpty()) {
+                val initial = kind.default ?: chars.firstOrNull()
+                    ?: throw IllegalArgumentException(
+                        "发现分类「${kind.title}」的 ${kind.type} 控件没有可用选项",
+                    )
+                infoMap[kind.title] = initial
+            }
+        }
+    }
+}
+
 suspend fun BookSourcePart.exploreKinds(): List<ExploreKind> {
     return getBookSource()?.exploreKinds() ?: emptyList()
 }
@@ -67,10 +94,7 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
                 val ruleStr = when {
                     categoryRule.startsWith("@js:", ignoreCase = true) -> {
                         CacheManager.get(exploreKindsKey)?.takeIf { it.isNotBlank() } ?: run {
-                            val exploreInfoMap = exploreInfoMapList[bookSourceUrl]
-                                ?: InfoMap(bookSourceUrl).also {
-                                    exploreInfoMapList.put(bookSourceUrl, it)
-                                }
+                            val exploreInfoMap = getOrCreateExploreInfoMap()
                             runScriptWithContext {
                                 evalJS(categoryRule.substring(4)) {
                                     put("infoMap", exploreInfoMap)
