@@ -145,8 +145,8 @@ class WorkflowDecisionsTest {
 
     @Test
     fun `重复组重新计算时保留用户明确作出的删除决定`() {
-        assertTrue(resolveDeleteMark(defaultMarked = true, currentMarked = false, hasUserDecision = true).not())
-        assertFalse(resolveDeleteMark(defaultMarked = false, currentMarked = true, hasUserDecision = true).not())
+        assertFalse(resolveDeleteMark(defaultMarked = true, currentMarked = false, hasUserDecision = true))
+        assertTrue(resolveDeleteMark(defaultMarked = false, currentMarked = true, hasUserDecision = true))
         assertTrue(resolveDeleteMark(defaultMarked = true, currentMarked = false, hasUserDecision = false))
         assertFalse(resolveDeleteMark(defaultMarked = false, currentMarked = true, hasUserDecision = false))
     }

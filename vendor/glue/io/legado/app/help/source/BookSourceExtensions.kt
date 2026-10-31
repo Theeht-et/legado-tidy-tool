@@ -53,8 +53,8 @@ private fun BookSource.getExploreKindsKey(): String {
  * - 其他格式按 && / 换行拆分，并按 title::url 取分类名称和链接；
  * - 解析结果按 MD5(bookSourceUrl + exploreUrl) 缓存。
  *
- * 仅缓存锁的实现改为 ConcurrentHashMap，避免多个校验协程首次访问同一来源时
- * 因上游 lazy HashMap 初始化竞争而拿到不同 Mutex。
+ * 每个书源 URL 使用 ConcurrentHashMap 中的同一把 Mutex 保护完整发现会话，
+ * 避免重复书源并发读写上游共享 InfoMap。
  */
 private fun BookSource.getOrCreateExploreInfoMap(): InfoMap =
     synchronized(exploreInfoMapList) {
