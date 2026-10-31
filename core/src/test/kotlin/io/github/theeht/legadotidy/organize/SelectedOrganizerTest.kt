@@ -173,7 +173,6 @@ class SelectedOrganizerTest {
                 selectedRules = setOf(
                     OrganizeRule.CLEAN_DECORATIONS,
                     OrganizeRule.REMOVE_ADVERTISING_WORDS,
-                    OrganizeRule.NORMALIZE_PUNCTUATION,
                 ),
             ),
         )
