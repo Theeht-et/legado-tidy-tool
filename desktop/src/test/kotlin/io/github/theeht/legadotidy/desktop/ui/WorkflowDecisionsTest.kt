@@ -140,6 +140,32 @@ class WorkflowDecisionsTest {
     }
 
     @Test
+    fun `书源列表筛选与计数共用同一分类判断`() {
+        fun matches(
+            filter: String,
+            duplicate: Boolean = false,
+            pending: Boolean = false,
+            status: ProbeStatus? = null,
+            deleted: Boolean = false,
+        ) = isSourceIncludedInFilter(filter, duplicate, pending, status, deleted)
+
+        assertTrue(matches("全部"))
+        assertTrue(matches("重复候选", duplicate = true))
+        assertFalse(matches("重复候选"))
+        assertTrue(matches("待校验", pending = true))
+        assertFalse(matches("待校验", status = ProbeStatus.OK))
+        assertTrue(matches("校验通过", status = ProbeStatus.OK))
+        assertFalse(matches("校验通过", status = ProbeStatus.NETWORK))
+        assertTrue(matches("异常 / 复核", status = ProbeStatus.NETWORK))
+        assertFalse(matches("异常 / 复核", status = ProbeStatus.NETWORK, deleted = true))
+        assertFalse(matches("异常 / 复核", status = ProbeStatus.OK))
+        assertFalse(matches("异常 / 复核", status = ProbeStatus.SKIPPED))
+        assertTrue(matches("待删除", deleted = true))
+        assertFalse(matches("待删除"))
+        assertTrue(matches("未知筛选条件"))
+    }
+
+    @Test
     fun `待删除标记优先异常与待删除分组互斥`() {
         assertFalse(shouldShowInExceptionReview(ProbeStatus.NO_SEARCH_URL, deleteMarked = true))
         assertFalse(shouldShowInExceptionReview(ProbeStatus.UNSUPPORTED, deleteMarked = true))
