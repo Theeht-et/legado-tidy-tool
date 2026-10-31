@@ -47,6 +47,9 @@ RETRIES = 3
 TIMEOUT = 60
 WORKERS = 8
 
+HTTP_HELPER_REL = "io/legado/app/help/http/HttpHelper.kt"
+PROBE_PROXY_MARKER = "ProbeProxyContext.currentProxy()"
+
 
 def load_manifest() -> list[str]:
     if not MANIFEST.is_file():
@@ -70,7 +73,29 @@ def check(rels: list[str]) -> int:
         if len(missing) > 20:
             print(f"  ……还有 {len(missing) - 20} 个", file=sys.stderr)
         return 1
-    print(f"[glue] OK：{present}/{len(rels)} 个文件")
+    helper = DEST / HTTP_HELPER_REL
+    if not helper.is_file() or PROBE_PROXY_MARKER not in helper.read_text("utf-8"):
+        print(
+            "[glue] 缺少校验级代理上下文补丁；请重新运行 bootstrap-glue.py。",
+            file=sys.stderr,
+        )
+        return 1
+    upstream_smoke = (
+        "fun getProxyClient(proxy: String? = null): OkHttpClient {\n"
+        "    if (proxy.isNullOrBlank()) {\n"
+        "        return okHttpClient\n"
+        "    }\n"
+        "    val proxyConfig = parseProxyConfig(proxy)"
+    ).encode("utf-8")
+    try:
+        patched_smoke = apply_project_overlays(HTTP_HELPER_REL, upstream_smoke).decode("utf-8")
+    except Exception as e:  # noqa: BLE001 — CI also verifies the rebuild patch itself
+        print(f"[glue] 代理补丁自检失败：{e}", file=sys.stderr)
+        return 1
+    if PROBE_PROXY_MARKER not in patched_smoke:
+        print("[glue] 代理补丁自检未生成预期代码。", file=sys.stderr)
+        return 1
+    print(f"[glue] OK：{present}/{len(rels)} 个文件；校验级代理补丁及重建补丁均通过")
     return 0
 
 
@@ -96,6 +121,39 @@ def fetch(rel: str) -> tuple[str, bytes | None, str]:
     return rel, None, last
 
 
+def apply_project_overlays(rel: str, body: bytes) -> bytes:
+    """Apply small headless-only adaptations after fetching the reference glue source."""
+    if rel != HTTP_HELPER_REL:
+        return body
+
+    text = body.decode("utf-8")
+    if PROBE_PROXY_MARKER in text:
+        return body
+
+    upstream = (
+        "fun getProxyClient(proxy: String? = null): OkHttpClient {\n"
+        "    if (proxy.isNullOrBlank()) {\n"
+        "        return okHttpClient\n"
+        "    }\n"
+        "    val proxyConfig = parseProxyConfig(proxy)"
+    )
+    replacement = (
+        "fun getProxyClient(proxy: String? = null): OkHttpClient {\n"
+        "    // A source-level header.proxy wins; otherwise use the current validation's context.\n"
+        "    val effectiveProxy = proxy?.takeIf { it.isNotBlank() }\n"
+        "        ?: ProbeProxyContext.currentProxy()\n"
+        "    if (effectiveProxy.isNullOrBlank()) {\n"
+        "        return okHttpClient\n"
+        "    }\n"
+        "    val proxyConfig = parseProxyConfig(effectiveProxy)"
+    )
+    if text.count(upstream) != 1:
+        raise ValueError(
+            "无法安全应用 HttpHelper 代理补丁：上游 getProxyClient 代码与预期不一致。"
+        )
+    return text.replace(upstream, replacement, 1).encode("utf-8")
+
+
 def rebuild(rels: list[str]) -> int:
     print(f"补全层：{len(rels)} 个文件 → {DEST}")
     failed: list[tuple[str, str]] = []
@@ -105,6 +163,11 @@ def rebuild(rels: list[str]) -> int:
         for rel, body, err in pool.map(fetch, rels):
             if body is None:
                 failed.append((rel, err))
+                continue
+            try:
+                body = apply_project_overlays(rel, body)
+            except Exception as e:  # noqa: BLE001 — fail closed rather than losing a required patch
+                failed.append((rel, f"项目补丁失败：{e}"))
                 continue
             target = DEST / rel
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -131,8 +194,8 @@ def rebuild(rels: list[str]) -> int:
         f"（GPL-3.0），共 {written} 个文件，清单见 `scripts/glue-filelist.txt`。\n\n"
         "它们把 Android / Room / Glide 等平台依赖替换成可在桌面 JVM 上运行的桩，\n"
         "并补上 Legado 引擎自身依赖的 `BaseSource`、`AppConfig`、`appDb`、`JsExtensions`。\n\n"
-        "**不要手改**：`python scripts/bootstrap-glue.py` 会整体覆盖。\n"
-        "需要改行为请改 `engine/src/main/kotlin/` 下我们自己的代码。\n",
+        "**不要手改**：`python scripts/bootstrap-glue.py` 会整体覆盖；校验级代理上下文补丁由脚本自动应用。\n"
+        "其他行为改动请放在 `engine/src/main/kotlin/` 下我们自己的代码。\n",
         encoding="utf-8",
     )
     print("完成。")

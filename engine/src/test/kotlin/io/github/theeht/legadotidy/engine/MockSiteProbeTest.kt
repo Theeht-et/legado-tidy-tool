@@ -5,8 +5,10 @@ import com.sun.net.httpserver.HttpServer
 import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.model.SourceIO
 import io.github.theeht.legadotidy.probe.ProbeDepth
+import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeStatus
+import io.legado.app.utils.GSON
 import kotlinx.coroutines.runBlocking
 import java.net.InetSocketAddress
 import kotlin.test.AfterTest
@@ -33,11 +35,45 @@ class MockSiteProbeTest {
 
     private lateinit var server: HttpServer
     private var port: Int = 0
+    private val explorePagesRequested = java.util.Collections.synchronizedList(mutableListOf<Int>())
+    private val explorePageTokensRequested = java.util.Collections.synchronizedList(mutableListOf<String>())
 
     @BeforeTest
     fun start() {
         server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         port = server.address.port
+
+        server.createContext("/explore") { exchange ->
+            val pageToken = exchange.requestURI.rawQuery
+                ?.substringAfter("page=", "1") ?: "1"
+            val page = pageToken.toIntOrNull() ?: 1
+            if (exchange.requestURI.path == "/explore-map") {
+                explorePageTokensRequested += pageToken
+            } else {
+                explorePagesRequested += page
+            }
+            val ids = when (exchange.requestURI.path) {
+                "/explore-limit" -> when (page) {
+                    1 -> listOf(11, 12)
+                    else -> listOf(13, 14)
+                }
+                "/explore-map" -> when (pageToken) {
+                    "one" -> listOf(21)
+                    else -> listOf(22)
+                }
+                "/explore-full" -> if (page == 1) listOf(1) else emptyList()
+                else -> when (page) {
+                    1 -> listOf(1, 2)
+                    2 -> listOf(2, 3)
+                    else -> listOf(1, 2, 3)
+                }
+            }
+            val html = ids.joinToString("") { id ->
+                val href = if (exchange.requestURI.path == "/explore-full") "/book/1/" else "/discovered/$id"
+                "<a href='$href'>发现书 $id</a>"
+            }
+            respond(exchange, "<html><body>$html</body></html>")
+        }
 
         server.createContext("/search") { exchange ->
             respond(
@@ -57,9 +93,7 @@ class MockSiteProbeTest {
             )
         }
 
-        // 详情页直接带目录：真实站点里「详情页即目录页」是最常见的一种。
-        // 想覆盖「目录在单独页面」，加一个 ruleBookInfo.tocUrl 就行；
-        // 这里只求把链路跑通，所以取更简单的那种。
+        // 详情页直接带目录：覆盖上游先取书籍详情、再取目录的真实调用顺序。
         server.createContext("/book/1/") { exchange ->
             respond(
                 exchange,
@@ -74,6 +108,17 @@ class MockSiteProbeTest {
                     <li><a href="/book/1/c2">第二章</a></li>
                   </ul>
                 </body></html>
+                """.trimIndent(),
+            )
+        }
+
+        server.createContext("/book/1/c1") { exchange ->
+            respond(
+                exchange,
+                """
+                <!DOCTYPE html>
+                <html><head><meta charset="utf-8"></head>
+                <body><div class="content">这是第一章的正文内容。</div></body></html>
                 """.trimIndent(),
             )
         }
@@ -112,6 +157,9 @@ class MockSiteProbeTest {
             "chapterList": "class.ch@tag.li",
             "chapterName": "tag.a@text",
             "chapterUrl": "tag.a@href"
+          },
+          "ruleContent": {
+            "content": "class.content@text"
           }
         }
     """.trimIndent()
@@ -138,6 +186,290 @@ class MockSiteProbeTest {
 
         assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
         assertEquals("目录 2 章", result.detail)
+        assertTrue(result.stageResults.any {
+            it.stage == io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO &&
+                it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
+    }
+
+    @Test
+    fun `全链路校验会依次完成搜索详情目录和正文`() = runBlocking {
+        val result = LegadoProbeEngine().probe(0, doc(), options(ProbeDepth.FULL_CHAIN))
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertEquals(
+            listOf(
+                io.github.theeht.legadotidy.probe.ProbeStage.SEARCH,
+                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
+                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
+                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
+            ),
+            result.stageResults.map { it.stage },
+        )
+        assertTrue(result.stageResults.all {
+            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
+        assertTrue(result.detail.orEmpty().contains("正文校验成功"))
+    }
+
+    @Test
+    fun `正文解析失败时保留前序成功阶段并返回部分通过`() = runBlocking {
+        val brokenJson = sourceJson().replace(
+            "\"class.content@text\"",
+            "\"class.missing-content@text\"",
+        )
+        val brokenDoc = BookSourceDoc(SourceIO.parse(brokenJson).single())
+
+        val result = LegadoProbeEngine().probe(0, brokenDoc, options(ProbeDepth.FULL_CHAIN))
+
+        assertEquals(ProbeStatus.PARTIAL, result.status, "详情：${result.detail}")
+        assertEquals(
+            listOf(
+                io.github.theeht.legadotidy.probe.ProbeStage.SEARCH,
+                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
+                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
+                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
+            ),
+            result.stageResults.map { it.stage },
+        )
+        assertTrue(result.stageResults.take(3).all {
+            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
+        assertEquals(
+            io.github.theeht.legadotidy.probe.ProbeStageStatus.FAILED,
+            result.stageResults.last().status,
+        )
+    }
+
+    @Test
+    fun `JS 书源按上游函数链完成搜索详情目录和正文`() = runBlocking {
+        val mainJs = """
+            function search(key, page) {
+                return [{
+                    name: "JS 书源书",
+                    author: "JS 作者",
+                    bookUrl: baseUrl + "/js-book/",
+                    tocUrl: baseUrl + "/js-book/"
+                }];
+            }
+            // getBookInfo 是上游可选函数；缺失时应沿用搜索阶段字段。
+            function getChapters(book) {
+                return [
+                    { title: "JS 第一章", url: baseUrl + "/js-chapter/1" },
+                    { title: "JS 第二章", url: baseUrl + "/js-chapter/2" }
+                ];
+            }
+            function getContent(chapter, book, nextChapterUrl) {
+                return "JS 正文：" + chapter.title;
+            }
+        """.trimIndent()
+        val json = """
+            {
+              "bookSourceName": "本地 JS 书源",
+              "bookSourceUrl": "http://127.0.0.1:$port",
+              "bookSourceType": 0,
+              "mainJs": ${GSON.toJson(mainJs)}
+            }
+        """.trimIndent()
+        val jsDoc = BookSourceDoc(SourceIO.parse(json).single())
+
+        val result = LegadoProbeEngine().probe(0, jsDoc, options(ProbeDepth.FULL_CHAIN))
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        // bookCount is the number of search hits (one book); chapter count belongs to TOC.
+        assertEquals(1, result.bookCount)
+        assertEquals(
+            1,
+            result.stageResults.first {
+                it.stage == io.github.theeht.legadotidy.probe.ProbeStage.SEARCH
+            }.itemCount,
+        )
+        assertEquals(
+            2,
+            result.stageResults.first {
+                it.stage == io.github.theeht.legadotidy.probe.ProbeStage.TOC
+            }.itemCount,
+        )
+        assertEquals(
+            listOf(
+                io.github.theeht.legadotidy.probe.ProbeStage.SEARCH,
+                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
+                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
+                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
+            ),
+            result.stageResults.map { it.stage },
+        )
+        assertTrue(result.stageResults.all {
+            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
+    }
+
+    private fun exploreDoc(url: String): BookSourceDoc {
+        val json = """
+            {
+              "bookSourceName": "本地发现书源",
+              "bookSourceUrl": "http://127.0.0.1:$port",
+              "bookSourceType": 0,
+              "exploreUrl": "本地分类::$url",
+              "ruleExplore": {
+                "bookList": "tag.a",
+                "name": "text",
+                "bookUrl": "href"
+              },
+              "ruleBookInfo": { "name": "tag.h1@text", "author": "class.au@text" },
+              "ruleToc": {
+                "chapterList": "class.ch@tag.li",
+                "chapterName": "tag.a@text",
+                "chapterUrl": "tag.a@href"
+              },
+              "ruleContent": { "content": "class.content@text" }
+            }
+        """.trimIndent()
+        return BookSourceDoc(SourceIO.parse(json).single())
+    }
+
+    @Test
+    fun `发现结果继续复用详情目录和正文校验链`() = runBlocking {
+        explorePagesRequested.clear()
+        val source = exploreDoc("/explore-full?page={{page}}")
+        val result = LegadoProbeEngine().probe(
+            0,
+            source,
+            ProbeOptions(
+                depth = ProbeDepth.FULL_CHAIN,
+                entry = ProbeEntry.EXPLORE,
+                maxExplorePages = 5,
+                timeoutMs = 10_000,
+            ),
+        )
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertEquals(1, result.bookCount)
+        assertEquals(listOf(1, 2), explorePagesRequested.toList())
+        assertEquals(
+            listOf(
+                io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE_CATEGORIES,
+                io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE,
+                io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE,
+                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
+                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
+                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
+            ),
+            result.stageResults.map { it.stage },
+        )
+        assertTrue(result.stageResults.all {
+            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
+    }
+
+    @Test
+    fun `发现入口按页码请求并在无新增去重结果时按上游规则停止`() = runBlocking {
+        explorePagesRequested.clear()
+        val source = exploreDoc("/explore?page={{page}}")
+        val result = LegadoProbeEngine().probe(
+            0,
+            source,
+            ProbeOptions(
+                depth = ProbeDepth.SEARCH,
+                entry = ProbeEntry.EXPLORE,
+                maxExplorePages = 5,
+                timeoutMs = 10_000,
+            ),
+        )
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertEquals(3, result.bookCount)
+        assertEquals(listOf(1, 2, 3), explorePagesRequested.toList())
+        assertEquals(
+            3,
+            result.stageResults.count {
+                it.stage == io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE
+            },
+        )
+        assertTrue(result.stageResults.last().detail.orEmpty().contains("没有新增书籍"))
+    }
+
+    @Test
+    fun `发现 URL 的页码映射在超过映射项后沿用最后一项`() = runBlocking {
+        explorePageTokensRequested.clear()
+        val source = exploreDoc("/explore-map?page=<one,two>")
+        val result = LegadoProbeEngine().probe(
+            0,
+            source,
+            ProbeOptions(
+                depth = ProbeDepth.SEARCH,
+                entry = ProbeEntry.EXPLORE,
+                maxExplorePages = 5,
+                timeoutMs = 10_000,
+            ),
+        )
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertEquals(2, result.bookCount)
+        assertEquals(listOf("one", "two", "two"), explorePageTokensRequested.toList())
+    }
+
+    @Test
+    fun `达到发现页数上限时不误报完整成功`() = runBlocking {
+        explorePagesRequested.clear()
+        val source = exploreDoc("/explore-limit?page={{page}}")
+        val result = LegadoProbeEngine().probe(
+            0,
+            source,
+            ProbeOptions(
+                depth = ProbeDepth.SEARCH,
+                entry = ProbeEntry.EXPLORE,
+                maxExplorePages = 1,
+                timeoutMs = 10_000,
+            ),
+        )
+
+        assertEquals(ProbeStatus.PARTIAL, result.status)
+        assertEquals(2, result.bookCount)
+        assertEquals(listOf(1), explorePagesRequested.toList())
+        assertTrue(result.detail.orEmpty().contains("页数上限"))
+    }
+
+    @Test
+    fun `JS 书源通过 explore 函数执行发现入口`() = runBlocking {
+        val mainJs = """
+            function explore(url, page) {
+                return JSON.stringify([{
+                    name: "JS 发现书",
+                    author: "JS 作者",
+                    bookUrl: baseUrl + "/js-discovered",
+                    tocUrl: baseUrl + "/js-discovered"
+                }]);
+            }
+        """.trimIndent()
+        val json = """
+            {
+              "bookSourceName": "本地 JS 发现书源",
+              "bookSourceUrl": "http://127.0.0.1:$port",
+              "bookSourceType": 0,
+              "exploreUrl": "@js: JSON.stringify([{title:'JS 分类',url:'/js-category',type:'url'}])",
+              "mainJs": ${GSON.toJson(mainJs)}
+            }
+        """.trimIndent()
+        val source = BookSourceDoc(SourceIO.parse(json).single())
+
+        val result = LegadoProbeEngine().probe(
+            0,
+            source,
+            ProbeOptions(
+                depth = ProbeDepth.SEARCH,
+                entry = ProbeEntry.EXPLORE,
+                maxExplorePages = 3,
+                timeoutMs = 10_000,
+            ),
+        )
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertEquals(1, result.bookCount)
+        assertTrue(result.stageResults.any {
+            it.stage == io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE_CATEGORIES &&
+                it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
     }
 
     @Test

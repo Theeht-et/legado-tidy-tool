@@ -114,9 +114,12 @@ object Organizer {
         if (explicitRules && OrganizeRule.SORT_BY_RESPONSE_TIME in rules) {
             val byElapsed = compareBy<Int> { index ->
                 results[index]?.takeIf {
-                    it.status != ProbeStatus.SKIPPED &&
-                        it.status != ProbeStatus.NO_SEARCH_URL &&
-                        it.status != ProbeStatus.UNSUPPORTED && it.elapsedMs > 0
+                    it.status !in setOf(
+                        ProbeStatus.SKIPPED,
+                        ProbeStatus.NO_SEARCH_URL,
+                        ProbeStatus.NO_EXPLORE_CATEGORY,
+                        ProbeStatus.UNSUPPORTED,
+                    ) && it.elapsedMs > 0
                 }?.elapsedMs ?: Long.MAX_VALUE
             }.thenBy { it }
             val rankByIndex = HashMap<Int, Int>(sources.size)
@@ -164,7 +167,8 @@ object Organizer {
 
         val status = probe?.status
         if (status != null && status !in setOf(
-                ProbeStatus.SKIPPED, ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED,
+                ProbeStatus.SKIPPED, ProbeStatus.NO_SEARCH_URL, ProbeStatus.NO_EXPLORE_CATEGORY,
+                ProbeStatus.UNSUPPORTED,
             )
         ) {
             val availability = if (status == ProbeStatus.OK) 100 else 0
@@ -173,7 +177,8 @@ object Organizer {
         }
 
         val elapsed = probe?.takeIf {
-            it.status !in setOf(ProbeStatus.SKIPPED, ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED)
+            it.status !in setOf(ProbeStatus.SKIPPED, ProbeStatus.NO_SEARCH_URL, ProbeStatus.NO_EXPLORE_CATEGORY,
+                ProbeStatus.UNSUPPORTED)
         }?.elapsedMs?.takeIf { it > 0 }
         if (elapsed != null) {
             val speed = when {
