@@ -55,6 +55,26 @@ internal fun shouldShowInExceptionReview(status: ProbeStatus?, deleteMarked: Boo
     !deleteMarked && status != null &&
         status != ProbeStatus.OK && status != ProbeStatus.SKIPPED
 
+/**
+ * Single source of truth for the category filters shown above the source list.
+ * Both row visibility and the displayed counts use this predicate.
+ */
+internal fun isSourceIncludedInFilter(
+    filter: String,
+    hasDuplicateGroup: Boolean,
+    needsProbe: Boolean,
+    probeStatus: ProbeStatus?,
+    deleteMarked: Boolean,
+): Boolean = when (filter) {
+    "全部" -> true
+    "重复候选" -> hasDuplicateGroup
+    "待校验" -> needsProbe
+    "校验通过" -> probeStatus == ProbeStatus.OK
+    "异常 / 复核" -> shouldShowInExceptionReview(probeStatus, deleteMarked)
+    "待删除" -> deleteMarked
+    else -> true
+}
+
 internal fun <T> resolveSelectedId(
     selectedId: Int?,
     items: List<T>,
@@ -111,7 +131,10 @@ internal fun usesOrganizerOutputOrder(rules: Set<OrganizeRule>): Boolean =
 
 /** Preserving an existing group is a no-op; only regrouping or manual edits need a JSON write. */
 internal fun shouldApplyGroups(rules: Set<OrganizeRule>, hasManualGroupEdits: Boolean): Boolean =
-    OrganizeRule.REGROUP_BY_TYPE in rules || hasManualGroupEdits
+    OrganizeRule.DROP_ORIGINAL_GROUPS in rules ||
+        OrganizeRule.REGROUP_BY_TYPE in rules ||
+        OrganizeRule.REGROUP_BY_QUALITY in rules ||
+        hasManualGroupEdits
 
 /**
  * The probe engine checks a source using its URL and source type. Name, group and

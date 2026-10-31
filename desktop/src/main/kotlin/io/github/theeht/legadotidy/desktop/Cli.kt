@@ -41,7 +41,7 @@ fun runCli(args: Array<String>): Int {
         return 2
     }
 
-    val docs = runCatching { SourceIO.parse(input.readText()).map { BookSourceDoc(it) } }.getOrElse {
+    val docs = runCatching { SourceIO.load(input.toPath()).map { BookSourceDoc(it) } }.getOrElse {
         System.err.println("解析失败：${it.message ?: it::class.java.simpleName}")
         return 2
     }
@@ -74,16 +74,15 @@ fun runCli(args: Array<String>): Int {
 
     println()
     println("用时 ${"%.1f".format(cost / 1000.0)} 秒")
-    println(
-        "去重：${result.dedup.groups.size} 组重复，建议保留 ${result.dedup.keepCount}/${result.dedup.total}"
-    )
-
     if (!opts.skipProbe) {
         val stat = result.probeResults.values
             .groupingBy { it.status }.eachCount()
             .entries.sortedBy { it.key.severity }
         println("校验：" + stat.joinToString("，") { "${it.key.label} ${it.value}" })
     }
+    println(
+        "去重：${result.dedup.groups.size} 组重复，建议保留 ${result.dedup.keepCount}/${result.dedup.total}"
+    )
     println("整理：${result.organize.pools.size} 个分组，${result.organize.sources.size} 个源")
     result.exported?.let { println("导出：${it.count} 个源 → ${it.file.toAbsolutePath()}") }
 

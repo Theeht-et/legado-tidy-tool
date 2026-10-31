@@ -57,7 +57,7 @@ class SourceDetailFieldsTest {
 
         val expected = setOf(
             "bookSourceName", "bookSourceUrl", "bookSourceGroup", "bookSourceType",
-            "bookUrlPattern", "customOrder", "enabled", "enabledExplore",
+            "bookUrlPattern", "customOrder",
             "header", "concurrentRate", "enabledCookieJar", "loginUrl", "loginUi", "loginCheckJs",
             "searchUrl", "ruleSearch.bookList", "ruleSearch.checkKeyWord",
             "ruleExplore.bookList", "exploreUrl", "exploreScreen",
@@ -71,7 +71,10 @@ class SourceDetailFieldsTest {
         assertEquals("测试书源", fields.getValue("bookSourceName").value)
         assertEquals("custom", fields.getValue("ruleSearch.futureSearchRule").value)
         assertEquals("{\n  \"nested\": \"kept\"\n}", fields.getValue("futureTopLevelField").value)
-        assertTrue(fields.getValue("enabled").configured)
+        assertFalse(fields.containsKey("enabled"), "详情页不重复显示书源启用状态")
+        assertFalse(fields.containsKey("enabledExplore"), "详情页不重复显示发现启用状态")
+        assertTrue(fields.getValue("ruleReview.enabled").configured)
+        assertEquals("false", fields.getValue("ruleReview.enabled").value)
         assertFalse(fields.getValue("ruleSearch.checkKeyWord").configured)
     }
 
