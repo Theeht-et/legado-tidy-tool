@@ -94,6 +94,7 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
                                 }.toString().trim()
                             }.also {
                                 CacheManager.put(exploreKindsKey, it)
+                                CacheManager.flush()
                             }
                         }
                     }
@@ -153,6 +154,7 @@ suspend fun BookSource.clearExploreKindsCache() {
     withContext(Dispatchers.IO) {
         val key = getExploreKindsKey()
         CacheManager.delete(key)
+        CacheManager.flush()
         exploreKindsMap.remove(key)
     }
 }
