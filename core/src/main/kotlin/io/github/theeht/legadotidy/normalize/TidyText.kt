@@ -24,9 +24,6 @@ object TidyText {
         '⦉' to '⦊', '⦋' to '⦌', '⦍' to '⦐', '⦑' to '⦒',
     )
     private val BRACKET_CLOSERS = BRACKET_PAIRS.values.toSet()
-    private val URL_DOMAIN = Regex(
-        """(?i)(?:https?://)?(?:www\\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+(?:com|cn|net|org|edu|gov|io|co|me|tv|cc|top|xyz|vip|info|biz|site|online|live|app|club|work|pro|fun|store|tech| mobi)(?::\\d{1,5})?(?:/[^\\s<>\\\"'，。；、]*)?""",
-    )
     private val URL_PREFIX = Regex(
         """(?i)^\\s*(https?://)?(?:www\\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+(?:com|cn|net|org|edu|gov|io|co|me|tv|cc|top|xyz|vip|info|biz|site|online|live|app|club|work|pro|fun|store|tech|mobi)(?::\\d{1,5})?(/[^\\s<>\\\"'，。；、]*)?\\s*""",
     )
