@@ -94,7 +94,7 @@ class LegadoProbeEngine(
                     index = index,
                     status = ProbeStatus.ERROR,
                     elapsedMs = System.currentTimeMillis() - started,
-                    detail = "代理配置无效：${invalidProxy.message ?: "格式不正确"}",
+                    detail = "代理配置无效：请检查协议、主机、端口和认证信息。",
                     entry = options.entry,
                     depth = options.depth,
                     keyword = options.keyword,
