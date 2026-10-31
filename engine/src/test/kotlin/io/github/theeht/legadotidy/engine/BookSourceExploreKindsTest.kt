@@ -65,7 +65,7 @@ class BookSourceExploreKindsTest {
     @Test
     fun `at js 分类执行结果会持久缓存并在清理时删除磁盘索引`() = runBlocking {
         val source = source(
-            """@js: JSON.stringify([{title:'JS 男频',url:'/js-male',type:'url'}])""",
+            """@JS: JSON.stringify([{title:'JS 男频',url:'/js-male',type:'url'}])""",
         )
         val cacheKey = MD5Utils.md5Encode(source.bookSourceUrl + source.exploreUrl)
         try {
@@ -84,7 +84,7 @@ class BookSourceExploreKindsTest {
     @Test
     fun `script 标签分类先执行脚本并解析其 JSON 返回值`() = runBlocking {
         val source = source(
-            """<js>JSON.stringify([{title:'标签分类',url:'/tagged',type:'url'}])</js>""",
+            """<JS>JSON.stringify([{title:'标签分类',url:'/tagged',type:'url'}])</js>""",
         )
         try {
             val kinds = source.exploreKinds()
