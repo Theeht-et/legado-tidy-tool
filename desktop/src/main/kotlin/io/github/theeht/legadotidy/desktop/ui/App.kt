@@ -477,6 +477,7 @@ fun TidyApp() {
                                     keyword = keyword,
                                     timeoutMs = timeoutMs,
                                     maxExplorePages = maxExplorePages,
+                                    proxy = proxy,
                                 )
                                 skipProbe -> ProbeResult(
                                     index, ProbeStatus.SKIPPED, detail = "按设置跳过校验",
