@@ -155,6 +155,35 @@ class SelectedOrganizerTest {
         assertEquals("原分组", report.sources.single().group)
     }
 
+    @Test
+    fun `名称整理完整清除装饰宣传编号尾缀并保留正常英文站名`() {
+        val sources = listOf(
+            doc("""{"bookSourceName":"得奇小说(优+++)","bookSourceUrl":"https://one.test"}"""),
+            doc("""{"bookSourceName":"小小阅读/书香之家app[免费]","bookSourceUrl":"https://two.test"}"""),
+            doc("""{"bookSourceName":"阅友小说#一程","bookSourceUrl":"https://three.test"}"""),
+            doc("""{"bookSourceName":"md🏷+新笔趣阁🎉🎉cookie","bookSourceUrl":"https://four.test"}"""),
+            doc("""{"bookSourceName":"⑧PO18文学⑧","bookSourceUrl":"https://five.test"}"""),
+            doc("""{"bookSourceName":"PO18文学cookie","bookSourceUrl":"https://six.test"}"""),
+        )
+
+        val report = Organizer.run(
+            sources = sources,
+            results = emptyMap(),
+            config = OrganizeConfig(
+                selectedRules = setOf(
+                    OrganizeRule.CLEAN_DECORATIONS,
+                    OrganizeRule.REMOVE_ADVERTISING_WORDS,
+                    OrganizeRule.NORMALIZE_PUNCTUATION,
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf("得奇小说", "小小阅读/书香之家app", "阅友小说", "新笔趣阁", "PO18文学", "PO18文学cookie"),
+            report.sources.map { it.name },
+        )
+    }
+
     private fun doc(json: String): BookSourceDoc =
         BookSourceDoc(JsonParser.parseString(json).asJsonObject)
 }
