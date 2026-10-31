@@ -2,6 +2,7 @@ package io.github.theeht.legadotidy.engine
 
 import com.google.gson.JsonParser
 import io.github.theeht.legadotidy.model.BookSourceDoc
+import io.github.theeht.legadotidy.probe.ProbeDepth
 import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlin.test.Test
@@ -269,6 +270,39 @@ class LegadoProbeEngineTest {
             """,
         )
         assertNull(engine.staticVerdict(source))
+    }
+
+    @Test
+    fun `搜索链不扫描未执行的发现和段评规则`() {
+        val source = doc(
+            """
+            {
+              "bookSourceName": "unrelated-rules",
+              "searchUrl": "https://example.com/search",
+              "ruleSearch": {"bookList": "div.book"},
+              "exploreUrl": "@js: java.webView(null, url, 'document.body.innerHTML')",
+              "ruleExplore": {"bookList": "java.webView(null, url, 'document.body.innerHTML')"},
+              "ruleReview": {"content": "getVerificationCode(img)"}
+            }
+            """,
+        )
+        assertNull(engine.staticVerdict(source, ProbeEntry.SEARCH, ProbeDepth.FULL_CHAIN))
+    }
+
+    @Test
+    fun `轻量搜索深度不会扫描未执行的正文规则`() {
+        val source = doc(
+            """
+            {
+              "bookSourceName": "search-only-depth",
+              "searchUrl": "https://example.com/search",
+              "ruleSearch": {"bookList": "div.book"},
+              "ruleContent": {"content": "java.webView(null, url, 'document.body.innerHTML')"}
+            }
+            """,
+        )
+        assertNull(engine.staticVerdict(source, ProbeEntry.SEARCH, ProbeDepth.SEARCH))
+        assertEquals(ProbeStatus.UNSUPPORTED, engine.staticVerdict(source)?.status)
     }
 
     @Test

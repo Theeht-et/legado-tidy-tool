@@ -14,6 +14,7 @@ import io.github.theeht.legadotidy.probe.ProbeEngine
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -197,20 +198,23 @@ class Pipeline(private val engine: ProbeEngine?) {
                     )
                 } else {
                     gate.withPermit {
-                        runCatching { probeEngine.probe(i, source, config.probe) }
-                            .getOrElse { e ->
-                                ProbeResult(
-                                    index = i,
-                                    status = ProbeStatus.ERROR,
-                                    detail = e.toString(),
-                                    entry = config.probe.entry,
-                                    depth = config.probe.depth,
-                                    keyword = config.probe.keyword,
-                                    timeoutMs = config.probe.timeoutMs,
-                                    maxExplorePages = config.probe.maxExplorePages,
-                                    proxy = proxy,
-                                )
-                            }
+                        try {
+                            probeEngine.probe(i, source, config.probe)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Throwable) {
+                            ProbeResult(
+                                index = i,
+                                status = ProbeStatus.ERROR,
+                                detail = e.toString(),
+                                entry = config.probe.entry,
+                                depth = config.probe.depth,
+                                keyword = config.probe.keyword,
+                                timeoutMs = config.probe.timeoutMs,
+                                maxExplorePages = config.probe.maxExplorePages,
+                                proxy = proxy,
+                            )
+                        }
                     }
                 }
                 results[i] = result
@@ -225,8 +229,8 @@ class Pipeline(private val engine: ProbeEngine?) {
         results.mapIndexed { i, r ->
             i to (r ?: ProbeResult(
                 index = i,
-                status = ProbeStatus.SKIPPED,
-                detail = "未返回结果",
+                status = ProbeStatus.ERROR,
+                detail = "校验引擎未返回结果",
                 entry = config.probe.entry,
                 depth = config.probe.depth,
                 keyword = config.probe.keyword,

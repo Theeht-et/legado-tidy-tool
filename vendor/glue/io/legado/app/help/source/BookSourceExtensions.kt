@@ -30,6 +30,16 @@ private val exploreKindsMutexes = ConcurrentHashMap<String, Mutex>()
 private val exploreKindsMap = ConcurrentHashMap<String, List<ExploreKind>>()
 
 /**
+ * Serializes the complete discovery session for a source URL, not only category parsing.
+ * Explore rules share one upstream InfoMap, so initialization, pagination and persistence
+ * must not overlap for duplicate source records.
+ */
+suspend fun <T> withExploreSession(sourceUrl: String, block: suspend () -> T): T {
+    val mutex = exploreKindsMutexes.computeIfAbsent(sourceUrl) { Mutex() }
+    return mutex.withLock { block() }
+}
+
+/**
  * 采用 md5 作为 key，分类内容变化后会自动重新计算。
  */
 private fun BookSource.getExploreKindsKey(): String {
@@ -46,11 +56,12 @@ private fun BookSource.getExploreKindsKey(): String {
  * 仅缓存锁的实现改为 ConcurrentHashMap，避免多个校验协程首次访问同一来源时
  * 因上游 lazy HashMap 初始化竞争而拿到不同 Mutex。
  */
-private fun BookSource.getOrCreateExploreInfoMap(): InfoMap {
-    return exploreInfoMapList[bookSourceUrl] ?: InfoMap(bookSourceUrl).also {
-        exploreInfoMapList.put(bookSourceUrl, it)
+private fun BookSource.getOrCreateExploreInfoMap(): InfoMap =
+    synchronized(exploreInfoMapList) {
+        exploreInfoMapList[bookSourceUrl] ?: InfoMap(bookSourceUrl).also {
+            exploreInfoMapList.put(bookSourceUrl, it)
+        }
     }
-}
 
 /**
  * ExploreAdapter initializes toggle/select defaults while building its controls.
@@ -77,75 +88,76 @@ suspend fun BookSourcePart.exploreKinds(): List<ExploreKind> {
     return getBookSource()?.exploreKinds() ?: emptyList()
 }
 
-suspend fun BookSource.exploreKinds(): List<ExploreKind> {
+suspend fun BookSource.exploreKinds(): List<ExploreKind> =
+    withExploreSession(bookSourceUrl) { exploreKindsInSession() }
+
+/**
+ * Caller must already hold [withExploreSession] for this bookSourceUrl.
+ * The engine uses this entry point so the lock remains held through all pages.
+ */
+suspend fun BookSource.exploreKindsInSession(): List<ExploreKind> {
     val exploreKindsKey = getExploreKindsKey()
     exploreKindsMap[exploreKindsKey]?.let { return it }
 
     val categoryRule = exploreUrl
     if (categoryRule.isNullOrBlank()) return emptyList()
 
-    val mutex = exploreKindsMutexes.computeIfAbsent(bookSourceUrl) { Mutex() }
-    return mutex.withLock {
-        exploreKindsMap[exploreKindsKey]?.let { return@withLock it }
-
-        val kinds = arrayListOf<ExploreKind>()
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val ruleStr = when {
-                    categoryRule.startsWith("@js:", ignoreCase = true) -> {
-                        CacheManager.get(exploreKindsKey)?.takeIf { it.isNotBlank() } ?: run {
-                            val exploreInfoMap = getOrCreateExploreInfoMap()
-                            runScriptWithContext {
-                                evalJS(categoryRule.substring(4)) {
-                                    put("infoMap", exploreInfoMap)
-                                }.toString().trim()
-                            }.also {
-                                CacheManager.put(exploreKindsKey, it)
-                                CacheManager.flush()
-                            }
+    val kinds = arrayListOf<ExploreKind>()
+    withContext(Dispatchers.IO) {
+        runCatching {
+            val ruleStr = when {
+                categoryRule.startsWith("@js:", ignoreCase = true) -> {
+                    CacheManager.get(exploreKindsKey)?.takeIf { it.isNotBlank() } ?: run {
+                        val exploreInfoMap = getOrCreateExploreInfoMap()
+                        runScriptWithContext {
+                            evalJS(categoryRule.substring(4)) {
+                                put("infoMap", exploreInfoMap)
+                            }.toString().trim()
+                        }.also {
+                            CacheManager.put(exploreKindsKey, it)
+                            CacheManager.flush()
                         }
                     }
+                }
 
-                    categoryRule.startsWith("<js>", ignoreCase = true) -> {
-                        CacheManager.get(exploreKindsKey)?.takeIf { it.isNotBlank() } ?: run {
-                            val exploreInfoMap = getOrCreateExploreInfoMap()
-                            runScriptWithContext {
-                                evalJS(categoryRule.substring(4, categoryRule.lastIndexOf("<"))) {
-                                    put("infoMap", exploreInfoMap)
-                                }.toString().trim()
-                            }.also {
-                                CacheManager.put(exploreKindsKey, it)
-                                CacheManager.flush()
-                            }
+                categoryRule.startsWith("<js>", ignoreCase = true) -> {
+                    CacheManager.get(exploreKindsKey)?.takeIf { it.isNotBlank() } ?: run {
+                        val exploreInfoMap = getOrCreateExploreInfoMap()
+                        runScriptWithContext {
+                            evalJS(categoryRule.substring(4, categoryRule.lastIndexOf("<"))) {
+                                put("infoMap", exploreInfoMap)
+                            }.toString().trim()
+                        }.also {
+                            CacheManager.put(exploreKindsKey, it)
+                            CacheManager.flush()
                         }
                     }
-
-                    else -> categoryRule
                 }
 
-                if (ruleStr.isJsonArray()) {
-                    GSON.fromJsonArray<ExploreKind>(ruleStr).getOrThrow().let(kinds::addAll)
-                } else {
-                    ruleStr.split("(&&|\\n)+".toRegex()).forEach { kindStr ->
-                        val kindCfg = kindStr.split("::")
-                        kinds.add(ExploreKind(kindCfg.first(), kindCfg.getOrNull(1)))
-                    }
-                }
-            }.onFailure { error ->
-                // Upstream exposes category parsing errors as an ERROR: category row.
-                kinds.add(
-                    ExploreKind(
-                        title = "ERROR:${error.localizedMessage}",
-                        url = error.stackTraceToString(),
-                    ),
-                )
-                error.printOnDebug()
+                else -> categoryRule
             }
-        }
 
-        exploreKindsMap[exploreKindsKey] = kinds
-        kinds
+            if (ruleStr.isJsonArray()) {
+                GSON.fromJsonArray<ExploreKind>(ruleStr).getOrThrow().let(kinds::addAll)
+            } else {
+                ruleStr.split("(&&|\\n)+".toRegex()).forEach { kindStr ->
+                    val kindCfg = kindStr.split("::")
+                    kinds.add(ExploreKind(kindCfg.first(), kindCfg.getOrNull(1)))
+                }
+            }
+        }.onFailure { error ->
+            kinds.add(
+                ExploreKind(
+                    title = "ERROR:${error.localizedMessage}",
+                    url = error.stackTraceToString(),
+                ),
+            )
+            error.printOnDebug()
+        }
     }
+
+    exploreKindsMap[exploreKindsKey] = kinds
+    return kinds
 }
 
 /**
@@ -154,7 +166,7 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
  * upstream InfoMap after each category/page request that may have modified it.
  */
 fun BookSource.flushExploreInfoMapIfNeeded() {
-    val infoMap = exploreInfoMapList[bookSourceUrl]
+    val infoMap = synchronized(exploreInfoMapList) { exploreInfoMapList[bookSourceUrl] }
     if (infoMap?.needSave == true) {
         infoMap.saveNow()
         CacheManager.flush()
@@ -162,21 +174,18 @@ fun BookSource.flushExploreInfoMapIfNeeded() {
 }
 
 suspend fun BookSourcePart.clearExploreKindsCache() {
-    withContext(Dispatchers.IO) {
-        val source = getBookSource() ?: return@withContext
-        val key = source.getExploreKindsKey()
-        CacheManager.delete(key)
-        CacheManager.flush()
-        exploreKindsMap.remove(key)
-    }
+    val source = getBookSource() ?: return
+    source.clearExploreKindsCache()
 }
 
 suspend fun BookSource.clearExploreKindsCache() {
-    withContext(Dispatchers.IO) {
-        val key = getExploreKindsKey()
-        CacheManager.delete(key)
-        CacheManager.flush()
-        exploreKindsMap.remove(key)
+    withExploreSession(bookSourceUrl) {
+        withContext(Dispatchers.IO) {
+            val key = getExploreKindsKey()
+            CacheManager.delete(key)
+            CacheManager.flush()
+            exploreKindsMap.remove(key)
+        }
     }
 }
 

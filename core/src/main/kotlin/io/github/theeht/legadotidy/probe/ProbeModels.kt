@@ -58,7 +58,7 @@ enum class ProbeEntry { SEARCH, EXPLORE }
 enum class ProbeDepth { SEARCH, WITH_TOC, FULL_CHAIN }
 
 data class ProbeOptions(
-    val depth: ProbeDepth = ProbeDepth.SEARCH,
+    val depth: ProbeDepth = ProbeDepth.FULL_CHAIN,
     val timeoutMs: Long = 20_000,
     val keyword: String = "剑来",
     /** 本轮默认代理；书源 header.proxy 存在时以书源配置为准。 */
@@ -78,7 +78,7 @@ data class ProbeResult(
     val stageResults: List<ProbeStageResult> = emptyList(),
     /** Inputs that determine whether this result can be reused by a later validation run. */
     val entry: ProbeEntry = ProbeEntry.SEARCH,
-    val depth: ProbeDepth = ProbeDepth.SEARCH,
+    val depth: ProbeDepth = ProbeDepth.FULL_CHAIN,
     val keyword: String = "剑来",
     val timeoutMs: Long = 20_000,
     val maxExplorePages: Int = 3,
