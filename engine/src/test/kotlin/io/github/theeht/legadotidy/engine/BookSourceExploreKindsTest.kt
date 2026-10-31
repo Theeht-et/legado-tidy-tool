@@ -5,6 +5,8 @@ import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.help.CacheManager
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
+import io.legado.app.help.source.initializeExploreInfoMap
+import io.legado.app.ui.main.explore.ExploreAdapter
 import io.legado.app.utils.MD5Utils
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -92,6 +94,37 @@ class BookSourceExploreKindsTest {
             assertEquals("/tagged", kinds.single().url)
         } finally {
             source.clearExploreKindsCache()
+        }
+    }
+
+    @Test
+    fun `toggle 和 select 控件按上游规则初始化默认值且保留已有用户选择`() = runBlocking {
+        val source = source("[]")
+        try {
+            val kinds = listOf(
+                ExploreKind(
+                    title = "排序",
+                    type = ExploreKind.Type.toggle,
+                    chars = arrayOf("最新", "最热"),
+                ),
+                ExploreKind(
+                    title = "分类",
+                    type = ExploreKind.Type.select,
+                    chars = arrayOf("男频", "女频"),
+                    default = "女频",
+                ),
+            )
+
+            source.initializeExploreInfoMap(kinds)
+            val infoMap = ExploreAdapter.exploreInfoMapList[source.bookSourceUrl]
+            assertEquals("最新", infoMap?.get("排序"))
+            assertEquals("女频", infoMap?.get("分类"))
+
+            infoMap?.set("排序", "最热")
+            source.initializeExploreInfoMap(kinds)
+            assertEquals("最热", infoMap?.get("排序"))
+        } finally {
+            ExploreAdapter.exploreInfoMapList.remove(source.bookSourceUrl)
         }
     }
 
