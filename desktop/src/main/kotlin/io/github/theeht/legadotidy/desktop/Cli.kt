@@ -9,6 +9,7 @@ import io.github.theeht.legadotidy.pipeline.Pipeline
 import io.github.theeht.legadotidy.pipeline.PipelineConfig
 import io.github.theeht.legadotidy.pipeline.PipelineEvent
 import io.github.theeht.legadotidy.probe.ProbeDepth
+import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -22,7 +23,7 @@ import java.nio.file.Path
  *
  * ```
  * legado-tidy --in sources.json [--out 输出目录] [--keyword 剑来]
- *             [--limit N] [--concurrency 100] [--skip-probe] [--with-toc|--full-chain] [--timeout 20] [--verbose]
+ *             [--limit N] [--concurrency 100] [--skip-probe] [--with-toc|--full-chain] [--explore] [--explore-pages N] [--timeout 20] [--verbose]
  * ```
  */
 fun runCli(args: Array<String>): Int {
@@ -65,6 +66,8 @@ fun runCli(args: Array<String>): Int {
             timeoutMs = opts.timeoutSeconds * 1000L,
             keyword = opts.keyword,
             proxy = opts.proxy,
+            entry = if (opts.explore) ProbeEntry.EXPLORE else ProbeEntry.SEARCH,
+            maxExplorePages = opts.explorePages,
         ),
         export = ExportConfig(applyCleanNames = false),
         exportDir = Path.of(opts.out),
@@ -119,6 +122,8 @@ class Options(
     val proxy: String?,
     val verbose: Boolean = false,
     val fullChain: Boolean = false,
+    val explore: Boolean = false,
+    val explorePages: Int = 3,
 )
 
 private fun parseArgs(args: Array<String>): Options? {
@@ -131,6 +136,8 @@ private fun parseArgs(args: Array<String>): Options? {
     var skipProbe = false
     var withToc = false
     var fullChain = false
+    var explore = false
+    var explorePages = 3
     var proxy: String? = null
     var verbose = false
 
@@ -147,6 +154,8 @@ private fun parseArgs(args: Array<String>): Options? {
             "--skip-probe" -> skipProbe = true
             "--with-toc" -> withToc = true
             "--full-chain" -> fullChain = true
+            "--explore" -> explore = true
+            "--explore-pages" -> explorePages = args.getOrNull(++i)?.toIntOrNull() ?: explorePages
             "--verbose", "-v" -> verbose = true
             "--help", "-h" -> return null
             else -> {
@@ -166,6 +175,7 @@ private fun parseArgs(args: Array<String>): Options? {
     return Options(
         input, out, keyword, timeout, limit, concurrency.coerceIn(1, 2000),
         skipProbe, withToc, proxy, verbose, fullChain,
+        explore, explorePages.coerceIn(1, 10),
     )
 }
 
@@ -184,8 +194,10 @@ private fun printUsage() {
           --concurrency <N>    并发书源数，默认 100（上限 2000）
           --proxy <地址>       代理，如 http://127.0.0.1:7890
           --skip-probe         跳过 S2 校验（只做去重与整理，秒级完成）
-          --with-toc           搜索后按上游顺序校验书籍详情与目录
-          --full-chain         搜索后完整校验详情、目录与第一条有效章节正文（最慢）
+          --with-toc           从所选入口（搜索或发现）继续校验详情与目录
+          --full-chain         从所选入口（搜索或发现）完整校验详情、目录与第一条有效章节正文（最慢）
+          --explore            改用发现分类入口校验，使用第一个 URL 类型分类
+          --explore-pages <N>   发现最多请求 N 页（1–10，默认 3；无新增结果时提前停止）
           --verbose, -v        逐条列出每个书源的校验结果与失败原因
         """.trimIndent()
     )
