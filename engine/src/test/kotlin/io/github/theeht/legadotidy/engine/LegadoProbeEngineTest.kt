@@ -2,6 +2,8 @@ package io.github.theeht.legadotidy.engine
 
 import com.google.gson.JsonParser
 import io.github.theeht.legadotidy.model.BookSourceDoc
+import io.github.theeht.legadotidy.probe.ProbeDepth
+import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,6 +21,32 @@ class LegadoProbeEngineTest {
         val verdict = assertNotNull(engine.staticVerdict(doc(json)))
         assertEquals(ProbeStatus.UNSUPPORTED, verdict.status)
         assertTrue(verdict.detail.contains(expectedDetail, ignoreCase = true), verdict.detail)
+    }
+
+    @Test
+    fun `只有发现入口的书源可以进入发现校验但不能进入搜索校验`() {
+        val source = doc(
+            """{
+              "bookSourceUrl":"https://example.test",
+              "exploreUrl":"分类::/explore?page={{page}}"
+            }""",
+        )
+
+        assertEquals(ProbeStatus.NO_SEARCH_URL, engine.staticVerdict(source)?.status)
+        assertNull(engine.staticVerdict(source, ProbeEntry.EXPLORE))
+    }
+
+    @Test
+    fun `发现校验缺少 exploreUrl 时归类为 NO_EXPLORE_CATEGORY`() {
+        val source = doc(
+            """{
+              "bookSourceUrl":"https://example.test",
+              "searchUrl":"/search"
+            }""",
+        )
+
+        val verdict = assertNotNull(engine.staticVerdict(source, ProbeEntry.EXPLORE))
+        assertEquals(ProbeStatus.NO_EXPLORE_CATEGORY, verdict.status)
     }
 
     @Test
@@ -242,6 +270,39 @@ class LegadoProbeEngineTest {
             """,
         )
         assertNull(engine.staticVerdict(source))
+    }
+
+    @Test
+    fun `搜索链不扫描未执行的发现和段评规则`() {
+        val source = doc(
+            """
+            {
+              "bookSourceName": "unrelated-rules",
+              "searchUrl": "https://example.com/search",
+              "ruleSearch": {"bookList": "div.book"},
+              "exploreUrl": "@js: java.webView(null, url, 'document.body.innerHTML')",
+              "ruleExplore": {"bookList": "java.webView(null, url, 'document.body.innerHTML')"},
+              "ruleReview": {"content": "getVerificationCode(img)"}
+            }
+            """,
+        )
+        assertNull(engine.staticVerdict(source, ProbeEntry.SEARCH, ProbeDepth.FULL_CHAIN))
+    }
+
+    @Test
+    fun `轻量搜索深度不会扫描未执行的正文规则`() {
+        val source = doc(
+            """
+            {
+              "bookSourceName": "search-only-depth",
+              "searchUrl": "https://example.com/search",
+              "ruleSearch": {"bookList": "div.book"},
+              "ruleContent": {"content": "java.webView(null, url, 'document.body.innerHTML')"}
+            }
+            """,
+        )
+        assertNull(engine.staticVerdict(source, ProbeEntry.SEARCH, ProbeDepth.SEARCH))
+        assertEquals(ProbeStatus.UNSUPPORTED, engine.staticVerdict(source)?.status)
     }
 
     @Test

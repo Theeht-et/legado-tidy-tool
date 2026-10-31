@@ -113,6 +113,7 @@ class SelectedOrganizerTest {
             doc("""{"bookSourceName":"跳过校验","bookSourceUrl":"https://skipped.test"}"""),
             doc("""{"bookSourceName":"较快","bookSourceUrl":"https://fast.test"}"""),
             doc("""{"bookSourceName":"未返回耗时","bookSourceUrl":"https://error.test"}"""),
+            doc("""{"bookSourceName":"无发现分类","bookSourceUrl":"https://no-explore.test"}"""),
         )
         val results = mapOf(
             0 to ProbeResult(0, ProbeStatus.NO_SEARCH_URL),
@@ -120,6 +121,7 @@ class SelectedOrganizerTest {
             2 to ProbeResult(2, ProbeStatus.SKIPPED, elapsedMs = 10),
             3 to ProbeResult(3, ProbeStatus.OK, elapsedMs = 100),
             4 to ProbeResult(4, ProbeStatus.ERROR),
+            5 to ProbeResult(5, ProbeStatus.NO_EXPLORE_CATEGORY, elapsedMs = 1),
         )
 
         val report = Organizer.run(
@@ -128,8 +130,8 @@ class SelectedOrganizerTest {
             config = OrganizeConfig(selectedRules = setOf(OrganizeRule.SORT_BY_RESPONSE_TIME)),
         )
 
-        assertEquals(listOf(3, 1, 0, 2, 4), report.sources.map { it.index })
-        assertEquals(listOf(0, 1, 2, 3, 4), report.sources.map { it.rank })
+        assertEquals(listOf(3, 1, 0, 2, 4, 5), report.sources.map { it.index })
+        assertEquals(listOf(0, 1, 2, 3, 4, 5), report.sources.map { it.rank })
     }
 
     @Test
@@ -215,6 +217,17 @@ class SelectedOrganizerTest {
         val skipped = Organizer.assessQuality(sources[1], ProbeResult(1, ProbeStatus.SKIPPED))
         val notMeasured = Organizer.assessQuality(sources[1], null)
         assertEquals(notMeasured, skipped)
+    }
+
+    @Test
+    fun `没有发现分类不计入搜索质量的可用性和响应时间`() {
+        val source = doc("""{"bookSourceName":"source","bookSourceUrl":"https://example.test"}""")
+        val noDiscovery = Organizer.assessQuality(
+            source,
+            ProbeResult(0, ProbeStatus.NO_EXPLORE_CATEGORY, elapsedMs = 1),
+        )
+        val notMeasured = Organizer.assessQuality(source, null)
+        assertEquals(notMeasured, noDiscovery)
     }
 
     @Test

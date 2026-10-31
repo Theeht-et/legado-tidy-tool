@@ -9,6 +9,7 @@ import io.github.theeht.legadotidy.pipeline.Pipeline
 import io.github.theeht.legadotidy.pipeline.PipelineConfig
 import io.github.theeht.legadotidy.pipeline.PipelineEvent
 import io.github.theeht.legadotidy.probe.ProbeDepth
+import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -22,7 +23,7 @@ import java.nio.file.Path
  *
  * ```
  * legado-tidy --in sources.json [--out 输出目录] [--keyword 剑来]
- *             [--limit N] [--concurrency 100] [--skip-probe] [--with-toc|--full-chain] [--timeout 20] [--verbose]
+ *             [--limit N] [--concurrency 100] [--timeout 20] [--verbose]
  * ```
  */
 fun runCli(args: Array<String>): Int {
@@ -55,16 +56,12 @@ fun runCli(args: Array<String>): Int {
 
     val config = PipelineConfig(
         concurrency = opts.concurrency,
-        skipProbe = opts.skipProbe,
         probe = ProbeOptions(
-            depth = when {
-                opts.fullChain -> ProbeDepth.FULL_CHAIN
-                opts.withToc -> ProbeDepth.WITH_TOC
-                else -> ProbeDepth.SEARCH
-            },
+            depth = ProbeDepth.FULL_CHAIN,
             timeoutMs = opts.timeoutSeconds * 1000L,
             keyword = opts.keyword,
             proxy = opts.proxy,
+            entry = ProbeEntry.SEARCH,
         ),
         export = ExportConfig(applyCleanNames = false),
         exportDir = Path.of(opts.out),
@@ -78,12 +75,10 @@ fun runCli(args: Array<String>): Int {
 
     println()
     println("用时 ${"%.1f".format(cost / 1000.0)} 秒")
-    if (!opts.skipProbe) {
-        val stat = result.probeResults.values
-            .groupingBy { it.status }.eachCount()
-            .entries.sortedBy { it.key.severity }
-        println("校验：" + stat.joinToString("，") { "${it.key.label} ${it.value}" })
-    }
+    val stat = result.probeResults.values
+        .groupingBy { it.status }.eachCount()
+        .entries.sortedBy { it.key.severity }
+    println("校验：" + stat.joinToString("，") { "${it.key.label} ${it.value}" })
     println(
         "去重：${result.dedup.groups.size} 组重复，建议保留 ${result.dedup.keepCount}/${result.dedup.total}"
     )
@@ -114,11 +109,8 @@ class Options(
     val timeoutSeconds: Long,
     val limit: Int,
     val concurrency: Int,
-    val skipProbe: Boolean,
-    val withToc: Boolean,
     val proxy: String?,
     val verbose: Boolean = false,
-    val fullChain: Boolean = false,
 )
 
 private fun parseArgs(args: Array<String>): Options? {
@@ -128,9 +120,6 @@ private fun parseArgs(args: Array<String>): Options? {
     var timeout = 20L
     var limit = 0
     var concurrency = 100
-    var skipProbe = false
-    var withToc = false
-    var fullChain = false
     var proxy: String? = null
     var verbose = false
 
@@ -143,10 +132,7 @@ private fun parseArgs(args: Array<String>): Options? {
             "--timeout" -> timeout = args.getOrNull(++i)?.toLongOrNull() ?: timeout
             "--limit" -> limit = args.getOrNull(++i)?.toIntOrNull() ?: limit
             "--concurrency" -> concurrency = args.getOrNull(++i)?.toIntOrNull() ?: concurrency
-            "--proxy" -> proxy = args.getOrNull(++i)?.takeIf { it.isNotBlank() }
-            "--skip-probe" -> skipProbe = true
-            "--with-toc" -> withToc = true
-            "--full-chain" -> fullChain = true
+            "--proxy" -> proxy = args.getOrNull(++i)?.trim()?.takeIf { it.isNotEmpty() }
             "--verbose", "-v" -> verbose = true
             "--help", "-h" -> return null
             else -> {
@@ -165,7 +151,7 @@ private fun parseArgs(args: Array<String>): Options? {
     if (input.isNullOrBlank()) return null
     return Options(
         input, out, keyword, timeout, limit, concurrency.coerceIn(1, 2000),
-        skipProbe, withToc, proxy, verbose, fullChain,
+        proxy, verbose,
     )
 }
 
@@ -182,10 +168,8 @@ private fun printUsage() {
           --timeout <秒>       单个书源超时，默认 20
           --limit <N>          只处理前 N 个（调试用）
           --concurrency <N>    并发书源数，默认 100（上限 2000）
-          --proxy <地址>       代理，如 http://127.0.0.1:7890
-          --skip-probe         跳过 S2 校验（只做去重与整理，秒级完成）
-          --with-toc           搜索后按上游顺序校验书籍详情与目录
-          --full-chain         搜索后完整校验详情、目录与第一条有效章节正文（最慢）
+          --proxy <地址>       本轮默认代理；书源 header.proxy 优先，如 http://127.0.0.1:7890
+          校验固定使用搜索入口完整链路：搜索、详情、目录和第一条有效章节正文。
           --verbose, -v        逐条列出每个书源的校验结果与失败原因
         """.trimIndent()
     )

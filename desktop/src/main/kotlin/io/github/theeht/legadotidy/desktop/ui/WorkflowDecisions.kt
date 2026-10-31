@@ -43,9 +43,14 @@ internal fun <T> planMarkedDeletions(
 
 /** Probe outcomes that should enter the pending-delete bucket by default. */
 internal fun shouldMarkForDeletionByDefault(status: ProbeStatus): Boolean =
-    status == ProbeStatus.NO_SEARCH_URL ||
-        status == ProbeStatus.UNSUPPORTED ||
-        status == ProbeStatus.PARSE_EMPTY
+    status != ProbeStatus.OK
+
+/** A manual decision must survive recalculating duplicate groups and other automatic suggestions. */
+internal fun resolveDeleteMark(
+    defaultMarked: Boolean,
+    currentMarked: Boolean,
+    hasUserDecision: Boolean,
+): Boolean = if (hasUserDecision) currentMarked else defaultMarked
 
 /**
  * Keep the exception/review bucket mutually exclusive with pending deletion.
@@ -137,11 +142,14 @@ internal fun shouldApplyGroups(rules: Set<OrganizeRule>, hasManualGroupEdits: Bo
         hasManualGroupEdits
 
 /**
- * The probe engine checks a source using its URL and source type. Name, group and
- * enable/list metadata do not change the rules being executed.
+ * A previous probe is reusable only while every input that can change the executed
+ * upstream request/rule chain is unchanged. Display metadata and enable/list state
+ * remain deliberately excluded by BookSourceDoc.behaviorFields().
  */
 internal fun probeInputsChanged(before: BookSourceDoc, after: BookSourceDoc): Boolean =
-    before.url != after.url || before.type != after.type
+    before.url != after.url ||
+        before.type != after.type ||
+        before.behaviorFields() != after.behaviorFields()
 
 private const val LEGACY_ENABLED_FIELD = "bookSourceEnabled"
 

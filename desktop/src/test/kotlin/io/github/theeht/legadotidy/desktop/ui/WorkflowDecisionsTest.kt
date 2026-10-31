@@ -97,10 +97,14 @@ class WorkflowDecisionsTest {
         val renamed = doc("""{"bookSourceName":"新名","bookSourceUrl":"https://one.test","bookSourceType":0,"bookSourceGroup":"新组"}""")
         val changedUrl = doc("""{"bookSourceName":"原名","bookSourceUrl":"https://two.test","bookSourceType":0,"bookSourceGroup":"旧组"}""")
         val changedType = doc("""{"bookSourceName":"原名","bookSourceUrl":"https://one.test","bookSourceType":1,"bookSourceGroup":"旧组"}""")
+        val changedExplore = doc("""{"bookSourceName":"原名","bookSourceUrl":"https://one.test","bookSourceType":0,"bookSourceGroup":"旧组","exploreUrl":"分类::/new-explore"}""")
+        val changedRule = doc("""{"bookSourceName":"原名","bookSourceUrl":"https://one.test","bookSourceType":0,"bookSourceGroup":"旧组","ruleExplore":{"bookList":"div.new"}}""")
 
         assertFalse(probeInputsChanged(original, renamed))
         assertTrue(probeInputsChanged(original, changedUrl))
         assertTrue(probeInputsChanged(original, changedType))
+        assertTrue(probeInputsChanged(original, changedExplore))
+        assertTrue(probeInputsChanged(original, changedRule))
     }
 
     @Test
@@ -130,16 +134,21 @@ class WorkflowDecisionsTest {
     }
 
     @Test
-    fun `没有搜索规则的源进入待删除而网络故障保留复核`() {
-        assertTrue(shouldMarkForDeletionByDefault(ProbeStatus.NO_SEARCH_URL))
-        assertTrue(shouldMarkForDeletionByDefault(ProbeStatus.UNSUPPORTED))
-        assertTrue(shouldMarkForDeletionByDefault(ProbeStatus.PARSE_EMPTY))
-        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.NETWORK))
-        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.TIMEOUT))
-        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.SKIPPED))
-        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.PARTIAL))
+    fun `任一校验未通过都默认标记待删除`() {
+        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.OK))
+        ProbeStatus.values().filter { it != ProbeStatus.OK }.forEach { status ->
+            assertTrue(shouldMarkForDeletionByDefault(status), status.name)
+        }
         assertTrue(shouldShowInExceptionReview(ProbeStatus.PARTIAL, deleteMarked = false))
         assertFalse(shouldShowInExceptionReview(ProbeStatus.PARTIAL, deleteMarked = true))
+    }
+
+    @Test
+    fun `重复组重新计算时保留用户明确作出的删除决定`() {
+        assertFalse(resolveDeleteMark(defaultMarked = true, currentMarked = false, hasUserDecision = true))
+        assertTrue(resolveDeleteMark(defaultMarked = false, currentMarked = true, hasUserDecision = true))
+        assertTrue(resolveDeleteMark(defaultMarked = true, currentMarked = false, hasUserDecision = false))
+        assertFalse(resolveDeleteMark(defaultMarked = false, currentMarked = true, hasUserDecision = false))
     }
 
     @Test

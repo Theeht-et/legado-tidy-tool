@@ -204,10 +204,13 @@ val okHttpClient: OkHttpClient by lazy {
  * 缓存代理okHttp
  */
 fun getProxyClient(proxy: String? = null): OkHttpClient {
-    if (proxy.isNullOrBlank()) {
+    // A source-level header.proxy wins; otherwise use this validation's coroutine-scoped default.
+    val effectiveProxy = proxy?.takeIf { it.isNotBlank() }
+        ?: ProbeProxyContext.currentProxy()
+    if (effectiveProxy.isNullOrBlank()) {
         return okHttpClient
     }
-    val proxyConfig = parseProxyConfig(proxy)
+    val proxyConfig = parseProxyConfig(effectiveProxy)
     proxyClientCache[proxyConfig]?.let {
         return it
     }

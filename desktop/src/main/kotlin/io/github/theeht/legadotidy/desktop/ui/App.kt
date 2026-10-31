@@ -86,6 +86,7 @@ import io.github.theeht.legadotidy.organize.OrganizeRule
 import io.github.theeht.legadotidy.organize.Organizer
 import io.github.theeht.legadotidy.organize.OrganizedSource
 import io.github.theeht.legadotidy.probe.ProbeDepth
+import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
@@ -225,6 +226,7 @@ private data class WorkflowSource(
     val duplicateGroup: Int? = null,
     val probe: ProbeResult? = null,
     val deleteMarked: Boolean = false,
+    val userDecision: Boolean = false,
     val suggestion: String = "待校验",
 )
 
@@ -277,8 +279,6 @@ private class WorkflowState {
     var keyword by mutableStateOf("剑来")
     var concurrency by mutableStateOf(100)
     var timeoutSeconds by mutableStateOf(20)
-    var skipProbe by mutableStateOf(false)
-    var withToc by mutableStateOf(false)
     var proxy by mutableStateOf("")
     var exportDir by mutableStateOf(defaultExportDir())
     var directUrl by mutableStateOf("")
@@ -373,13 +373,17 @@ fun TidyApp() {
                 state.sources.addAll(snapshot.map { source ->
                     val group = groupById[source.id]
                     val keep = group?.suggestedKeepId == source.id
-                    val hasUserDecision = source.suggestion == "用户标记删除" ||
-                        source.suggestion == "用户决定保留"
+                    val hasUserDecision = source.userDecision
                     source.copy(
                         duplicateGroup = group?.number,
-                        deleteMarked = when {
-                            group == null || hasUserDecision -> source.deleteMarked
-                            else -> !keep
+                        deleteMarked = if (group == null) {
+                            source.deleteMarked
+                        } else {
+                            resolveDeleteMark(
+                                defaultMarked = !keep,
+                                currentMarked = source.deleteMarked,
+                                hasUserDecision = hasUserDecision,
+                            )
                         },
                         suggestion = when {
                             hasUserDecision -> source.suggestion
@@ -412,17 +416,31 @@ fun TidyApp() {
         state.busy = true
         state.error = null
         state.total = state.sources.size
-        state.completed = state.sources.count { it.probe != null }
-        val skipProbe = state.skipProbe
+        val entry = ProbeEntry.SEARCH
+        val depth = ProbeDepth.FULL_CHAIN
+        val keyword = state.keyword
+        val timeoutMs = state.timeoutSeconds.coerceAtLeast(1) * 1000L
+        val proxy = state.proxy.trim().takeIf { it.isNotEmpty() }
         val concurrency = state.concurrency.coerceIn(1, 2000)
-        state.notice = if (skipProbe) "按设置跳过真实校验。" else "正在使用 Legado 引擎校验书源。"
         val snapshot = state.sources.toList()
-        val pending = snapshot.filter { it.probe == null }
+        val pending = snapshot.filter { source ->
+            val previous = source.probe
+            previous == null ||
+                previous.entry != entry ||
+                previous.depth != depth ||
+                previous.keyword != keyword ||
+                previous.timeoutMs != timeoutMs ||
+                previous.proxy != proxy ||
+                previous.status == ProbeStatus.SKIPPED
+        }
+        state.completed = snapshot.size - pending.size
+        state.notice = "正在使用 Legado 搜索入口执行完整校验链：搜索、详情、目录和正文。"
         val options = ProbeOptions(
-            depth = if (state.withToc) ProbeDepth.FULL_CHAIN else ProbeDepth.SEARCH,
-            timeoutMs = state.timeoutSeconds.coerceAtLeast(1) * 1000L,
-            keyword = state.keyword,
-            proxy = state.proxy.takeIf { it.isNotBlank() },
+            depth = depth,
+            timeoutMs = timeoutMs,
+            keyword = keyword,
+            proxy = proxy,
+            entry = entry,
         )
         activeJob = scope.launch {
             try {
@@ -432,21 +450,33 @@ fun TidyApp() {
                     pending.map { source ->
                         async(Dispatchers.IO) {
                             val index = snapshot.indexOfFirst { it.id == source.id }
-                            val result = when {
-                                !source.doc.canSearch -> ProbeResult(
+                            val result = if (!source.doc.canSearch) {
+                                ProbeResult(
                                     index,
                                     ProbeStatus.NO_SEARCH_URL,
                                     detail = "未配置上游搜索入口（普通源需要 searchUrl，JS 源需要 mainJs）",
+                                    entry = entry,
+                                    depth = depth,
+                                    keyword = keyword,
+                                    timeoutMs = timeoutMs,
+                                    proxy = proxy,
                                 )
-                                skipProbe -> ProbeResult(index, ProbeStatus.SKIPPED, detail = "按设置跳过校验")
-                                else -> {
-                                    try {
-                                        gate.withPermit { probeEngine.probe(index, source.doc, options) }
-                                    } catch (e: CancellationException) {
-                                        throw e
-                                    } catch (e: Throwable) {
-                                        ProbeResult(index, ProbeStatus.ERROR, detail = e.message ?: e::class.java.simpleName)
-                                    }
+                            } else {
+                                try {
+                                    gate.withPermit { probeEngine.probe(index, source.doc, options) }
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Throwable) {
+                                    ProbeResult(
+                                        index,
+                                        ProbeStatus.ERROR,
+                                        detail = e.message ?: e::class.java.simpleName,
+                                        entry = entry,
+                                        depth = depth,
+                                        keyword = keyword,
+                                        timeoutMs = timeoutMs,
+                                        proxy = proxy,
+                                    )
                                 }
                             }
                             withContext(Dispatchers.Main) {
@@ -456,12 +486,8 @@ fun TidyApp() {
                                     state.sources[currentIndex] = state.sources[currentIndex].copy(
                                         probe = result,
                                         deleteMarked = deleteByDefault,
-                                        suggestion = when {
-                                            deleteByDefault -> "建议删除"
-                                            result.status == ProbeStatus.OK -> "建议保留"
-                                            result.status == ProbeStatus.SKIPPED -> "跳过校验"
-                                            else -> "建议复核"
-                                        },
+                                        userDecision = false,
+                                        suggestion = if (deleteByDefault) "建议删除" else "建议保留",
                                     )
                                 }
                                 state.completed = (state.completed + 1).coerceAtMost(state.total)
@@ -471,7 +497,7 @@ fun TidyApp() {
                 }
                 if (state.sources.all { it.probe != null }) {
                     val marked = state.sources.count { it.deleteMarked }
-                    state.notice = "校验完成。当前有 ${marked} 个书源被标记为待删除；网络错误和超时默认建议复核。"
+                    state.notice = "校验完成。${marked} 个书源至少有一项校验未通过，已标记为待删除；可在复核后取消标记。"
                 }
             } catch (e: CancellationException) {
                 state.error = "校验已停止；已完成的结果已保留，可继续校验剩余书源。"
@@ -915,6 +941,7 @@ fun TidyApp() {
                                     doc = edited,
                                     probe = null,
                                     deleteMarked = false,
+                                    userDecision = false,
                                     suggestion = "待重新校验",
                                 )
                                 else -> old.copy(doc = edited)
@@ -930,13 +957,16 @@ fun TidyApp() {
                             state.sources.indices.forEach { index ->
                                 val current = state.sources[index]
                                 val isEditedSource = current.id == id
-                                val hasUserDecision = current.suggestion == "用户标记删除" ||
-                                    current.suggestion == "用户决定保留"
+                                val hasUserDecision = current.userDecision
                                 val probe = if (isEditedSource) null else current.probe
                                 val deleteMarked = when {
                                     isEditedSource -> false
-                                    hasUserDecision -> current.deleteMarked
-                                    else -> probe?.let { shouldMarkForDeletionByDefault(it.status) } == true
+                                    probe == null -> current.deleteMarked
+                                    else -> resolveDeleteMark(
+                                        defaultMarked = shouldMarkForDeletionByDefault(probe.status),
+                                        currentMarked = current.deleteMarked,
+                                        hasUserDecision = hasUserDecision,
+                                    )
                                 }
                                 state.sources[index] = current.copy(
                                     duplicateGroup = null,
@@ -2239,20 +2269,16 @@ private fun SettingsDialog(state: WorkflowState, onDismiss: () -> Unit, onChoose
                 OutlinedTextField(
                     value = state.proxy,
                     onValueChange = { state.proxy = it },
-                    label = { Text("代理地址（可选）") },
+                    label = { Text("本轮默认代理地址（可选）") },
+                    supportingText = { Text("书源自身 header.proxy 优先；支持 http / socks4 / socks5。") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(checked = state.skipProbe, onCheckedChange = { state.skipProbe = it })
-                    Spacer(Modifier.width(8.dp))
-                    Text("跳过真实校验", fontSize = UiTypography.body, color = Ink)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(checked = state.withToc, onCheckedChange = { state.withToc = it })
-                    Spacer(Modifier.width(8.dp))
-                    Text("继续校验详情、目录和正文（完整链路，更慢）", fontSize = UiTypography.body, color = Ink)
-                }
+                Text(
+                    "校验模式固定为完整搜索链：搜索 → 详情 → 目录 → 正文。",
+                    fontSize = UiTypography.body,
+                    color = Muted,
+                )
                 OutlinedTextField(
                     value = state.exportDir,
                     onValueChange = { state.exportDir = it },
@@ -2502,6 +2528,7 @@ private fun CompareGroupDialog(
                                 val index = state.sources.indexOfFirst { it.id == candidate.id }
                                 if (index >= 0) state.sources[index] = state.sources[index].copy(
                                     deleteMarked = !keep,
+                                    userDecision = true,
                                     suggestion = if (keep) {
                                         if (keepAll) "用户确认：本组全部保留" else "用户指定保留"
                                     } else "用户确认：同组其他候选删除",
@@ -2632,7 +2659,7 @@ private data class ProbeStatusStyle(val background: Color, val foreground: Color
 private fun probeStatusStyle(status: ProbeStatus?): ProbeStatusStyle = when (status) {
     ProbeStatus.OK -> ProbeStatusStyle(SoftGreen, Ok)
     ProbeStatus.PARTIAL, ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> ProbeStatusStyle(SoftAmber, Warn)
-    ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS, ProbeStatus.ERROR ->
+    ProbeStatus.NO_SEARCH_URL, ProbeStatus.NO_EXPLORE_CATEGORY, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS, ProbeStatus.ERROR ->
         ProbeStatusStyle(SoftRed, Bad)
     else -> ProbeStatusStyle(SoftSlate, Muted)
 }
@@ -2700,6 +2727,7 @@ private fun toggleDeleteMark(state: WorkflowState, id: Int, marked: Boolean? = n
     val value = marked ?: !old.deleteMarked
     state.sources[index] = old.copy(
         deleteMarked = value,
+        userDecision = true,
         suggestion = if (value) "用户标记删除" else "用户决定保留",
     )
 }
