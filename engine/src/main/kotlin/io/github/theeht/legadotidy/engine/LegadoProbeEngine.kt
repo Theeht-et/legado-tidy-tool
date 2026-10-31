@@ -483,7 +483,11 @@ class LegadoProbeEngine(
                 it.stage == ProbeStage.EXPLORE_CATEGORIES
             }?.itemCount ?: 0
             if (depth == ProbeDepth.SEARCH) {
-                return "发现分类 $categoryCount 个；已按上游规则请求 $explorePages 页"
+                val limitReached = stages.any {
+                    it.stage == ProbeStage.EXPLORE && it.detail?.contains("达到本次配置的") == true
+                }
+                val suffix = if (limitReached) "（达到配置页数上限，结果可能不完整）" else ""
+                return "发现分类 $categoryCount 个；已按上游规则请求 $explorePages 页$suffix"
             }
         }
         val chapterCount = stages.firstOrNull { it.stage == ProbeStage.TOC }?.itemCount ?: 0
