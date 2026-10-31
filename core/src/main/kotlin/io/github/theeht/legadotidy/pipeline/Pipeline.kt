@@ -169,6 +169,7 @@ class Pipeline(private val engine: ProbeEngine?) {
         val ok = AtomicInteger()
         val failed = AtomicInteger()
         val results = arrayOfNulls<ProbeResult>(sources.size)
+        val proxy = config.probe.proxy?.trim()?.takeIf { it.isNotEmpty() }
 
         val jobs = sources.mapIndexed { i, source ->
             async(Dispatchers.Default) {
@@ -192,11 +193,24 @@ class Pipeline(private val engine: ProbeEngine?) {
                         keyword = config.probe.keyword,
                         timeoutMs = config.probe.timeoutMs,
                         maxExplorePages = config.probe.maxExplorePages,
+                        proxy = proxy,
                     )
                 } else {
                     gate.withPermit {
                         runCatching { probeEngine.probe(i, source, config.probe) }
-                            .getOrElse { e -> ProbeResult(i, ProbeStatus.ERROR, detail = e.toString()) }
+                            .getOrElse { e ->
+                                ProbeResult(
+                                    index = i,
+                                    status = ProbeStatus.ERROR,
+                                    detail = e.toString(),
+                                    entry = config.probe.entry,
+                                    depth = config.probe.depth,
+                                    keyword = config.probe.keyword,
+                                    timeoutMs = config.probe.timeoutMs,
+                                    maxExplorePages = config.probe.maxExplorePages,
+                                    proxy = proxy,
+                                )
+                            }
                     }
                 }
                 results[i] = result
@@ -208,6 +222,18 @@ class Pipeline(private val engine: ProbeEngine?) {
             }
         }
         jobs.awaitAll()
-        results.mapIndexed { i, r -> i to (r ?: ProbeResult(i, ProbeStatus.SKIPPED, detail = "未返回结果")) }.toMap()
+        results.mapIndexed { i, r ->
+            i to (r ?: ProbeResult(
+                index = i,
+                status = ProbeStatus.SKIPPED,
+                detail = "未返回结果",
+                entry = config.probe.entry,
+                depth = config.probe.depth,
+                keyword = config.probe.keyword,
+                timeoutMs = config.probe.timeoutMs,
+                maxExplorePages = config.probe.maxExplorePages,
+                proxy = proxy,
+            ))
+        }.toMap()
     }
 }
