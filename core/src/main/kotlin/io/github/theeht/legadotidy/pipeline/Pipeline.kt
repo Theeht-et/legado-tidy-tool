@@ -172,8 +172,27 @@ class Pipeline(private val engine: ProbeEngine?) {
 
         val jobs = sources.mapIndexed { i, source ->
             async(Dispatchers.Default) {
-                val result = if (!source.canSearch) {
-                    ProbeResult(i, ProbeStatus.NO_SEARCH_URL, detail = "searchUrl 或 ruleSearch.bookList 为空")
+                val missingEntry = when (config.probe.entry) {
+                    io.github.theeht.legadotidy.probe.ProbeEntry.SEARCH -> !source.canSearch
+                    io.github.theeht.legadotidy.probe.ProbeEntry.EXPLORE -> !source.canExplore
+                }
+                val result = if (missingEntry) {
+                    val (status, detail) = when (config.probe.entry) {
+                        io.github.theeht.legadotidy.probe.ProbeEntry.SEARCH ->
+                            ProbeStatus.NO_SEARCH_URL to "未配置上游搜索入口（普通源需要 searchUrl，JS 源需要 mainJs）"
+                        io.github.theeht.legadotidy.probe.ProbeEntry.EXPLORE ->
+                            ProbeStatus.NO_EXPLORE_CATEGORY to "未配置上游发现入口（需要 exploreUrl）"
+                    }
+                    ProbeResult(
+                        index = i,
+                        status = status,
+                        detail = detail,
+                        entry = config.probe.entry,
+                        depth = config.probe.depth,
+                        keyword = config.probe.keyword,
+                        timeoutMs = config.probe.timeoutMs,
+                        maxExplorePages = config.probe.maxExplorePages,
+                    )
                 } else {
                     gate.withPermit {
                         runCatching { probeEngine.probe(i, source, config.probe) }
