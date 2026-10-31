@@ -241,7 +241,7 @@ class LegadoProbeEngine(
                     stage = activeStage,
                     status = ProbeStageStatus.FAILED,
                     elapsedMs = System.currentTimeMillis() - started,
-                    detail = "超过 \${options.timeoutMs}ms",
+                    detail = "超过 " + options.timeoutMs + "ms",
                     failureStatus = ProbeStatus.TIMEOUT,
                 )
             }
@@ -251,7 +251,7 @@ class LegadoProbeEngine(
             result(
                 status = if (searchPassed) ProbeStatus.PARTIAL else ProbeStatus.TIMEOUT,
                 detail = summarizeStages(stageResults, options.depth)
-                    ?: "单源校验超过 \${options.timeoutMs}ms",
+                    ?: "单源校验超过 " + options.timeoutMs + "ms",
             )
         } catch (e: Throwable) {
             currentCoroutineContext().ensureActive()
@@ -288,7 +288,7 @@ class LegadoProbeEngine(
                 val reason = stage.detail
                     ?: stage.failureStatus?.label
                     ?: stage.status.label
-                "\${stage.stage.label}\${stage.status.label}：$reason"
+                stage.stage.label + stage.status.label + "：" + reason
             }
         }
         val chapterCount = stages.firstOrNull { it.stage == ProbeStage.TOC }?.itemCount ?: 0
