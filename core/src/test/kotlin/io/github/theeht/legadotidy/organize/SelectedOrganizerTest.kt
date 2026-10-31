@@ -5,7 +5,8 @@ import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlin.test.Test
-import kotlin.test.assertEquals\nimport kotlin.test.assertTrue
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class SelectedOrganizerTest {
 
