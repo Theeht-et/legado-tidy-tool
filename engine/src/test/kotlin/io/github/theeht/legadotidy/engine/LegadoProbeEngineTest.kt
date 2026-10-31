@@ -66,30 +66,34 @@ class LegadoProbeEngineTest {
     )
 
     @Test
-    fun `正文规则中的 webJs 声明归类为 UNSUPPORTED`() = assertUnsupported(
-        """
-        {
-          "bookSourceName": "webJs-content",
-          "searchUrl": "https://example.com/search",
-          "ruleSearch": {"bookList": "div.book"},
-          "ruleContent": {"webJs": "{'webView': true}"}
-        }
-        """,
-        "webview",
-    )
+    fun `ruleContent 中的 webJs 文本本身不等于 WebView 请求`() {
+        val source = doc(
+            """
+            {
+              "bookSourceName": "webJs-content",
+              "searchUrl": "https://example.com/search",
+              "ruleSearch": {"bookList": "div.book"},
+              "ruleContent": {"webJs": "return response"}
+            }
+            """,
+        )
+        assertNull(engine.staticVerdict(source))
+    }
 
     @Test
-    fun `header 中嵌入 webView 配置归类为 UNSUPPORTED`() = assertUnsupported(
-        """
-        {
-          "bookSourceName": "webView-header",
-          "searchUrl": "https://example.com/search",
-          "ruleSearch": {"bookList": "div.book"},
-          "header": "{\"webView\": true}"
-        }
-        """,
-        "webview",
-    )
+    fun `header 中出现 webView 字样不代表请求要使用浏览器`() {
+        val source = doc(
+            """
+            {
+              "bookSourceName": "webView-header",
+              "searchUrl": "https://example.com/search",
+              "ruleSearch": {"bookList": "div.book"},
+              "header": "{\"webView\": true}"
+            }
+            """,
+        )
+        assertNull(engine.staticVerdict(source))
+    }
 
     @Test
     fun `搜索结果 bookUrl 使用 webView 归类为 UNSUPPORTED`() = assertUnsupported(
@@ -195,18 +199,20 @@ class LegadoProbeEngineTest {
     )
 
     @Test
-    fun `loginUrl 与 loginCheckJs 同时存在时归类为 UNSUPPORTED`() = assertUnsupported(
-        """
-        {
-          "bookSourceName": "need-login",
-          "searchUrl": "https://example.com/search",
-          "ruleSearch": {"bookList": "div.book"},
-          "loginUrl": "https://example.com/login",
-          "loginCheckJs": "return document.cookie.includes('token')"
-        }
-        """,
-        "login",
-    )
+    fun `仅配置登录入口不预判登录必需而交给上游检查脚本`() {
+        val source = doc(
+            """
+            {
+              "bookSourceName": "need-login",
+              "searchUrl": "https://example.com/search",
+              "ruleSearch": {"bookList": "div.book"},
+              "loginUrl": "https://example.com/login",
+              "loginCheckJs": "return document.cookie.includes('token')"
+            }
+            """,
+        )
+        assertNull(engine.staticVerdict(source))
+    }
 
     @Test
     fun `只有 loginCheckJs 没有 loginUrl 时不静态拦截`() {
