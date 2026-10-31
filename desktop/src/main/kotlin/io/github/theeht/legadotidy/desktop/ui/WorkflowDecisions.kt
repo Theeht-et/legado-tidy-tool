@@ -137,11 +137,14 @@ internal fun shouldApplyGroups(rules: Set<OrganizeRule>, hasManualGroupEdits: Bo
         hasManualGroupEdits
 
 /**
- * The probe engine checks a source using its URL and source type. Name, group and
- * enable/list metadata do not change the rules being executed.
+ * A previous probe is reusable only while every input that can change the executed
+ * upstream request/rule chain is unchanged. Display metadata and enable/list state
+ * remain deliberately excluded by BookSourceDoc.behaviorFields().
  */
 internal fun probeInputsChanged(before: BookSourceDoc, after: BookSourceDoc): Boolean =
-    before.url != after.url || before.type != after.type
+    before.url != after.url ||
+        before.type != after.type ||
+        before.behaviorFields() != after.behaviorFields()
 
 private const val LEGACY_ENABLED_FIELD = "bookSourceEnabled"
 

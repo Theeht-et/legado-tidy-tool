@@ -97,10 +97,14 @@ class WorkflowDecisionsTest {
         val renamed = doc("""{"bookSourceName":"新名","bookSourceUrl":"https://one.test","bookSourceType":0,"bookSourceGroup":"新组"}""")
         val changedUrl = doc("""{"bookSourceName":"原名","bookSourceUrl":"https://two.test","bookSourceType":0,"bookSourceGroup":"旧组"}""")
         val changedType = doc("""{"bookSourceName":"原名","bookSourceUrl":"https://one.test","bookSourceType":1,"bookSourceGroup":"旧组"}""")
+        val changedExplore = doc("""{"bookSourceName":"原名","bookSourceUrl":"https://one.test","bookSourceType":0,"bookSourceGroup":"旧组","exploreUrl":"分类::/new-explore"}""")
+        val changedRule = doc("""{"bookSourceName":"原名","bookSourceUrl":"https://one.test","bookSourceType":0,"bookSourceGroup":"旧组","ruleExplore":{"bookList":"div.new"}}""")
 
         assertFalse(probeInputsChanged(original, renamed))
         assertTrue(probeInputsChanged(original, changedUrl))
         assertTrue(probeInputsChanged(original, changedType))
+        assertTrue(probeInputsChanged(original, changedExplore))
+        assertTrue(probeInputsChanged(original, changedRule))
     }
 
     @Test
@@ -134,6 +138,9 @@ class WorkflowDecisionsTest {
         assertTrue(shouldMarkForDeletionByDefault(ProbeStatus.NO_SEARCH_URL))
         assertTrue(shouldMarkForDeletionByDefault(ProbeStatus.UNSUPPORTED))
         assertTrue(shouldMarkForDeletionByDefault(ProbeStatus.PARSE_EMPTY))
+        // A missing discovery category only makes the selected entry mode inapplicable;
+        // it must not auto-delete a source that may have a working search entry.
+        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.NO_EXPLORE_CATEGORY))
         assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.NETWORK))
         assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.TIMEOUT))
         assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.SKIPPED))
