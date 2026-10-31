@@ -2325,7 +2325,7 @@ private fun CompareGroupDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 900.dp).heightIn(min = 420.dp, max = 640.dp),
+            modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 900.dp).heightIn(max = 560.dp),
             shape = RoundedCornerShape(10.dp),
             color = Color.White,
             shadowElevation = 20.dp,
@@ -2355,7 +2355,7 @@ private fun CompareGroupDialog(
                     Text("判断", Modifier.width(88.dp), fontSize = UiTypography.caption, color = Muted)
                 }
                 Column(
-                    Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    Modifier.fillMaxWidth().heightIn(max = 400.dp).verticalScroll(rememberScrollState()),
                 ) {
                     candidates.forEachIndexed { index, source ->
                         val recommended = source.id == group.suggestedKeepId
