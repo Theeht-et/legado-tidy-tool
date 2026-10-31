@@ -80,9 +80,8 @@ object TidyText {
             val match = URL_PREFIX.find(value) ?: return value
             val path = match.groups[2]?.value.orEmpty()
             val retained = path.trim('/').substringAfterLast('/').substringBefore('?').substringBefore('#')
-            value = if (retained.isNotBlank()) "${retained} " + value.substring(match.range.last + 1)
-            else value.substring(match.range.last + 1)
-            value = value.trimStart()
+            val remainder = value.substring(match.range.last + 1).trimStart()
+            value = if (remainder.isNotBlank()) remainder else retained
         }
     }
 
