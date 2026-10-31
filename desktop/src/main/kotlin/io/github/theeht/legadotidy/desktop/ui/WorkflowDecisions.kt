@@ -43,9 +43,14 @@ internal fun <T> planMarkedDeletions(
 
 /** Probe outcomes that should enter the pending-delete bucket by default. */
 internal fun shouldMarkForDeletionByDefault(status: ProbeStatus): Boolean =
-    status == ProbeStatus.NO_SEARCH_URL ||
-        status == ProbeStatus.UNSUPPORTED ||
-        status == ProbeStatus.PARSE_EMPTY
+    status != ProbeStatus.OK
+
+/** A manual decision must survive recalculating duplicate groups and other automatic suggestions. */
+internal fun resolveDeleteMark(
+    defaultMarked: Boolean,
+    currentMarked: Boolean,
+    hasUserDecision: Boolean,
+): Boolean = if (hasUserDecision) currentMarked else defaultMarked
 
 /**
  * Keep the exception/review bucket mutually exclusive with pending deletion.
@@ -54,6 +59,26 @@ internal fun shouldMarkForDeletionByDefault(status: ProbeStatus): Boolean =
 internal fun shouldShowInExceptionReview(status: ProbeStatus?, deleteMarked: Boolean): Boolean =
     !deleteMarked && status != null &&
         status != ProbeStatus.OK && status != ProbeStatus.SKIPPED
+
+/**
+ * Single source of truth for the category filters shown above the source list.
+ * Both row visibility and the displayed counts use this predicate.
+ */
+internal fun isSourceIncludedInFilter(
+    filter: String,
+    hasDuplicateGroup: Boolean,
+    needsProbe: Boolean,
+    probeStatus: ProbeStatus?,
+    deleteMarked: Boolean,
+): Boolean = when (filter) {
+    "全部" -> true
+    "重复候选" -> hasDuplicateGroup
+    "待校验" -> needsProbe
+    "校验通过" -> probeStatus == ProbeStatus.OK
+    "异常 / 复核" -> shouldShowInExceptionReview(probeStatus, deleteMarked)
+    "待删除" -> deleteMarked
+    else -> true
+}
 
 internal fun <T> resolveSelectedId(
     selectedId: Int?,
@@ -111,14 +136,20 @@ internal fun usesOrganizerOutputOrder(rules: Set<OrganizeRule>): Boolean =
 
 /** Preserving an existing group is a no-op; only regrouping or manual edits need a JSON write. */
 internal fun shouldApplyGroups(rules: Set<OrganizeRule>, hasManualGroupEdits: Boolean): Boolean =
-    OrganizeRule.REGROUP_BY_TYPE in rules || hasManualGroupEdits
+    OrganizeRule.DROP_ORIGINAL_GROUPS in rules ||
+        OrganizeRule.REGROUP_BY_TYPE in rules ||
+        OrganizeRule.REGROUP_BY_QUALITY in rules ||
+        hasManualGroupEdits
 
 /**
- * The probe engine checks a source using its URL and source type. Name, group and
- * enable/list metadata do not change the rules being executed.
+ * A previous probe is reusable only while every input that can change the executed
+ * upstream request/rule chain is unchanged. Display metadata and enable/list state
+ * remain deliberately excluded by BookSourceDoc.behaviorFields().
  */
 internal fun probeInputsChanged(before: BookSourceDoc, after: BookSourceDoc): Boolean =
-    before.url != after.url || before.type != after.type
+    before.url != after.url ||
+        before.type != after.type ||
+        before.behaviorFields() != after.behaviorFields()
 
 private const val LEGACY_ENABLED_FIELD = "bookSourceEnabled"
 

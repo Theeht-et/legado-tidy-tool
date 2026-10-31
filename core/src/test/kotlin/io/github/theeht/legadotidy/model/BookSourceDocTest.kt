@@ -40,6 +40,31 @@ class BookSourceDocTest {
     }
 
     @Test
+    fun `发现型书源可以没有搜索入口`() {
+        val source = doc(
+            """{
+              "exploreUrl":"分类::https://example.test/explore?page={{page}}",
+              "ruleExplore":{"bookList":"div.book","name":"h2","bookUrl":"a@href"}
+            }"""
+        )
+
+        assertFalse(source.canSearch)
+        assertTrue(source.canExplore)
+    }
+
+    @Test
+    fun `上游允许仅配置 searchUrl 并交给 BookList 处理详情页回退`() {
+        val source = doc(
+            """{
+              "searchUrl":"https://example.test/search",
+              "ruleBookInfo":{"name":"h1"}
+            }"""
+        )
+
+        assertTrue(source.canSearch)
+    }
+
+    @Test
     fun `兼容以 JSON 字符串存储的规则组`() {
         val source = doc(
             """{"ruleSearch":"{\"bookList\":\"div.book\",\"name\":\"a\",\"wordCount\":\".count\"}"}"""

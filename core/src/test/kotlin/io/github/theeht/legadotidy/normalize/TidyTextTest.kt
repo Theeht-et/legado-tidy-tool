@@ -82,9 +82,53 @@ class TidyTextTest {
     }
 
     @Test
-    fun `名称标点整理遵循原型的重复标点规则`() {
-        assertEquals("星河书源 || 官方", TidyText.normalizeNamePunctuation(" 星河书源  ||   官方 "))
-        assertEquals("星河书源 官方", TidyText.normalizeNamePunctuation("星河书源——官方"))
+    fun `符号清理移除 emoji 和带圈序号但保留括号内文字`() {
+        assertEquals("得奇小说(优+++)", TidyText.cleanDecorations("⑧📚得奇小说(优+++)✨"))
+        assertEquals("小小阅读/书香之家app[免费]", TidyText.cleanDecorations("小小阅读/书香之家app[免费]"))
+    }
+
+    @Test
+    fun `多余文字清理完整移除优级免费和井号尾缀`() {
+        assertEquals("得奇小说", TidyText.removeAdvertisingWords(TidyText.cleanDecorations("得奇小说(优+++)")))
+        assertEquals("小小阅读/书香之家app", TidyText.removeAdvertisingWords(TidyText.cleanDecorations("小小阅读/书香之家app[免费]")))
+        assertEquals("阅友小说", TidyText.removeAdvertisingWords("阅友小说#一程"))
+        assertEquals("阅友小说", TidyText.removeAdvertisingWords("阅友小说＃1、2、3、4"))
+    }
+
+    @Test
+    fun `英文噪声只清理明确分隔的标记不伤害正常站名`() {
+        val markerText = TidyText.removeAdvertisingWords("md🏷+新笔趣阁🎉🎉cookie")
+        assertEquals("新笔趣阁", TidyText.removeAdvertisingWords(TidyText.cleanDecorations(markerText)))
+        assertEquals("PO18文学", TidyText.removeAdvertisingWords(TidyText.cleanDecorations("PO18文学")))
+        assertEquals("PO18文学cookie", TidyText.removeAdvertisingWords(TidyText.cleanDecorations("PO18文学cookie")))
+        assertEquals("PO18文学 cookie", TidyText.removeAdvertisingWords(TidyText.cleanDecorations("PO18文学 cookie")))
+    }
+
+
+    @Test
+    fun `完整配对括号及混合嵌套内容全部删除`() {
+        assertEquals("得奇小说", TidyText.removeAdvertisingWords("得奇小说（官方推荐[免费]）【广告】{加粗}〔高速〕〖福利〗❨说明❩"))
+        assertEquals("名称", TidyText.removeAdvertisingWords("名称（外层[内层{更深}]）"))
+        assertEquals("名称", TidyText.removeAdvertisingWords("名称<备注>"))
+    }
+
+    @Test
+    fun `未配对括号不会误删后续有效名称`() {
+        assertEquals("名称（未闭合", TidyText.removeAdvertisingWords("名称（未闭合"))
+        assertEquals("名称]后缀", TidyText.removeAdvertisingWords("名称]后缀"))
+    }
+
+    @Test
+    fun `只清理名称首尾网址且保留前置网址路径中的站名`() {
+        assertEquals("得奇小说", TidyText.removeAdvertisingWords("www.xxx.com 得奇小说"))
+        assertEquals("得奇小说", TidyText.removeAdvertisingWords("得奇小说 xxx.cn"))
+        assertEquals("小小阅读", TidyText.removeAdvertisingWords("https://www.xxx.com/小小阅读"))
+        assertEquals("小小阅读", TidyText.removeAdvertisingWords("小小阅读 https://xxx.com"))
+        assertEquals("PO18文学", TidyText.removeAdvertisingWords("PO18文学"))
+        assertEquals("PO18文学cookie", TidyText.removeAdvertisingWords("PO18文学cookie"))
+        assertEquals("a.b 书源", TidyText.removeAdvertisingWords("a.b 书源"))
+        assertEquals("书源", TidyText.removeAdvertisingWords("https://www.example.com:8443/path?q=1#top 书源"))
+        assertEquals("书源", TidyText.removeAdvertisingWords("书源 example.net:8080/path?q=1"))
     }
 
 }

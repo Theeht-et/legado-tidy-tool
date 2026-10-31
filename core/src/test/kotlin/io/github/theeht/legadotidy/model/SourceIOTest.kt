@@ -1,6 +1,8 @@
 package io.github.theeht.legadotidy.model
 
 import com.google.gson.JsonParser
+import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -39,6 +41,17 @@ class SourceIOTest {
     fun `非法 JSON 报中文错`() {
         val e = assertFailsWith<IllegalArgumentException> { SourceIO.parse("not json") }
         assertTrue(e.message!!.contains("不是合法 JSON"))
+    }
+
+    @Test
+    fun `通过路径读取书源 JSON`(@TempDir dir: Path) {
+        val path = dir.resolve("sources.json")
+        path.toFile().writeText("""[{"bookSourceName":"路径读取"}]""")
+
+        val loaded = SourceIO.load(path)
+
+        assertEquals(1, loaded.size)
+        assertEquals("路径读取", loaded.single().get("bookSourceName").asString)
     }
 
     @Test

@@ -2,6 +2,8 @@ package io.github.theeht.legadotidy.engine
 
 import com.google.gson.JsonParser
 import io.github.theeht.legadotidy.model.BookSourceDoc
+import io.github.theeht.legadotidy.probe.ProbeDepth
+import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,6 +21,32 @@ class LegadoProbeEngineTest {
         val verdict = assertNotNull(engine.staticVerdict(doc(json)))
         assertEquals(ProbeStatus.UNSUPPORTED, verdict.status)
         assertTrue(verdict.detail.contains(expectedDetail, ignoreCase = true), verdict.detail)
+    }
+
+    @Test
+    fun `只有发现入口的书源可以进入发现校验但不能进入搜索校验`() {
+        val source = doc(
+            """{
+              "bookSourceUrl":"https://example.test",
+              "exploreUrl":"分类::/explore?page={{page}}"
+            }""",
+        )
+
+        assertEquals(ProbeStatus.NO_SEARCH_URL, engine.staticVerdict(source)?.status)
+        assertNull(engine.staticVerdict(source, ProbeEntry.EXPLORE))
+    }
+
+    @Test
+    fun `发现校验缺少 exploreUrl 时归类为 NO_EXPLORE_CATEGORY`() {
+        val source = doc(
+            """{
+              "bookSourceUrl":"https://example.test",
+              "searchUrl":"/search"
+            }""",
+        )
+
+        val verdict = assertNotNull(engine.staticVerdict(source, ProbeEntry.EXPLORE))
+        assertEquals(ProbeStatus.NO_EXPLORE_CATEGORY, verdict.status)
     }
 
     @Test
@@ -66,30 +94,34 @@ class LegadoProbeEngineTest {
     )
 
     @Test
-    fun `正文规则中的 webJs 声明归类为 UNSUPPORTED`() = assertUnsupported(
-        """
-        {
-          "bookSourceName": "webJs-content",
-          "searchUrl": "https://example.com/search",
-          "ruleSearch": {"bookList": "div.book"},
-          "ruleContent": {"webJs": "{'webView': true}"}
-        }
-        """,
-        "webview",
-    )
+    fun `ruleContent 中的 webJs 文本本身不等于 WebView 请求`() {
+        val source = doc(
+            """
+            {
+              "bookSourceName": "webJs-content",
+              "searchUrl": "https://example.com/search",
+              "ruleSearch": {"bookList": "div.book"},
+              "ruleContent": {"webJs": "return response"}
+            }
+            """,
+        )
+        assertNull(engine.staticVerdict(source))
+    }
 
     @Test
-    fun `header 中嵌入 webView 配置归类为 UNSUPPORTED`() = assertUnsupported(
-        """
-        {
-          "bookSourceName": "webView-header",
-          "searchUrl": "https://example.com/search",
-          "ruleSearch": {"bookList": "div.book"},
-          "header": "{\"webView\": true}"
-        }
-        """,
-        "webview",
-    )
+    fun `header 中出现 webView 字样不代表请求要使用浏览器`() {
+        val source = doc(
+            """
+            {
+              "bookSourceName": "webView-header",
+              "searchUrl": "https://example.com/search",
+              "ruleSearch": {"bookList": "div.book"},
+              "header": "{\"webView\": true}"
+            }
+            """,
+        )
+        assertNull(engine.staticVerdict(source))
+    }
 
     @Test
     fun `搜索结果 bookUrl 使用 webView 归类为 UNSUPPORTED`() = assertUnsupported(
@@ -195,18 +227,20 @@ class LegadoProbeEngineTest {
     )
 
     @Test
-    fun `loginUrl 与 loginCheckJs 同时存在时归类为 UNSUPPORTED`() = assertUnsupported(
-        """
-        {
-          "bookSourceName": "need-login",
-          "searchUrl": "https://example.com/search",
-          "ruleSearch": {"bookList": "div.book"},
-          "loginUrl": "https://example.com/login",
-          "loginCheckJs": "return document.cookie.includes('token')"
-        }
-        """,
-        "login",
-    )
+    fun `仅配置登录入口不预判登录必需而交给上游检查脚本`() {
+        val source = doc(
+            """
+            {
+              "bookSourceName": "need-login",
+              "searchUrl": "https://example.com/search",
+              "ruleSearch": {"bookList": "div.book"},
+              "loginUrl": "https://example.com/login",
+              "loginCheckJs": "return document.cookie.includes('token')"
+            }
+            """,
+        )
+        assertNull(engine.staticVerdict(source))
+    }
 
     @Test
     fun `只有 loginCheckJs 没有 loginUrl 时不静态拦截`() {
@@ -236,6 +270,39 @@ class LegadoProbeEngineTest {
             """,
         )
         assertNull(engine.staticVerdict(source))
+    }
+
+    @Test
+    fun `搜索链不扫描未执行的发现和段评规则`() {
+        val source = doc(
+            """
+            {
+              "bookSourceName": "unrelated-rules",
+              "searchUrl": "https://example.com/search",
+              "ruleSearch": {"bookList": "div.book"},
+              "exploreUrl": "@js: java.webView(null, url, 'document.body.innerHTML')",
+              "ruleExplore": {"bookList": "java.webView(null, url, 'document.body.innerHTML')"},
+              "ruleReview": {"content": "getVerificationCode(img)"}
+            }
+            """,
+        )
+        assertNull(engine.staticVerdict(source, ProbeEntry.SEARCH, ProbeDepth.FULL_CHAIN))
+    }
+
+    @Test
+    fun `轻量搜索深度不会扫描未执行的正文规则`() {
+        val source = doc(
+            """
+            {
+              "bookSourceName": "search-only-depth",
+              "searchUrl": "https://example.com/search",
+              "ruleSearch": {"bookList": "div.book"},
+              "ruleContent": {"content": "java.webView(null, url, 'document.body.innerHTML')"}
+            }
+            """,
+        )
+        assertNull(engine.staticVerdict(source, ProbeEntry.SEARCH, ProbeDepth.SEARCH))
+        assertEquals(ProbeStatus.UNSUPPORTED, engine.staticVerdict(source)?.status)
     }
 
     @Test

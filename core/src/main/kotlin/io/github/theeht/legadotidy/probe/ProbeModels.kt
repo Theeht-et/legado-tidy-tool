@@ -10,25 +10,62 @@ import io.github.theeht.legadotidy.model.BookSourceDoc
  */
 enum class ProbeStatus(val label: String, val severity: Int) {
     OK("可用", 0),
-    SKIPPED("本次未校验", 1),           // 用户手动跳过 / 无 searchUrl
-    NO_SEARCH_URL("没有搜索规则，校验不了", 2),
-    UNSUPPORTED("不支持自动校验", 3),   // 统一：webView / 验证码 / 登录 / 滑块 / 播放器 / 外部跳转
-    PARSE_EMPTY("页面能打开但解析不出东西", 4),
-    NEED_JS("用了本工具不支持的 JS 能力", 5),
-    TIMEOUT("超时——降低并发或换代理", 6),
-    NETWORK("网络不通——站点或代理问题", 7),
-    HTTP_ERROR("站点返回错误状态码", 8),
-    ERROR("其它错误", 9),
+    PARTIAL("部分通过，建议复核", 1),
+    SKIPPED("本次未校验", 2),
+    NO_SEARCH_URL("没有搜索入口，无法校验", 3),
+    NO_EXPLORE_CATEGORY("没有可用发现分类，无法校验", 3),
+    UNSUPPORTED("不支持自动校验", 4),
+    PARSE_EMPTY("页面能打开但解析不出东西", 5),
+    NEED_JS("用了本工具不支持的 JS 能力", 6),
+    TIMEOUT("超时——降低并发或换代理", 7),
+    NETWORK("网络不通——站点或代理问题", 8),
+    HTTP_ERROR("站点返回错误状态码", 9),
+    ERROR("其它错误", 10),
 }
 
-/** 校验深度：默认只到搜索（成本最低、区分度最高）。 */
-enum class ProbeDepth { SEARCH, WITH_TOC }
+/** 单次校验中实际执行的上游阶段。 */
+enum class ProbeStage(val label: String) {
+    SEARCH("搜索"),
+    EXPLORE_CATEGORIES("发现分类解析"),
+    EXPLORE("发现分页"),
+    BOOK_INFO("书籍详情"),
+    TOC("目录"),
+    CONTENT("正文"),
+}
+
+/** 阶段状态与整条校验结论分开，避免后续失败被折叠成搜索成功。 */
+enum class ProbeStageStatus(val label: String) {
+    SUCCESS("成功"),
+    EMPTY("结果为空"),
+    FAILED("失败"),
+    NOT_RUN("未执行"),
+}
+
+data class ProbeStageResult(
+    val stage: ProbeStage,
+    val status: ProbeStageStatus,
+    val itemCount: Int = 0,
+    val elapsedMs: Long = 0,
+    val detail: String? = null,
+    val failureStatus: ProbeStatus? = null,
+    val httpCode: Int? = null,
+)
+
+/** 校验入口：搜索或发现。两个入口随后复用相同的详情、目录和正文校验链。 */
+enum class ProbeEntry { SEARCH, EXPLORE }
+
+/** 校验深度：SEARCH 仅执行入口；WITH_TOC 继续详情与目录；FULL_CHAIN 再验证正文。 */
+enum class ProbeDepth { SEARCH, WITH_TOC, FULL_CHAIN }
 
 data class ProbeOptions(
-    val depth: ProbeDepth = ProbeDepth.SEARCH,
+    val depth: ProbeDepth = ProbeDepth.FULL_CHAIN,
     val timeoutMs: Long = 20_000,
     val keyword: String = "剑来",
+    /** 本轮默认代理；书源 header.proxy 存在时以书源配置为准。 */
     val proxy: String? = null,
+    val entry: ProbeEntry = ProbeEntry.SEARCH,
+    /** 连续发现页上限；命中上游“本页无新增书籍即停止”规则时会提前结束。 */
+    val maxExplorePages: Int = 3,
 )
 
 data class ProbeResult(
@@ -37,7 +74,16 @@ data class ProbeResult(
     val httpCode: Int? = null,
     val bookCount: Int = 0,
     val elapsedMs: Long = 0,
-    val detail: String? = null,   // UNSUPPORTED 时记录具体原因：webView / 验证码 / 登录 / 播放器 / 外部跳转
+    val detail: String? = null,
+    val stageResults: List<ProbeStageResult> = emptyList(),
+    /** Inputs that determine whether this result can be reused by a later validation run. */
+    val entry: ProbeEntry = ProbeEntry.SEARCH,
+    val depth: ProbeDepth = ProbeDepth.FULL_CHAIN,
+    val keyword: String = "剑来",
+    val timeoutMs: Long = 20_000,
+    val maxExplorePages: Int = 3,
+    /** Normalized per-validation proxy; source-level header.proxy can override it. */
+    val proxy: String? = null,
 ) {
     val ok: Boolean get() = status == ProbeStatus.OK
 }
