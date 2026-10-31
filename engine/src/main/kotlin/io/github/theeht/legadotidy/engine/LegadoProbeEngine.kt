@@ -208,7 +208,11 @@ class LegadoProbeEngine(
                     stage = ProbeStage.TOC,
                     emptyDetail = "上游目录解析结果为空",
                 ) {
-                    chapters = WebBook.getChapterListAwait(bookSource, selectedBook).getOrThrow()
+                    chapters = WebBook.getChapterListAwait(
+                        bookSource = bookSource,
+                        book = selectedBook,
+                        isFromBookInfo = true,
+                    ).getOrThrow()
                     chapters.size
                 }
                 stageResults += toc
