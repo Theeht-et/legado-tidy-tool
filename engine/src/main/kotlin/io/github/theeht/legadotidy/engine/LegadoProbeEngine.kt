@@ -203,268 +203,268 @@ class LegadoProbeEngine(
         return try {
             withContext(ProbeProxyContext(proxy)) {
                 withTimeout(chainTimeoutMs) {
-                val bookSource = gson.fromJson(source.raw, BookSource::class.java)
-                    ?: return@withTimeout result(ProbeStatus.ERROR, "书源反序列化失败")
+                    val bookSource = gson.fromJson(source.raw, BookSource::class.java)
+                        ?: return@withTimeout result(ProbeStatus.ERROR, "书源反序列化失败")
 
-                when (options.entry) {
-                    ProbeEntry.SEARCH -> {
-                        val search = runStage(
-                            stage = ProbeStage.SEARCH,
-                            emptyDetail = "上游搜索流程未解析出书籍",
-                        ) {
-                            hits = WebBook.searchBookAwait(
-                                bookSource = bookSource,
-                                key = options.keyword,
-                                page = 1,
-                            )
-                            hits.size
-                        }
-                        stageResults += search
-                        bookCount = hits.size
-
-                        when (search.status) {
-                            ProbeStageStatus.FAILED -> {
-                                return@withTimeout result(
-                                    search.failureStatus ?: ProbeStatus.ERROR,
-                                    search.detail,
+                    when (options.entry) {
+                        ProbeEntry.SEARCH -> {
+                            val search = runStage(
+                                stage = ProbeStage.SEARCH,
+                                emptyDetail = "上游搜索流程未解析出书籍",
+                            ) {
+                                hits = WebBook.searchBookAwait(
+                                    bookSource = bookSource,
+                                    key = options.keyword,
+                                    page = 1,
                                 )
+                                hits.size
                             }
-                            ProbeStageStatus.EMPTY -> {
-                                return@withTimeout result(
-                                    ProbeStatus.PARSE_EMPTY,
-                                    "搜索页已请求，但上游未解析出书籍结果",
-                                )
-                            }
-                            else -> Unit
-                        }
-                    }
+                            stageResults += search
+                            bookCount = hits.size
 
-                    ProbeEntry.EXPLORE -> {
-                        var categories = emptyList<ExploreKind>()
-                        val categoryStage = runStage(
-                            stage = ProbeStage.EXPLORE_CATEGORIES,
-                            emptyDetail = "没有可用于自动校验的 URL 类型发现分类",
-                        ) {
-                            categories = bookSource.exploreKinds()
-                            bookSource.initializeExploreInfoMap(categories)
-                            bookSource.flushExploreInfoMapIfNeeded()
-                            categories.count {
+                            when (search.status) {
+                                ProbeStageStatus.FAILED -> {
+                                    return@withTimeout result(
+                                        search.failureStatus ?: ProbeStatus.ERROR,
+                                        search.detail,
+                                    )
+                                }
+                                ProbeStageStatus.EMPTY -> {
+                                    return@withTimeout result(
+                                        ProbeStatus.PARSE_EMPTY,
+                                        "搜索页已请求，但上游未解析出书籍结果",
+                                    )
+                                }
+                                else -> Unit
+                            }
+                        }
+
+                        ProbeEntry.EXPLORE -> {
+                            var categories = emptyList<ExploreKind>()
+                            val categoryStage = runStage(
+                                stage = ProbeStage.EXPLORE_CATEGORIES,
+                                emptyDetail = "没有可用于自动校验的 URL 类型发现分类",
+                            ) {
+                                categories = bookSource.exploreKinds()
+                                bookSource.initializeExploreInfoMap(categories)
+                                bookSource.flushExploreInfoMapIfNeeded()
+                                categories.count {
+                                    it.type == ExploreKind.Type.url &&
+                                        !it.url.isNullOrBlank() &&
+                                        !it.title.startsWith("ERROR:")
+                                }
+                            }
+                            val usableCategories = categories.filter {
                                 it.type == ExploreKind.Type.url &&
                                     !it.url.isNullOrBlank() &&
                                     !it.title.startsWith("ERROR:")
                             }
-                        }
-                        val usableCategories = categories.filter {
-                            it.type == ExploreKind.Type.url &&
-                                !it.url.isNullOrBlank() &&
-                                !it.title.startsWith("ERROR:")
-                        }
-                        if (categoryStage.status == ProbeStageStatus.FAILED) {
+                            if (categoryStage.status == ProbeStageStatus.FAILED) {
+                                stageResults += categoryStage
+                                return@withTimeout result(
+                                    categoryStage.failureStatus ?: ProbeStatus.ERROR,
+                                    categoryStage.detail,
+                                )
+                            }
+                            if (usableCategories.isEmpty()) {
+                                val parseError = categories.firstOrNull {
+                                    it.title.startsWith("ERROR:")
+                                }
+                                val failedCategoryStage = if (parseError != null) {
+                                    categoryStage.copy(
+                                        status = ProbeStageStatus.FAILED,
+                                        detail = parseError.title.removePrefix("ERROR:"),
+                                        failureStatus = ProbeStatus.ERROR,
+                                    )
+                                } else {
+                                    categoryStage
+                                }
+                                stageResults += failedCategoryStage
+                                return@withTimeout result(
+                                    if (parseError != null) ProbeStatus.ERROR else ProbeStatus.NO_EXPLORE_CATEGORY,
+                                    failedCategoryStage.detail
+                                        ?: "发现分类中没有可请求的 URL 类型分类",
+                                )
+                            }
                             stageResults += categoryStage
-                            return@withTimeout result(
-                                categoryStage.failureStatus ?: ProbeStatus.ERROR,
-                                categoryStage.detail,
-                            )
-                        }
-                        if (usableCategories.isEmpty()) {
-                            val parseError = categories.firstOrNull {
-                                it.title.startsWith("ERROR:")
-                            }
-                            val failedCategoryStage = if (parseError != null) {
-                                categoryStage.copy(
-                                    status = ProbeStageStatus.FAILED,
-                                    detail = parseError.title.removePrefix("ERROR:"),
-                                    failureStatus = ProbeStatus.ERROR,
-                                )
-                            } else {
-                                categoryStage
-                            }
-                            stageResults += failedCategoryStage
-                            return@withTimeout result(
-                                if (parseError != null) ProbeStatus.ERROR else ProbeStatus.NO_EXPLORE_CATEGORY,
-                                failedCategoryStage.detail
-                                    ?: "发现分类中没有可请求的 URL 类型分类",
-                            )
-                        }
-                        stageResults += categoryStage
 
-                        // The upstream UI opens one category at a time. Batch validation
-                        // deterministically selects the first usable URL category.
-                        val category = usableCategories.first()
-                        val categoryUrl = checkNotNull(category.url)
-                        val uniqueBooks = linkedSetOf<SearchBook>()
-                        val maxPages = options.maxExplorePages.coerceIn(1, 10)
+                            // The upstream UI opens one category at a time. Batch validation
+                            // deterministically selects the first usable URL category.
+                            val category = usableCategories.first()
+                            val categoryUrl = checkNotNull(category.url)
+                            val uniqueBooks = linkedSetOf<SearchBook>()
+                            val maxPages = options.maxExplorePages.coerceIn(1, 10)
 
-                        for (page in 1..maxPages) {
-                            var pageBooks = emptyList<SearchBook>()
-                            val previousUniqueCount = uniqueBooks.size
-                            val pageStage = runStage(
-                                stage = ProbeStage.EXPLORE,
-                                emptyDetail = "第 ${page} 页没有解析出书籍",
-                            ) {
-                                pageBooks = WebBook.exploreBookAwait(
-                                    bookSource = bookSource,
-                                    url = categoryUrl,
-                                    page = page,
-                                )
-                                bookSource.flushExploreInfoMapIfNeeded()
-                                pageBooks.size
-                            }
-
-                            if (pageStage.status == ProbeStageStatus.FAILED) {
-                                stageResults += pageStage.copy(
-                                    detail = "分类「${category.title}」第 ${page} 页：${pageStage.detail.orEmpty()}",
-                                )
-                                if (uniqueBooks.isEmpty()) {
-                                    return@withTimeout result(
-                                        pageStage.failureStatus ?: ProbeStatus.ERROR,
-                                        pageStage.detail,
+                            for (page in 1..maxPages) {
+                                var pageBooks = emptyList<SearchBook>()
+                                val previousUniqueCount = uniqueBooks.size
+                                val pageStage = runStage(
+                                    stage = ProbeStage.EXPLORE,
+                                    emptyDetail = "第 ${page} 页没有解析出书籍",
+                                ) {
+                                    pageBooks = WebBook.exploreBookAwait(
+                                        bookSource = bookSource,
+                                        url = categoryUrl,
+                                        page = page,
                                     )
+                                    bookSource.flushExploreInfoMapIfNeeded()
+                                    pageBooks.size
                                 }
-                                // A later-page error does not discard books from earlier pages,
-                                // but the overall result remains PARTIAL after downstream checks.
-                                break
-                            }
 
-                            uniqueBooks.addAll(pageBooks)
-                            val addedCount = uniqueBooks.size - previousUniqueCount
-                            if (addedCount == 0) {
-                                if (page == 1) {
+                                if (pageStage.status == ProbeStageStatus.FAILED) {
                                     stageResults += pageStage.copy(
-                                        detail = "分类「${category.title}」第一页没有解析出书籍",
+                                        detail = "分类「${category.title}」第 ${page} 页：${pageStage.detail.orEmpty()}",
                                     )
-                                    return@withTimeout result(
-                                        ProbeStatus.PARSE_EMPTY,
-                                        "发现分类「${category.title}」第一页没有解析出书籍",
-                                    )
-                                }
-                                // This is the same stop condition used by the upstream
-                                // ExploreShowViewModel: no increase in the distinct book set.
-                                stageResults += pageStage.copy(
-                                    status = ProbeStageStatus.SUCCESS,
-                                    detail = "分类「${category.title}」第 ${page} 页没有新增书籍，按上游分页规则停止",
-                                )
-                                break
-                            }
-
-                            stageResults += pageStage.copy(
-                                detail = buildString {
-                                    append("分类「${category.title}」第 ${page} 页返回 ${pageBooks.size} 条，新增 ${addedCount} 条")
-                                    if (page == maxPages && addedCount > 0) {
-                                        append("；达到本次配置的 ${maxPages} 页上限，未确认是否还有后续结果")
+                                    if (uniqueBooks.isEmpty()) {
+                                        return@withTimeout result(
+                                            pageStage.failureStatus ?: ProbeStatus.ERROR,
+                                            pageStage.detail,
+                                        )
                                     }
-                                },
-                            )
-                            if (page == maxPages && addedCount > 0) {
-                                exploreLimitReached = true
+                                    // A later-page error does not discard books from earlier pages,
+                                    // but the overall result remains PARTIAL after downstream checks.
+                                    break
+                                }
+
+                                uniqueBooks.addAll(pageBooks)
+                                val addedCount = uniqueBooks.size - previousUniqueCount
+                                if (addedCount == 0) {
+                                    if (page == 1) {
+                                        stageResults += pageStage.copy(
+                                            detail = "分类「${category.title}」第一页没有解析出书籍",
+                                        )
+                                        return@withTimeout result(
+                                            ProbeStatus.PARSE_EMPTY,
+                                            "发现分类「${category.title}」第一页没有解析出书籍",
+                                        )
+                                    }
+                                    // This is the same stop condition used by the upstream
+                                    // ExploreShowViewModel: no increase in the distinct book set.
+                                    stageResults += pageStage.copy(
+                                        status = ProbeStageStatus.SUCCESS,
+                                        detail = "分类「${category.title}」第 ${page} 页没有新增书籍，按上游分页规则停止",
+                                    )
+                                    break
+                                }
+
+                                stageResults += pageStage.copy(
+                                    detail = buildString {
+                                        append("分类「${category.title}」第 ${page} 页返回 ${pageBooks.size} 条，新增 ${addedCount} 条")
+                                        if (page == maxPages && addedCount > 0) {
+                                            append("；达到本次配置的 ${maxPages} 页上限，未确认是否还有后续结果")
+                                        }
+                                    },
+                                )
+                                if (page == maxPages && addedCount > 0) {
+                                    exploreLimitReached = true
+                                }
                             }
+
+                            hits = uniqueBooks.toList()
+                            bookCount = hits.size
                         }
-
-                        hits = uniqueBooks.toList()
-                        bookCount = hits.size
                     }
-                }
 
-                if (options.depth == ProbeDepth.SEARCH) {
-                    val hasExplorePageFailure = options.entry == ProbeEntry.EXPLORE &&
-                        stageResults.any {
-                            it.stage == ProbeStage.EXPLORE && it.status == ProbeStageStatus.FAILED
-                        }
-                    return@withTimeout result(
-                        if (hasExplorePageFailure || exploreLimitReached) ProbeStatus.PARTIAL else ProbeStatus.OK,
-                        if (options.entry == ProbeEntry.EXPLORE) {
-                            summarizeStages(stageResults, options.depth)
-                        } else {
-                            null
-                        },
-                    )
-                }
-
-                var book: Book? = null
-                val bookInfo = runStage(
-                    stage = ProbeStage.BOOK_INFO,
-                    emptyDetail = "上游未返回书籍详情",
-                ) {
-                    val candidate = hits.first().toBook()
-                    book = candidate
-                    book = WebBook.getBookInfoAwait(
-                        bookSource = bookSource,
-                        book = candidate,
-                        canReName = true,
-                    )
-                    1
-                }
-                stageResults += bookInfo
-
-                val selectedBook = book
-                if (bookInfo.status != ProbeStageStatus.SUCCESS || selectedBook == null) {
-                    addNotRun(ProbeStage.TOC, "书籍详情阶段未成功，目录阶段未执行")
-                    if (options.depth == ProbeDepth.FULL_CHAIN) {
-                        addNotRun(ProbeStage.CONTENT, "书籍详情或目录阶段未成功，正文阶段未执行")
-                    }
-                    return@withTimeout result(
-                        ProbeStatus.PARTIAL,
-                        summarizeStages(stageResults, options.depth),
-                    )
-                }
-
-                var chapters = emptyList<io.legado.app.data.entities.BookChapter>()
-                val toc = runStage(
-                    stage = ProbeStage.TOC,
-                    emptyDetail = "上游目录解析结果为空",
-                ) {
-                    chapters = WebBook.getChapterListAwait(
-                        bookSource = bookSource,
-                        book = selectedBook,
-                        isFromBookInfo = true,
-                    ).getOrThrow()
-                    chapters.size
-                }
-                stageResults += toc
-
-                if (options.depth == ProbeDepth.FULL_CHAIN) {
-                    val chapterIndex = chapters.indexOfFirst { !it.isVolume && it.url.isNotBlank() }
-                    if (toc.status != ProbeStageStatus.SUCCESS) {
-                        addNotRun(ProbeStage.CONTENT, "目录阶段未成功，正文阶段未执行")
-                    } else if (chapterIndex < 0) {
-                        stageResults += ProbeStageResult(
-                            stage = ProbeStage.CONTENT,
-                            status = ProbeStageStatus.EMPTY,
-                            detail = "目录中没有可读取的非卷章节",
+                    if (options.depth == ProbeDepth.SEARCH) {
+                        val hasExplorePageFailure = options.entry == ProbeEntry.EXPLORE &&
+                            stageResults.any {
+                                it.stage == ProbeStage.EXPLORE && it.status == ProbeStageStatus.FAILED
+                            }
+                        return@withTimeout result(
+                            if (hasExplorePageFailure || exploreLimitReached) ProbeStatus.PARTIAL else ProbeStatus.OK,
+                            if (options.entry == ProbeEntry.EXPLORE) {
+                                summarizeStages(stageResults, options.depth)
+                            } else {
+                                null
+                            },
                         )
-                    } else {
-                        val chapter = chapters[chapterIndex]
-                        val nextChapterUrl = chapters
-                            .drop(chapterIndex + 1)
-                            .firstOrNull { !it.isVolume && it.url.isNotBlank() }
-                            ?.url
-                            // Upstream's BookContent falls back to the first chapter when no next
-                            // chapter exists. Pass that boundary explicitly so the headless engine
-                            // never has to consult the shared in-memory appDb DAO.
-                            ?: chapters.firstOrNull { !it.isVolume && it.url.isNotBlank() }?.url
-                        val content = runStage(
-                            stage = ProbeStage.CONTENT,
-                            emptyDetail = "上游正文解析结果为空",
-                        ) {
-                            val text = WebBook.getContentAwait(
-                                bookSource = bookSource,
-                                book = selectedBook,
-                                bookChapter = chapter,
-                                nextChapterUrl = nextChapterUrl,
-                                needSave = false,
-                            )
-                            if (text.isBlank()) 0 else 1
-                        }
-                        stageResults += content
                     }
-                }
 
-                val allPassed = stageResults.all { it.status == ProbeStageStatus.SUCCESS } &&
-                    !exploreLimitReached
-                result(
-                    status = if (allPassed) ProbeStatus.OK else ProbeStatus.PARTIAL,
-                    detail = summarizeStages(stageResults, options.depth),
-                )
+                    var book: Book? = null
+                    val bookInfo = runStage(
+                        stage = ProbeStage.BOOK_INFO,
+                        emptyDetail = "上游未返回书籍详情",
+                    ) {
+                        val candidate = hits.first().toBook()
+                        book = candidate
+                        book = WebBook.getBookInfoAwait(
+                            bookSource = bookSource,
+                            book = candidate,
+                            canReName = true,
+                        )
+                        1
+                    }
+                    stageResults += bookInfo
+
+                    val selectedBook = book
+                    if (bookInfo.status != ProbeStageStatus.SUCCESS || selectedBook == null) {
+                        addNotRun(ProbeStage.TOC, "书籍详情阶段未成功，目录阶段未执行")
+                        if (options.depth == ProbeDepth.FULL_CHAIN) {
+                            addNotRun(ProbeStage.CONTENT, "书籍详情或目录阶段未成功，正文阶段未执行")
+                        }
+                        return@withTimeout result(
+                            ProbeStatus.PARTIAL,
+                            summarizeStages(stageResults, options.depth),
+                        )
+                    }
+
+                    var chapters = emptyList<io.legado.app.data.entities.BookChapter>()
+                    val toc = runStage(
+                        stage = ProbeStage.TOC,
+                        emptyDetail = "上游目录解析结果为空",
+                    ) {
+                        chapters = WebBook.getChapterListAwait(
+                            bookSource = bookSource,
+                            book = selectedBook,
+                            isFromBookInfo = true,
+                        ).getOrThrow()
+                        chapters.size
+                    }
+                    stageResults += toc
+
+                    if (options.depth == ProbeDepth.FULL_CHAIN) {
+                        val chapterIndex = chapters.indexOfFirst { !it.isVolume && it.url.isNotBlank() }
+                        if (toc.status != ProbeStageStatus.SUCCESS) {
+                            addNotRun(ProbeStage.CONTENT, "目录阶段未成功，正文阶段未执行")
+                        } else if (chapterIndex < 0) {
+                            stageResults += ProbeStageResult(
+                                stage = ProbeStage.CONTENT,
+                                status = ProbeStageStatus.EMPTY,
+                                detail = "目录中没有可读取的非卷章节",
+                            )
+                        } else {
+                            val chapter = chapters[chapterIndex]
+                            val nextChapterUrl = chapters
+                                .drop(chapterIndex + 1)
+                                .firstOrNull { !it.isVolume && it.url.isNotBlank() }
+                                ?.url
+                                // Upstream's BookContent falls back to the first chapter when no next
+                                // chapter exists. Pass that boundary explicitly so the headless engine
+                                // never has to consult the shared in-memory appDb DAO.
+                                ?: chapters.firstOrNull { !it.isVolume && it.url.isNotBlank() }?.url
+                            val content = runStage(
+                                stage = ProbeStage.CONTENT,
+                                emptyDetail = "上游正文解析结果为空",
+                            ) {
+                                val text = WebBook.getContentAwait(
+                                    bookSource = bookSource,
+                                    book = selectedBook,
+                                    bookChapter = chapter,
+                                    nextChapterUrl = nextChapterUrl,
+                                    needSave = false,
+                                )
+                                if (text.isBlank()) 0 else 1
+                            }
+                            stageResults += content
+                        }
+                    }
+
+                    val allPassed = stageResults.all { it.status == ProbeStageStatus.SUCCESS } &&
+                        !exploreLimitReached
+                    result(
+                        status = if (allPassed) ProbeStatus.OK else ProbeStatus.PARTIAL,
+                        detail = summarizeStages(stageResults, options.depth),
+                    )
                 }
             }
         } catch (e: TimeoutCancellationException) {
