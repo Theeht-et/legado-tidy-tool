@@ -315,7 +315,14 @@ class MockSiteProbeTest {
                 "bookList": "tag.a",
                 "name": "text",
                 "bookUrl": "href"
-              }
+              },
+              "ruleBookInfo": { "name": "tag.h1@text", "author": "class.au@text" },
+              "ruleToc": {
+                "chapterList": "class.ch@tag.li",
+                "chapterName": "tag.a@text",
+                "chapterUrl": "tag.a@href"
+              },
+              "ruleContent": { "content": "class.content@text" }
             }
         """.trimIndent()
         return BookSourceDoc(SourceIO.parse(json).single())
