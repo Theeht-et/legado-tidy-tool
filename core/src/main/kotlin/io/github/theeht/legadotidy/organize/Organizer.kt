@@ -17,9 +17,6 @@ enum class OrganizeRule(val label: String) {
     NO_SMART_GROUPING("不启用智能分组"),
     REGROUP_BY_TYPE("按书源类型分组"),
     REGROUP_BY_QUALITY("按书源质量分组"),
-    /** 旧版本兼容项；新界面不再显示。 */
-    @Deprecated("Use REGROUP_BY_TYPE")
-    SORT_BY_RESPONSE_TIME("按响应时间升序"),
     SORT_BY_RESPONSE_TIME("按响应时间升序"),
 }
 
