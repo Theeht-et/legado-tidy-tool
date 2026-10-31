@@ -7,9 +7,7 @@ import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -133,23 +131,20 @@ class PipelineTest {
     }
 
     @Test
-    fun `取消流水线会传播取消而不是转换成单源 ERROR`() = runBlocking {
+    fun `引擎取消异常会向上传播而不是转换成单源 ERROR`() = runBlocking {
         val engine = object : ProbeEngine {
             override suspend fun probe(
                 index: Int,
                 source: BookSourceDoc,
                 options: ProbeOptions,
             ): ProbeResult {
-                delay(5_000)
-                return ProbeResult(index, ProbeStatus.OK)
+                throw CancellationException("cancelled by engine")
             }
         }
-        val job = launch {
+        val failure = runCatching {
             Pipeline(engine).run(listOf(Docs.doc("cancel", "https://cancel.test")))
-        }
-        delay(30)
-        job.cancelAndJoin()
-        assertTrue(job.isCancelled)
+        }.exceptionOrNull()
+        assertTrue(failure is CancellationException)
     }
 
     @Test
