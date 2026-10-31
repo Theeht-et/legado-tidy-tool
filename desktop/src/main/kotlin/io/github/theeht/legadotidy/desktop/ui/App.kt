@@ -732,7 +732,7 @@ fun TidyApp() {
                             Text(it, Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp), color = Bad, fontSize = UiTypography.body)
                         }
                     }
-                    BottomActions(
+                    WorkflowNavigationBar(
                         state = state,
                         onShowImportInfo = { state.showImportInfo = true },
                         onStartDedup = ::startDedup,
