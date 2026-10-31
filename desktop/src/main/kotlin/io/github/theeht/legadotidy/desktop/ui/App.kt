@@ -1048,23 +1048,31 @@ private fun OrganizeRulePanel(
                     OrganizeRule.REMOVE_ADVERTISING_WORDS in state.selectedRules,
                     onRuleChange,
                 )
-                GroupRuleBlock(
-                    keepOriginal = OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules,
-                    dropOriginal = OrganizeRule.DROP_ORIGINAL_GROUPS in state.selectedRules,
-                    noSmartGrouping = OrganizeRule.NO_SMART_GROUPING in state.selectedRules,
-                    regroupByType = OrganizeRule.REGROUP_BY_TYPE in state.selectedRules,
-                    regroupByQuality = OrganizeRule.REGROUP_BY_QUALITY in state.selectedRules,
-                    onKeepOriginal = { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
-                    onDropOriginal = { onRuleChange(OrganizeRule.DROP_ORIGINAL_GROUPS, true) },
-                    onNoSmartGrouping = { onRuleChange(OrganizeRule.NO_SMART_GROUPING, true) },
-                    onRegroupByType = { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
-                    onRegroupByQuality = { onRuleChange(OrganizeRule.REGROUP_BY_QUALITY, true) },
-                )
                 RuleCheckbox(
                     OrganizeRule.SORT_BY_RESPONSE_TIME,
                     OrganizeRule.SORT_BY_RESPONSE_TIME in state.selectedRules,
                     onRuleChange,
                 )
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Text("分组方式", fontSize = UiTypography.compact, color = Muted)
+                GroupChoice("保留原组", OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules) {
+                    onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true)
+                }
+                GroupChoice("统一归入未分组", OrganizeRule.DROP_ORIGINAL_GROUPS in state.selectedRules &&
+                    OrganizeRule.NO_SMART_GROUPING in state.selectedRules) {
+                    onRuleChange(OrganizeRule.DROP_ORIGINAL_GROUPS, true)
+                }
+                GroupChoice("按类型", OrganizeRule.REGROUP_BY_TYPE in state.selectedRules) {
+                    onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true)
+                }
+                GroupChoice("按质量", OrganizeRule.REGROUP_BY_QUALITY in state.selectedRules) {
+                    onRuleChange(OrganizeRule.REGROUP_BY_QUALITY, true)
+                }
             }
         }
     }
@@ -1130,38 +1138,22 @@ private fun RuleCheckbox(
 }
 
 @Composable
-private fun GroupRuleBlock(
-    keepOriginal: Boolean,
-    dropOriginal: Boolean,
-    noSmartGrouping: Boolean,
-    regroupByType: Boolean,
-    regroupByQuality: Boolean,
-    onKeepOriginal: () -> Unit,
-    onDropOriginal: () -> Unit,
-    onNoSmartGrouping: () -> Unit,
-    onRegroupByType: () -> Unit,
-    onRegroupByQuality: () -> Unit,
-) {
-    Column(
-        Modifier.clip(RoundedCornerShape(7.dp))
-            .border(1.dp, Line, RoundedCornerShape(7.dp))
-            .background(Color.White)
-            .padding(horizontal = 8.dp, vertical = 5.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+private fun GroupChoice(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.clip(RoundedCornerShape(6.dp))
+            .border(1.dp, if (selected) SoftBlueBorder else Line, RoundedCornerShape(6.dp))
+            .background(if (selected) SoftBlue else Color.White)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-            Text("分组", fontSize = UiTypography.compact, color = Muted)
-            RuleRadio("保留原组", keepOriginal, onKeepOriginal)
-            RuleRadio("不保留原组", dropOriginal, onDropOriginal)
-        }
-        if (dropOriginal) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text("智能分组", fontSize = UiTypography.compact, color = Muted)
-                RuleRadio("不启用", noSmartGrouping, onNoSmartGrouping)
-                RuleRadio("按类型", regroupByType, onRegroupByType)
-                RuleRadio("按质量", regroupByQuality, onRegroupByQuality)
-            }
-        }
+        Text(
+            label,
+            fontSize = UiTypography.compact,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) PrimaryDeep else BodyText,
+            maxLines = 1,
+        )
     }
 }
 
@@ -1225,39 +1217,29 @@ private fun SourceListPanel(
                 ) { Text("清除", fontSize = UiTypography.body) }
             }
             HorizontalDivider(color = Line)
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(1.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                sourceFilterLabels.forEach { label ->
-                    val count = sourceFilterCount(state, label)
-                    val selected = state.sourceFilter == label
-                    Box(
-                        Modifier.clip(RoundedCornerShape(6.dp))
-                            .background(if (selected) SoftBlue else Color.Transparent)
-                            .border(1.dp, if (selected) SoftBlueBorder else Color.Transparent, RoundedCornerShape(6.dp))
-                            .clickable { state.sourceFilter = label }
-                            .padding(horizontal = 7.dp, vertical = 3.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("$label $count", fontSize = UiTypography.label, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium, color = if (selected) Primary else BodyText, maxLines = 1)
+            if (state.stage != WorkflowStage.DEDUP_REVIEW) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(1.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    sourceFilterLabels.forEach { label ->
+                        val count = sourceFilterCount(state, label)
+                        val selected = state.sourceFilter == label
+                        Box(
+                            Modifier.clip(RoundedCornerShape(6.dp))
+                                .background(if (selected) SoftBlue else Color.Transparent)
+                                .border(1.dp, if (selected) SoftBlueBorder else Color.Transparent, RoundedCornerShape(6.dp))
+                                .clickable { state.sourceFilter = label }
+                                .padding(horizontal = 7.dp, vertical = 3.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("$label $count", fontSize = UiTypography.label, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium, color = if (selected) Primary else BodyText, maxLines = 1)
+                        }
                     }
                 }
-                if (state.stage == WorkflowStage.DEDUP_REVIEW) {
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        val duplicateCount = state.duplicateGroups.sumOf { it.sourceIds.size }
-                        Text(
-                            "全部分组 · ${state.duplicateGroups.size} 组 · ${duplicateCount} 个重复候选",
-                            fontSize = UiTypography.label,
-                            color = BodyText,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+                HorizontalDivider(color = Line)
             }
-            HorizontalDivider(color = Line)
             if (state.stage == WorkflowStage.ORGANIZE_REVIEW) {
                 OrganizeRulePanel(
                     state = state,
@@ -1297,35 +1279,30 @@ private fun SourceListPanel(
                         items(rows, key = { it.key }) { row ->
                             when (row) {
                                 is SourceListRow.GroupHeader -> {
-                                    val countLabel = if (row.visibleCount == row.group.sourceIds.size) {
-                                        "${row.visibleCount} 个候选"
-                                    } else {
-                                        "当前显示 ${row.visibleCount}/${row.group.sourceIds.size} 个候选"
-                                    }
                                     Row(
-                                        Modifier.fillMaxWidth().background(SoftBlue).padding(horizontal = 10.dp, vertical = 5.dp),
+                                        Modifier.fillMaxWidth().background(Color.White)
+                                            .padding(horizontal = 10.dp, vertical = 2.dp),
                                         verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(7.dp),
                                     ) {
                                         Text(
-                                            "重复组 ${row.group.number} · ${row.group.kind.label}",
+                                            "组 ${row.group.number}",
                                             fontSize = UiTypography.label,
-                                            fontWeight = FontWeight.Bold,
-                                            color = PrimaryDeep,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = BodyText,
                                         )
-                                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                            Text(
-                                                "$countLabel · 待删除 ${row.visibleMarkedCount}",
-                                                fontSize = UiTypography.caption,
-                                                color = Muted,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                        }
-                                        OutlinedButton(
+                                        SmallChip(row.group.kind.label, SoftSlate, Muted)
+                                        Text(
+                                            "${row.visibleCount} 项",
+                                            fontSize = UiTypography.caption,
+                                            color = Muted,
+                                        )
+                                        Spacer(Modifier.weight(1f))
+                                        TextButton(
                                             onClick = { onCompare(row.group.number) },
                                             enabled = !state.busy,
-                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
-                                        ) { Text("对比重复组", fontSize = UiTypography.caption) }
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 7.dp, vertical = 1.dp),
+                                        ) { Text("对比并选择", fontSize = UiTypography.caption, color = Primary) }
                                     }
                                 }
                                 is SourceListRow.SourceEntry -> SourceRowItem(state = state, source = row.source, onDetail = onDetail, onEdit = onEdit)
@@ -1420,7 +1397,8 @@ private fun SourceRowItem(
     val probeStyle = probeStatusStyle(source.probe?.status)
     Row(
         Modifier.fillMaxWidth().background(if (selected) SelectedSurface else Color.White)
-            .clickable { state.selectedId = source.id }.padding(horizontal = 9.dp, vertical = 4.dp),
+            .clickable { state.selectedId = source.id }
+            .padding(horizontal = 9.dp, vertical = if (state.stage == WorkflowStage.DEDUP_REVIEW) 2.dp else 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (compareNames) {
@@ -2303,6 +2281,26 @@ private fun ReportDialog(state: WorkflowState, onDismiss: () -> Unit) {
     )
 }
 
+private fun ruleDifferenceLabels(candidates: List<WorkflowSource>, source: WorkflowSource): List<String> {
+    if (candidates.size < 2) return emptyList()
+    val ruleKeys = candidates
+        .flatMap { candidate -> candidate.doc.raw.entrySet().map { it.key } }
+        .filter { it.startsWith("rule", ignoreCase = true) }
+        .distinct()
+        .filter { key -> candidates.map { it.doc.raw.get(key) }.distinct().size > 1 }
+    return ruleKeys.map { key ->
+        when (key) {
+            "ruleSearch" -> "搜索"
+            "ruleExplore" -> "发现"
+            "ruleBookInfo" -> "书籍信息"
+            "ruleToc" -> "目录"
+            "ruleContent" -> "正文"
+            "ruleReview" -> "段评"
+            else -> key.removePrefix("rule").ifBlank { key }
+        }
+    }
+}
+
 @Composable
 private fun CompareGroupDialog(
     state: WorkflowState,
@@ -2316,133 +2314,132 @@ private fun CompareGroupDialog(
     var keepAll by remember(group.number) {
         mutableStateOf(candidates.isNotEmpty() && candidates.all { !it.deleteMarked })
     }
+    val ruleDifferences = ruleDifferenceLabels(candidates, candidates.firstOrNull() ?: return)
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 1080.dp).heightIn(max = 760.dp),
-            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 900.dp).heightIn(max = 420.dp, maxHeight = 640.dp),
+            shape = RoundedCornerShape(10.dp),
             color = Color.White,
-            shadowElevation = 24.dp,
+            shadowElevation = 20.dp,
         ) {
             Column(Modifier.fillMaxWidth()) {
                 Row(
-                    Modifier.fillMaxWidth().background(SoftNeutral).padding(horizontal = 18.dp, vertical = 13.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("对比重复组 ${group.number}", fontSize = UiTypography.sectionTitle, fontWeight = FontWeight.Bold, color = Ink)
-                        Text(
-                            "相同 URL · ${candidates.size} 个候选",
-                            fontSize = UiTypography.label,
-                            color = Muted,
-                        )
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text("重复组 ${group.number}", fontSize = UiTypography.emphasis, fontWeight = FontWeight.Bold, color = Ink)
+                        Text("选择保留的书源；其他候选将标记为待删除", fontSize = UiTypography.caption, color = Muted)
                     }
-                    TextButton(onClick = onDismiss) { Text("×", fontSize = UiTypography.pageTitle, color = Muted) }
-                }
-                HorizontalDivider(color = Line)
-                Column(
-                    Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(9.dp),
-                ) {
-                    FlowRow(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        candidates.forEach { source ->
-                            val recommended = source.id == group.suggestedKeepId
-                            val proposedKeep = keepAll || source.id == keepId
-                            val isPreferred = source.id == keepId && !keepAll
-                            Card(
-                                Modifier.weight(1f).widthIn(min = 230.dp).border(
-                                    1.dp,
-                                    if (isPreferred) SoftGreenBorder else Line,
-                                    RoundedCornerShape(8.dp),
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = when {
-                                        isPreferred -> SoftGreen
-                                        proposedKeep -> SoftGreen
-                                        else -> SoftAmber
-                                    },
-                                ),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                            ) {
-                                Column(
-                                    Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(7.dp),
-                                ) {
-                                    Row(
-                                        Modifier.fillMaxWidth()
-                                            .background(if (proposedKeep) SoftGreen else SoftAmber)
-                                            .padding(end = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        RadioButton(
-                                            selected = !keepAll && keepId == source.id,
-                                            onClick = { keepId = source.id },
-                                            enabled = !state.busy && !keepAll,
-                                        )
-                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                            Text(
-                                                source.doc.name.ifBlank { "（未命名）" },
-                                                fontSize = UiTypography.body,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = Ink,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                            Text(
-                                                when {
-                                                    !proposedKeep -> "将标记删除"
-                                                    keepAll -> "本组全部保留"
-                                                    recommended -> "系统推荐保留"
-                                                    else -> "当前选择保留"
-                                                },
-                                                fontSize = UiTypography.caption,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = if (proposedKeep) Ok else Bad,
-                                            )
-                                        }
-                                    }
-                                    HorizontalDivider(color = Line)
-                                    Column(
-                                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
-                                        verticalArrangement = Arrangement.spacedBy(7.dp),
-                                    ) {
-                                    DetailField("URL", source.doc.url)
-                                    DetailField("类型 / 分组", "${source.doc.type} / ${source.doc.group.ifBlank { "未分组" }}")
-                                    DetailField("启用状态", if (source.isDisabledForDisplay()) "已禁用" else "启用")
-                                    DetailField("配置权重", source.doc.raw.get("weight")?.takeIf { it.isJsonPrimitive }?.asString ?: "—")
-                                    DetailField("规则字段", "${source.doc.raw.size()} 个")
-                                    DetailField("系统评分", String.format(java.util.Locale.ROOT, "%.2f", Deduper.keepScore(source.doc)))
-                                    HorizontalDivider(color = Line)
-                                    Text(
-                                        "系统建议：${if (recommended) "保留" else "删除"}",
-                                        fontSize = UiTypography.caption,
-                                        color = if (recommended) Ok else Muted,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                    }
-                                }
-                            }
-                        }
+                    TextButton(onClick = onDismiss, contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)) {
+                        Text("×", fontSize = UiTypography.pageTitle, color = Muted)
                     }
                 }
                 HorizontalDivider(color = Line)
                 Row(
-                    Modifier.fillMaxWidth().background(SoftNeutral).padding(horizontal = 18.dp, vertical = 10.dp),
+                    Modifier.fillMaxWidth().background(SoftNeutral).padding(horizontal = 14.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("保留", Modifier.width(42.dp), fontSize = UiTypography.caption, color = Muted)
+                    Text("书源 / 当前选择", Modifier.weight(1.45f), fontSize = UiTypography.caption, color = Muted)
+                    Text("类型与分组", Modifier.weight(0.85f), fontSize = UiTypography.caption, color = Muted)
+                    Text("规则差异", Modifier.weight(1.25f), fontSize = UiTypography.caption, color = Muted)
+                    Text("判断", Modifier.width(88.dp), fontSize = UiTypography.caption, color = Muted)
+                }
+                Column(
+                    Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                ) {
+                    candidates.forEachIndexed { index, source ->
+                        val recommended = source.id == group.suggestedKeepId
+                        val selectedKeep = !keepAll && source.id == keepId
+                        val proposedKeep = keepAll || selectedKeep
+                        val differences = ruleDifferences
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .background(if (selectedKeep) SoftBlue else Color.White)
+                                .clickable(enabled = !state.busy && !keepAll) { keepId = source.id }
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(Modifier.width(42.dp), contentAlignment = Alignment.CenterStart) {
+                                RadioButton(
+                                    selected = selectedKeep,
+                                    onClick = { keepId = source.id },
+                                    enabled = !state.busy && !keepAll,
+                                    modifier = Modifier.size(28.dp),
+                                )
+                            }
+                            Column(Modifier.weight(1.45f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    source.doc.name.ifBlank { "（未命名）" },
+                                    fontSize = UiTypography.body,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Ink,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (recommended) SmallChip("系统建议", SoftBlue, PrimaryDeep)
+                                    if (selectedKeep) SmallChip("当前保留", SoftGreen, Ok)
+                                    if (!proposedKeep) SmallChip("待删除", SoftRed, Bad)
+                                }
+                            }
+                            Column(Modifier.weight(0.85f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(sourceTypeLabel(source.doc.type), fontSize = UiTypography.label, color = BodyText)
+                                Text(source.doc.group.ifBlank { "未分组" }, fontSize = UiTypography.caption, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Column(Modifier.weight(1.25f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                if (differences.isEmpty()) {
+                                    Text("规则配置一致", fontSize = UiTypography.label, color = Muted)
+                                } else {
+                                    Text(
+                                        differences.joinToString("、"),
+                                        fontSize = UiTypography.label,
+                                        color = PrimaryDeep,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text("与组内其他候选存在差异", fontSize = UiTypography.caption, color = Muted)
+                                }
+                            }
+                            Box(Modifier.width(88.dp), contentAlignment = Alignment.CenterStart) {
+                                Text(
+                                    when {
+                                        keepAll -> "全部保留"
+                                        selectedKeep -> "保留"
+                                        else -> "标记删除"
+                                    },
+                                    fontSize = UiTypography.label,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = when {
+                                        proposedKeep -> Ok
+                                        else -> Bad
+                                    },
+                                )
+                            }
+                        }
+                        if (index != candidates.lastIndex) HorizontalDivider(color = Line)
+                    }
+                }
+                HorizontalDivider(color = Line)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = keepAll, onCheckedChange = { keepAll = it }, enabled = !state.busy)
-                        Text("本组全部保留（认为它们并不重复）", fontSize = UiTypography.label, color = BodyText)
+                        Checkbox(
+                            checked = keepAll,
+                            onCheckedChange = { keepAll = it },
+                            enabled = !state.busy,
+                            modifier = Modifier.size(30.dp),
+                        )
+                        Text("本组全部保留", fontSize = UiTypography.label, color = BodyText)
                     }
-                    OutlinedButton(onClick = onDismiss) { Text("取消") }
-                    Spacer(Modifier.width(7.dp))
+                    TextButton(onClick = onDismiss) { Text("取消", color = Muted) }
+                    Spacer(Modifier.width(5.dp))
                     Button(
                         onClick = {
                             candidates.forEach { candidate ->
@@ -2458,8 +2455,9 @@ private fun CompareGroupDialog(
                             onDismiss()
                         },
                         enabled = !state.busy && candidates.isNotEmpty(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 5.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                    ) { Text("保存本组决定") }
+                    ) { Text("保存选择", fontSize = UiTypography.label) }
                 }
             }
         }
@@ -2543,7 +2541,7 @@ private fun sourceMatchesFilter(state: WorkflowState, source: WorkflowSource): B
         source.doc.name, source.doc.url, source.doc.group, source.doc.type.toString(),
         source.probe?.status?.label.orEmpty(), source.suggestion, source.probe?.detail.orEmpty(),
     ).any { it.lowercase().contains(query) }
-    val matchesFilter = isSourceIncludedInFilter(
+    val matchesFilter = state.stage == WorkflowStage.DEDUP_REVIEW || isSourceIncludedInFilter(
         filter = state.sourceFilter,
         hasDuplicateGroup = source.duplicateGroup != null,
         needsProbe = source.probe == null,
