@@ -62,6 +62,9 @@ class LegadoProbeEngine(
                 detail = verdict.detail,
                 entry = options.entry,
                 depth = options.depth,
+                keyword = options.keyword,
+                timeoutMs = options.timeoutMs,
+                maxExplorePages = options.maxExplorePages,
                 stageResults = listOf(
                     ProbeStageResult(
                         stage = stage,
@@ -154,6 +157,9 @@ class LegadoProbeEngine(
                 stageResults = stageResults.toList(),
                 entry = options.entry,
                 depth = options.depth,
+                keyword = options.keyword,
+                timeoutMs = options.timeoutMs,
+                maxExplorePages = options.maxExplorePages,
             )
 
         return try {
