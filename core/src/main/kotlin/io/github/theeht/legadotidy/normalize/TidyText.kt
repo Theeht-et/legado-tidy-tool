@@ -87,6 +87,7 @@ object TidyText {
         return s.trim()
     }
 
+    /** 清理已知宣传词、作者/编号井号尾缀和少量明确噪声，不删除普通英文站名。 */
     fun removeAdvertisingWords(raw: String): String {
         // Trim edges before matching prefixes/suffixes; preserve internal spacing until all markers are removed.
         var s = ZERO_WIDTH.replace(raw, "").trim()
@@ -109,25 +110,6 @@ object TidyText {
         s = EDGE_NAME_PUNCTUATION.replace(s, "")
         return s.trim(' ', '-', '_', '+', '＋', '|', '｜', '·', '・', '—', '–', ':', '：')
     }
-    /** 清理已知宣传词、作者/编号井号尾缀和少量明确噪声，不删除普通英文站名。 */
-    fun removeAdvertisingWords(raw: String): String {
-        // Trim the edges before matching Chinese prefixes/suffixes; internal spacing is preserved.
-        var s = ZERO_WIDTH.replace(raw, "").trim()
-        // A bracketed advertising annotation is removed as one unit, including both brackets.
-        while (true) {
-            val previous = s
-            s = AD_BRACKETED.replace(s, " ")
-            s = AD_STANDALONE.replace(s, " ")
-            s = AD_PREFIX.replace(s, "")
-            s = AD_SUFFIX.replace(s, "")
-            if (s == previous) break
-        }
-        s = EMPTY_BRACKETS.replace(s, " ")
-        s = WHITESPACE.replace(s, " ")
-        s = EDGE_NAME_PUNCTUATION.replace(s, "")
-        return s.trim(' ', '-', '_', '|', '｜', '·', '・', '—', '–', ':', '：')
-    }
-
     /** 按 v3 HTML 原型规范重复标点与空格，不改 URL 或书源规则。 */
     fun normalizeNamePunctuation(raw: String): String {
         var s = ZERO_WIDTH.replace(raw, "")
