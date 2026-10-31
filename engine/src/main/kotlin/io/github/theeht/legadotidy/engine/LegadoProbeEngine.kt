@@ -60,6 +60,8 @@ class LegadoProbeEngine(
                 status = verdict.status,
                 elapsedMs = System.currentTimeMillis() - started,
                 detail = verdict.detail,
+                entry = options.entry,
+                depth = options.depth,
                 stageResults = listOf(
                     ProbeStageResult(
                         stage = stage,
@@ -150,6 +152,8 @@ class LegadoProbeEngine(
                 elapsedMs = System.currentTimeMillis() - started,
                 detail = detail,
                 stageResults = stageResults.toList(),
+                entry = options.entry,
+                depth = options.depth,
             )
 
         return try {
