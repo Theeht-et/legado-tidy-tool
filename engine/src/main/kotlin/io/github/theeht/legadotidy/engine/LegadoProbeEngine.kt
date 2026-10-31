@@ -340,20 +340,20 @@ class LegadoProbeEngine(
             .joinToString("\n") { it }
 
         val webViewOption = Regex(
-            """(?i)["']?webView["']?\\s*:\\s*(?:true|1|"true"|'true')""",
+            """(?i)["']?webView["']?\s*:\s*(?:true|1|"true"|'true')""",
         ).containsMatchIn(activeRules)
         val javaWebViewCall = Regex(
-            """(?i)\\bjava\\s*\\.\\s*webView\\s*\\(""",
+            """(?i)\bjava\s*\.\s*webView\s*\(""",
         ).containsMatchIn(activeRules)
         val webViewGetSourceCall = Regex(
-            """(?i)\\bwebViewGetSource\\s*\\(""",
+            """(?i)\bwebViewGetSource\s*\(""",
         ).containsMatchIn(activeRules)
         if (webViewOption || javaWebViewCall || webViewGetSourceCall) {
             return StaticVerdict(ProbeStatus.UNSUPPORTED, "规则明确要求 WebView，当前无浏览器环境")
         }
 
         fun calls(name: String): Boolean =
-            Regex("""(?i)\\b${Regex.escape(name)}\\s*\\(""").containsMatchIn(activeRules)
+            Regex("""(?i)\b${Regex.escape(name)}\s*\(""").containsMatchIn(activeRules)
 
         if (calls("getVerificationCode")) {
             return StaticVerdict(ProbeStatus.UNSUPPORTED, "getVerificationCode 需要人工完成验证码")
