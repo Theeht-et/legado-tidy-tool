@@ -1961,7 +1961,7 @@ private fun DetailField(label: String, value: String) {
 }
 
 @Composable
-private fun BottomActions(
+private fun WorkflowNavigationBar(
     state: WorkflowState,
     onShowImportInfo: () -> Unit,
     onStartDedup: () -> Unit,
