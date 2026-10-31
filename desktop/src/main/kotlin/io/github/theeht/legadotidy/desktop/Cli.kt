@@ -41,7 +41,7 @@ fun runCli(args: Array<String>): Int {
         return 2
     }
 
-    val docs = runCatching { SourceIO.parse(input.readText()).map { BookSourceDoc(it) } }.getOrElse {
+    val docs = runCatching { SourceIO.load(input.toPath()).map { BookSourceDoc(it) } }.getOrElse {
         System.err.println("解析失败：${it.message ?: it::class.java.simpleName}")
         return 2
     }
