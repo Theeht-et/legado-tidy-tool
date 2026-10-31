@@ -174,8 +174,10 @@ fun BookSource.flushExploreInfoMapIfNeeded() {
 }
 
 suspend fun BookSourcePart.clearExploreKindsCache() {
-    val source = getBookSource() ?: return
-    source.clearExploreKindsCache()
+    withContext(Dispatchers.IO) {
+        val source = getBookSource() ?: return@withContext
+        source.clearExploreKindsCache()
+    }
 }
 
 suspend fun BookSource.clearExploreKindsCache() {
