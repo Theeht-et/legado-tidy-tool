@@ -69,8 +69,7 @@ object Organizer {
                 TidyText.display(doc.name, config.maxNameLength)
             } else {
                 var name = doc.name
-                // Remove standalone symbols first; cleanDecorations preserves paired brackets for text matching.
-                // Inspect symbol-delimited English marker tokens before their emoji boundaries are removed.
+                // Inspect symbol-delimited English marker tokens before emoji boundaries are removed.
                 if (
                     OrganizeRule.CLEAN_DECORATIONS in rules &&
                     OrganizeRule.REMOVE_ADVERTISING_WORDS in rules
