@@ -177,6 +177,35 @@ class MockSiteProbeTest {
     }
 
     @Test
+    fun `正文解析失败时保留前序成功阶段并返回部分通过`() = runBlocking {
+        val brokenJson = sourceJson().replace(
+            "\"class.content@text\"",
+            "\"class.missing-content@text\"",
+        )
+        val brokenDoc = BookSourceDoc(SourceIO.parse(brokenJson).single())
+
+        val result = LegadoProbeEngine().probe(0, brokenDoc, options(ProbeDepth.FULL_CHAIN))
+
+        assertEquals(ProbeStatus.PARTIAL, result.status, "详情：${result.detail}")
+        assertEquals(
+            listOf(
+                io.github.theeht.legadotidy.probe.ProbeStage.SEARCH,
+                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
+                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
+                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
+            ),
+            result.stageResults.map { it.stage },
+        )
+        assertTrue(result.stageResults.take(3).all {
+            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
+        assertEquals(
+            io.github.theeht.legadotidy.probe.ProbeStageStatus.FAILED,
+            result.stageResults.last().status,
+        )
+    }
+
+    @Test
     fun `没有 searchUrl 的源不浪费网络请求`() = runBlocking {
         val json = """
             {
