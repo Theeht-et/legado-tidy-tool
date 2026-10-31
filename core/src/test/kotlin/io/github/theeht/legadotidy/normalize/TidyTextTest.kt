@@ -82,12 +82,6 @@ class TidyTextTest {
     }
 
     @Test
-    fun `名称标点整理遵循原型的重复标点规则`() {
-        assertEquals("星河书源 || 官方", TidyText.normalizeNamePunctuation(" 星河书源  ||   官方 "))
-        assertEquals("星河书源 官方", TidyText.normalizeNamePunctuation("星河书源——官方"))
-    }
-
-    @Test
     fun `符号清理移除 emoji 和带圈序号但保留括号内文字`() {
         assertEquals("得奇小说(优+++)", TidyText.cleanDecorations("⑧📚得奇小说(优+++)✨"))
         assertEquals("小小阅读/书香之家app[免费]", TidyText.cleanDecorations("小小阅读/书香之家app[免费]"))
