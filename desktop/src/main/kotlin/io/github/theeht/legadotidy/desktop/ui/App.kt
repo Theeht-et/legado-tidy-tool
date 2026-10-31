@@ -307,7 +307,7 @@ fun TidyApp() {
         val name = dialog.file ?: return
         val selectedFile = File(dir, name)
         try {
-            val docs = SourceIO.parse(selectedFile.readText())
+            val docs = SourceIO.load(selectedFile.toPath())
             if (docs.isEmpty()) {
                 state.error = "文件中没有可导入的书源对象。"
                 return
@@ -1449,6 +1449,7 @@ private fun SourceRowItem(
         source.suggestion.isNotBlank() -> source.suggestion
         else -> "待审核"
     }
+    val probeStyle = probeStatusStyle(source.probe?.status)
     Row(
         Modifier.fillMaxWidth().background(if (selected) SelectedSurface else Color.White)
             .clickable { state.selectedId = source.id }.padding(horizontal = 9.dp, vertical = 4.dp),
@@ -1475,7 +1476,7 @@ private fun SourceRowItem(
         SmallChip(sourceTypeLabel(source.doc.type), SoftSlate, Muted, Modifier.weight(0.65f))
         Text(group.ifBlank { "—" }, Modifier.weight(0.9f), fontSize = UiTypography.label, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(elapsed, Modifier.weight(0.6f), fontSize = UiTypography.caption, color = Muted, maxLines = 1)
-        SmallChip(status, statusBackground(source.probe?.status), statusColor(source.probe?.status), Modifier.weight(0.95f))
+        SmallChip(status, probeStyle.background, probeStyle.foreground, Modifier.weight(0.95f))
         SmallChip(
             advice,
             if (source.deleteMarked) SoftRed else if (source.probe?.status == ProbeStatus.OK) SoftGreen else SoftSlate,
@@ -1746,6 +1747,7 @@ private fun DetailPanel(
         } else {
             val preview = state.preview?.get(source.id)
                 .takeIf { state.stage == WorkflowStage.ORGANIZE_REVIEW || state.stage == WorkflowStage.EXPORT }
+            val probeStyle = probeStatusStyle(source.probe?.status)
             val detailSections = remember(source.id, source.doc.raw, preview) { sourceDetailSections(source.doc) }
             var selectedDetailTab by remember(source.id) { mutableStateOf(SourceDetailTab.OVERVIEW) }
             val selectedDetailSections = sourceDetailSectionsForTab(detailSections, selectedDetailTab)
@@ -1768,7 +1770,7 @@ private fun DetailPanel(
                         Text(source.doc.url.ifBlank { "未配置书源地址" }, fontSize = UiTypography.label, color = BodyText)
                     }
                     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        SmallChip(source.probe?.status?.label ?: "待校验", statusBackground(source.probe?.status), statusColor(source.probe?.status))
+                        SmallChip(source.probe?.status?.label ?: "待校验", probeStyle.background, probeStyle.foreground)
                         TextButton(onClick = onDismiss) { Text("关闭", fontSize = UiTypography.body) }
                     }
                 }
@@ -2267,7 +2269,7 @@ private fun ReportDialog(state: WorkflowState, onDismiss: () -> Unit) {
                 if (counts.isEmpty()) Text("尚无校验结果", color = Muted, fontSize = UiTypography.body)
                 counts.forEach { (status, count) ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(status.label, Modifier.weight(1f), fontSize = UiTypography.body, color = statusColor(status))
+                        Text(status.label, Modifier.weight(1f), fontSize = UiTypography.body, color = probeStatusStyle(status).foreground)
                         Text(count.toString(), fontSize = UiTypography.body, fontWeight = FontWeight.SemiBold)
                     }
                 }
@@ -2521,17 +2523,16 @@ private fun EditSourceDialog(
 
 private val sourceFilterLabels = listOf("全部", "重复候选", "待校验", "校验通过", "异常 / 复核", "待删除")
 
-private fun sourceFilterCount(state: WorkflowState, filter: String): Int = when (filter) {
-    "全部" -> state.sources.size
-    "重复候选" -> state.sources.count { it.duplicateGroup != null }
-    "待校验" -> state.sources.count { it.probe == null }
-    "校验通过" -> state.sources.count { it.probe?.status == ProbeStatus.OK }
-    "异常 / 复核" -> state.sources.count {
-        shouldShowInExceptionReview(it.probe?.status, it.deleteMarked)
+private fun sourceFilterCount(state: WorkflowState, filter: String): Int =
+    state.sources.count { source ->
+        isSourceIncludedInFilter(
+            filter = filter,
+            hasDuplicateGroup = source.duplicateGroup != null,
+            needsProbe = source.probe == null,
+            probeStatus = source.probe?.status,
+            deleteMarked = source.deleteMarked,
+        )
     }
-    "待删除" -> state.sources.count { it.deleteMarked }
-    else -> state.sources.size
-}
 
 private fun sourceMatchesFilter(state: WorkflowState, source: WorkflowSource): Boolean {
     val query = state.filterQuery.trim().lowercase()
@@ -2539,15 +2540,13 @@ private fun sourceMatchesFilter(state: WorkflowState, source: WorkflowSource): B
         source.doc.name, source.doc.url, source.doc.group, source.doc.type.toString(),
         source.probe?.status?.label.orEmpty(), source.suggestion, source.probe?.detail.orEmpty(),
     ).any { it.lowercase().contains(query) }
-    val matchesFilter = when (state.sourceFilter) {
-        "全部" -> true
-        "重复候选" -> source.duplicateGroup != null
-        "待校验" -> source.probe == null
-        "校验通过" -> source.probe?.status == ProbeStatus.OK
-        "异常 / 复核" -> shouldShowInExceptionReview(source.probe?.status, source.deleteMarked)
-        "待删除" -> source.deleteMarked
-        else -> true
-    }
+    val matchesFilter = isSourceIncludedInFilter(
+        filter = state.sourceFilter,
+        hasDuplicateGroup = source.duplicateGroup != null,
+        needsProbe = source.probe == null,
+        probeStatus = source.probe?.status,
+        deleteMarked = source.deleteMarked,
+    )
     return matchesQuery && matchesFilter
 }
 
@@ -2572,11 +2571,14 @@ private fun SmallChip(
     }
 }
 
-private fun statusBackground(status: ProbeStatus?): Color = when (status) {
-    ProbeStatus.OK -> SoftGreen
-    ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> SoftAmber
-    ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS, ProbeStatus.ERROR -> SoftRed
-    else -> SoftSlate
+private data class ProbeStatusStyle(val background: Color, val foreground: Color)
+
+private fun probeStatusStyle(status: ProbeStatus?): ProbeStatusStyle = when (status) {
+    ProbeStatus.OK -> ProbeStatusStyle(SoftGreen, Ok)
+    ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> ProbeStatusStyle(SoftAmber, Warn)
+    ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS, ProbeStatus.ERROR ->
+        ProbeStatusStyle(SoftRed, Bad)
+    else -> ProbeStatusStyle(SoftSlate, Muted)
 }
 
 private fun WorkflowSource.isDisabledForDisplay(): Boolean {
@@ -2666,13 +2668,6 @@ private fun editedDocument(
     if (type != doc.type) raw.addProperty(SourceField.TYPE, type)
     if (enabled != isDocumentEnabled(doc)) setDocumentEnabled(raw, enabled)
     return BookSourceDoc(raw)
-}
-
-private fun statusColor(status: ProbeStatus?): Color = when (status) {
-    ProbeStatus.OK -> Ok
-    ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> Warn
-    ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS, ProbeStatus.ERROR -> Bad
-    else -> Muted
 }
 
 private fun defaultExportDir(): String {
