@@ -427,7 +427,7 @@ class MockSiteProbeTest {
         assertEquals(ProbeStatus.PARTIAL, result.status)
         assertEquals(2, result.bookCount)
         assertEquals(listOf(1), explorePagesRequested.toList())
-        assertTrue(result.detail.orEmpty().contains("页上限"))
+        assertTrue(result.detail.orEmpty().contains("页数上限"))
     }
 
     @Test
