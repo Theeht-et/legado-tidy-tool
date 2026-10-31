@@ -116,20 +116,20 @@ def apply_project_overlays(rel: str, body: bytes) -> bytes:
         return body
 
     upstream = (
-        "fun getProxyClient(proxy: String? = null): OkHttpClient {\\n"
-        "    if (proxy.isNullOrBlank()) {\\n"
-        "        return okHttpClient\\n"
-        "    }\\n"
+        "fun getProxyClient(proxy: String? = null): OkHttpClient {\n"
+        "    if (proxy.isNullOrBlank()) {\n"
+        "        return okHttpClient\n"
+        "    }\n"
         "    val proxyConfig = parseProxyConfig(proxy)"
     )
     replacement = (
-        "fun getProxyClient(proxy: String? = null): OkHttpClient {\\n"
-        "    // A source-level header.proxy wins; otherwise use the current validation's context.\\n"
-        "    val effectiveProxy = proxy?.takeIf { it.isNotBlank() }\\n"
-        "        ?: ProbeProxyContext.currentProxy()\\n"
-        "    if (effectiveProxy.isNullOrBlank()) {\\n"
-        "        return okHttpClient\\n"
-        "    }\\n"
+        "fun getProxyClient(proxy: String? = null): OkHttpClient {\n"
+        "    // A source-level header.proxy wins; otherwise use the current validation's context.\n"
+        "    val effectiveProxy = proxy?.takeIf { it.isNotBlank() }\n"
+        "        ?: ProbeProxyContext.currentProxy()\n"
+        "    if (effectiveProxy.isNullOrBlank()) {\n"
+        "        return okHttpClient\n"
+        "    }\n"
         "    val proxyConfig = parseProxyConfig(effectiveProxy)"
     )
     if text.count(upstream) != 1:
