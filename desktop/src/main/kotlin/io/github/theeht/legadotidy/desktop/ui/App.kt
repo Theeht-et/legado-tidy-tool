@@ -373,10 +373,16 @@ fun TidyApp() {
                 state.sources.addAll(snapshot.map { source ->
                     val group = groupById[source.id]
                     val keep = group?.suggestedKeepId == source.id
+                    val hasUserDecision = source.suggestion == "用户标记删除" ||
+                        source.suggestion == "用户决定保留"
                     source.copy(
                         duplicateGroup = group?.number,
-                        deleteMarked = if (group == null) source.deleteMarked else !keep,
+                        deleteMarked = when {
+                            group == null || hasUserDecision -> source.deleteMarked
+                            else -> !keep
+                        },
                         suggestion = when {
+                            hasUserDecision -> source.suggestion
                             group == null && source.deleteMarked -> source.suggestion
                             group == null -> "未发现重复"
                             keep -> "建议保留"
