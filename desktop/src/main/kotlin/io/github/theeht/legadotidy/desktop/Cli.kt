@@ -185,7 +185,7 @@ private fun printUsage() {
           --proxy <地址>       代理，如 http://127.0.0.1:7890
           --skip-probe         跳过 S2 校验（只做去重与整理，秒级完成）
           --with-toc           搜索后按上游顺序校验书籍详情与目录
-          --full-chain         在 --with-toc 基础上继续校验第一条有效章节正文（最慢）
+          --full-chain         搜索后完整校验详情、目录与第一条有效章节正文（最慢）
           --verbose, -v        逐条列出每个书源的校验结果与失败原因
         """.trimIndent()
     )
