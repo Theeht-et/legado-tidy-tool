@@ -11,7 +11,6 @@ import java.util.Locale
 enum class OrganizeRule(val label: String) {
     CLEAN_DECORATIONS("清理各类emoji/符号"),
     REMOVE_ADVERTISING_WORDS("清理多余文字"),
-    NORMALIZE_PUNCTUATION("规范标点与空格"),
     KEEP_ORIGINAL_GROUPS("保留原有分组"),
     DROP_ORIGINAL_GROUPS("不保留原有分组"),
     NO_SMART_GROUPING("不启用智能分组"),
@@ -54,7 +53,6 @@ data class OrganizedSource(
     val status: ProbeStatus,
     /** 分类内排名（从 0 开始），写回 customOrder 时 +1。 */
     val rank: Int,
-    val quality: QualityAssessment? = null,
 )
 
 data class Pool(val name: String, val members: List<Int>)
@@ -90,7 +88,6 @@ object Organizer {
                 ) name = TidyText.removeAdvertisingWords(name)
                 if (OrganizeRule.CLEAN_DECORATIONS in rules) name = TidyText.cleanDecorations(name)
                 if (OrganizeRule.REMOVE_ADVERTISING_WORDS in rules) name = TidyText.removeAdvertisingWords(name)
-                if (OrganizeRule.NORMALIZE_PUNCTUATION in rules) name = TidyText.normalizeNamePunctuation(name)
                 name
             }
         }
@@ -131,7 +128,7 @@ object Organizer {
             val orderedIndexes = sources.indices.sortedWith(byElapsed)
             val organized = orderedIndexes.map { index ->
                 OrganizedSource(index, nameOf[index], groupOf[index], statusOf.getValue(index),
-                    rankByIndex.getValue(index), qualityOf[index])
+                    rankByIndex.getValue(index))
             }
             return OrganizeReport(organized, pools)
         }
@@ -150,7 +147,7 @@ object Organizer {
             }
             members.forEachIndexed { rank, index ->
                 organized.add(OrganizedSource(index, nameOf[index], group, statusOf.getValue(index),
-                    rank, qualityOf[index]))
+                    rank))
             }
             pools.add(Pool(group, members.toList()))
         }
