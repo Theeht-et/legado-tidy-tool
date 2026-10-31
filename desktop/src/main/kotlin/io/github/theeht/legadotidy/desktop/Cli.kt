@@ -22,7 +22,7 @@ import java.nio.file.Path
  *
  * ```
  * legado-tidy --in sources.json [--out 输出目录] [--keyword 剑来]
- *             [--limit N] [--concurrency 100] [--skip-probe] [--with-toc] [--timeout 20] [--verbose]
+ *             [--limit N] [--concurrency 100] [--skip-probe] [--with-toc|--full-chain] [--timeout 20] [--verbose]
  * ```
  */
 fun runCli(args: Array<String>): Int {
@@ -57,7 +57,11 @@ fun runCli(args: Array<String>): Int {
         concurrency = opts.concurrency,
         skipProbe = opts.skipProbe,
         probe = ProbeOptions(
-            depth = if (opts.withToc) ProbeDepth.WITH_TOC else ProbeDepth.SEARCH,
+            depth = when {
+                opts.fullChain -> ProbeDepth.FULL_CHAIN
+                opts.withToc -> ProbeDepth.WITH_TOC
+                else -> ProbeDepth.SEARCH
+            },
             timeoutMs = opts.timeoutSeconds * 1000L,
             keyword = opts.keyword,
             proxy = opts.proxy,
@@ -114,6 +118,7 @@ class Options(
     val withToc: Boolean,
     val proxy: String?,
     val verbose: Boolean = false,
+    val fullChain: Boolean = false,
 )
 
 private fun parseArgs(args: Array<String>): Options? {
@@ -125,6 +130,7 @@ private fun parseArgs(args: Array<String>): Options? {
     var concurrency = 100
     var skipProbe = false
     var withToc = false
+    var fullChain = false
     var proxy: String? = null
     var verbose = false
 
@@ -140,6 +146,7 @@ private fun parseArgs(args: Array<String>): Options? {
             "--proxy" -> proxy = args.getOrNull(++i)?.takeIf { it.isNotBlank() }
             "--skip-probe" -> skipProbe = true
             "--with-toc" -> withToc = true
+            "--full-chain" -> fullChain = true
             "--verbose", "-v" -> verbose = true
             "--help", "-h" -> return null
             else -> {
@@ -156,7 +163,10 @@ private fun parseArgs(args: Array<String>): Options? {
         i++
     }
     if (input.isNullOrBlank()) return null
-    return Options(input, out, keyword, timeout, limit, concurrency.coerceIn(1, 2000), skipProbe, withToc, proxy, verbose)
+    return Options(
+        input, out, keyword, timeout, limit, concurrency.coerceIn(1, 2000),
+        skipProbe, withToc, proxy, verbose, fullChain,
+    )
 }
 
 private fun printUsage() {
@@ -174,7 +184,8 @@ private fun printUsage() {
           --concurrency <N>    并发书源数，默认 100（上限 2000）
           --proxy <地址>       代理，如 http://127.0.0.1:7890
           --skip-probe         跳过 S2 校验（只做去重与整理，秒级完成）
-          --with-toc           校验时连目录一起验（更准，但慢 2~3 倍）
+          --with-toc           搜索后按上游顺序校验书籍详情与目录
+          --full-chain         在 --with-toc 基础上继续校验第一条有效章节正文（最慢）
           --verbose, -v        逐条列出每个书源的校验结果与失败原因
         """.trimIndent()
     )
