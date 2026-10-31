@@ -91,10 +91,10 @@ object Deduper {
             .map { members ->
                 val keep = members.minWithOrNull(
                     compareBy<Int> { probeQuality(probeResults[it]) }
-                        .thenBy { successfulProbeElapsedMs(probeResults[it]) }
                         .thenByDescending { coreCapabilityCount(sources[it]) }
                         .thenByDescending { auxiliaryCapabilityCount(sources[it]) }
                         .thenByDescending { sources[it].ruleCompleteness }
+                        .thenBy { successfulProbeElapsedMs(probeResults[it]) }
                         .thenByDescending { qualityTopLevelFieldCount(sources[it]) }
                         .thenBy { it },
                 ) ?: members.first()
