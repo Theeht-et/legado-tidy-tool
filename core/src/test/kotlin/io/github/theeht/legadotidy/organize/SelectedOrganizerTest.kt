@@ -214,6 +214,9 @@ class SelectedOrganizerTest {
         )
         assertEquals(listOf("优质", "合格"), report.sources.map { it.group })
         assertTrue(report.sources.all { it.quality != null })
+        val skipped = Organizer.assessQuality(sources[1], ProbeResult(1, ProbeStatus.SKIPPED))
+        val notMeasured = Organizer.assessQuality(sources[1], null)
+        assertEquals(notMeasured, skipped)
     }
 
     private fun doc(json: String): BookSourceDoc =
