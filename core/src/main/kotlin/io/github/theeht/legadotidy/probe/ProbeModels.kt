@@ -13,6 +13,7 @@ enum class ProbeStatus(val label: String, val severity: Int) {
     PARTIAL("部分通过，建议复核", 1),
     SKIPPED("本次未校验", 2),
     NO_SEARCH_URL("没有搜索入口，无法校验", 3),
+    NO_EXPLORE_CATEGORY("没有可用发现分类，无法校验", 3),
     UNSUPPORTED("不支持自动校验", 4),
     PARSE_EMPTY("页面能打开但解析不出东西", 5),
     NEED_JS("用了本工具不支持的 JS 能力", 6),
@@ -25,6 +26,8 @@ enum class ProbeStatus(val label: String, val severity: Int) {
 /** 单次校验中实际执行的上游阶段。 */
 enum class ProbeStage(val label: String) {
     SEARCH("搜索"),
+    EXPLORE_CATEGORIES("发现分类解析"),
+    EXPLORE("发现分页"),
     BOOK_INFO("书籍详情"),
     TOC("目录"),
     CONTENT("正文"),
@@ -48,7 +51,10 @@ data class ProbeStageResult(
     val httpCode: Int? = null,
 )
 
-/** 校验深度：SEARCH 仅搜索；WITH_TOC 按上游顺序继续详情与目录；FULL_CHAIN 再验证正文。 */
+/** 校验入口：搜索或发现。两个入口随后复用相同的详情、目录和正文校验链。 */
+enum class ProbeEntry { SEARCH, EXPLORE }
+
+/** 校验深度：SEARCH 仅执行入口；WITH_TOC 继续详情与目录；FULL_CHAIN 再验证正文。 */
 enum class ProbeDepth { SEARCH, WITH_TOC, FULL_CHAIN }
 
 data class ProbeOptions(
@@ -56,6 +62,9 @@ data class ProbeOptions(
     val timeoutMs: Long = 20_000,
     val keyword: String = "剑来",
     val proxy: String? = null,
+    val entry: ProbeEntry = ProbeEntry.SEARCH,
+    /** 连续发现页上限；命中上游“本页无新增书籍即停止”规则时会提前结束。 */
+    val maxExplorePages: Int = 3,
 )
 
 data class ProbeResult(
