@@ -129,8 +129,8 @@ private val SoftAmber = Color(0xFFFFF3DC)
 private val SoftRed = Color(0xFFFFEEEE)
 private val SoftNeutral = Color(0xFFF5F7FA)
 private val SoftSlate = Color(0xFFEDF1F6)
-private val UnconfiguredSurface = Color(0xFFE3E9F1)
-private val UnconfiguredBorder = Color(0xFFB8C5D4)
+private val UnconfiguredSurface = Color(0xFFDEE6F0)
+private val UnconfiguredBorder = Color(0xFFB2C0D0)
 private val UnconfiguredText = Color(0xFF43536A)
 private object UiTypography {
     val compact = 11.sp
@@ -521,7 +521,7 @@ fun TidyApp() {
         if (state.busy || state.sources.isEmpty()) return
         state.busy = true
         state.error = null
-        state.notice = "正在按已勾选的规则生成预览。"
+        state.notice = "正在按已勾选的规则生成整理方案。"
         val snapshot = state.sources.toList()
         val rules = state.selectedRules.toSet()
         val resultMap = snapshot.mapIndexedNotNull { index, source ->
@@ -563,9 +563,9 @@ fun TidyApp() {
                 state.previewOrder = orderedIds
                 state.notice = "整理方案已生成。请在书源列表中对照原名称与新名称，并检查分组和顺序，再确认应用。"
             } catch (e: CancellationException) {
-                state.error = "整理预览已取消。"
+                state.error = "整理方案生成已取消。"
             } catch (e: Throwable) {
-                state.error = "整理预览失败：${e.message ?: e::class.java.simpleName}"
+                state.error = "整理方案生成失败：${e.message ?: e::class.java.simpleName}"
             } finally {
                 state.busy = false
                 activeJob = null
@@ -575,7 +575,7 @@ fun TidyApp() {
 
     fun confirmOrganize() {
         val preview = state.preview ?: run {
-            state.error = "请先生成整理预览。"
+            state.error = "请先生成整理方案。"
             return
         }
         val rules = state.selectedRules
@@ -796,7 +796,7 @@ fun TidyApp() {
                                 if (state.preview != null) {
                                     state.preview = null
                                     state.previewOrder = emptyList()
-                                    state.notice = "整理规则已变化，请重新生成预览。"
+                                    state.notice = "整理规则已变化，请重新生成整理方案。"
                                 }
                             },
                             modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -2462,7 +2462,7 @@ private fun EditSourceDialog(
         titleContentColor = Ink,
         textContentColor = BodyText,
         tonalElevation = 8.dp,
-        title = { Text(if (previewMode) "编辑整理预览" else "编辑书源") },
+        title = { Text(if (previewMode) "编辑整理方案" else "编辑书源") },
         text = {
             Column(
                 Modifier.widthIn(max = 500.dp).heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
@@ -2480,7 +2480,7 @@ private fun EditSourceDialog(
                 }
                 OutlinedTextField(value = group, onValueChange = { group = it }, label = { Text("分组") }, modifier = Modifier.fillMaxWidth())
                 if (previewMode) {
-                    Text("这里只编辑预览值；点击「确认整理并进入导出」后才会应用。", fontSize = UiTypography.label, color = Muted)
+                    Text("这里只编辑整理方案中的值；点击「确认整理并进入导出」后才会应用。", fontSize = UiTypography.label, color = Muted)
                 } else {
                     Text("只修改已填写的字段，其余未知 JSON 字段会原样保留。", fontSize = UiTypography.label, color = Muted)
                 }
