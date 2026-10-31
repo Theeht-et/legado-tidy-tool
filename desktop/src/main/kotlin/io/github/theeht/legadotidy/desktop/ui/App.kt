@@ -85,6 +85,7 @@ import io.github.theeht.legadotidy.organize.OrganizeConfig
 import io.github.theeht.legadotidy.organize.OrganizeRule
 import io.github.theeht.legadotidy.organize.Organizer
 import io.github.theeht.legadotidy.organize.OrganizedSource
+import io.github.theeht.legadotidy.organize.QualityAssessment
 import io.github.theeht.legadotidy.probe.ProbeDepth
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeResult
@@ -241,6 +242,7 @@ private data class PreviewSource(
     val group: String,
     val status: ProbeStatus,
     val rank: Int,
+    val quality: QualityAssessment? = null,
     val nameEdited: Boolean = false,
     val groupEdited: Boolean = false,
 )
@@ -556,6 +558,7 @@ fun TidyApp() {
                             group = organized.group,
                             status = organized.status,
                             rank = organized.rank,
+                            quality = organized.quality,
                         )
                     }
                 }
@@ -788,9 +791,22 @@ fun TidyApp() {
                             onCompare = { comparingGroup = it },
                             onRuleChange = { rule, checked ->
                                 val next = if (checked) state.selectedRules + rule else state.selectedRules - rule
+                                val groupRules = setOf(
+                                    OrganizeRule.KEEP_ORIGINAL_GROUPS,
+                                    OrganizeRule.DROP_ORIGINAL_GROUPS,
+                                    OrganizeRule.NO_SMART_GROUPING,
+                                    OrganizeRule.REGROUP_BY_TYPE,
+                                    OrganizeRule.REGROUP_BY_QUALITY,
+                                )
                                 state.selectedRules = when (rule) {
-                                    OrganizeRule.KEEP_ORIGINAL_GROUPS -> if (checked) next - OrganizeRule.REGROUP_BY_TYPE else next
-                                    OrganizeRule.REGROUP_BY_TYPE -> if (checked) next - OrganizeRule.KEEP_ORIGINAL_GROUPS else next
+                                    OrganizeRule.KEEP_ORIGINAL_GROUPS ->
+                                        (next - groupRules) + OrganizeRule.KEEP_ORIGINAL_GROUPS
+                                    OrganizeRule.DROP_ORIGINAL_GROUPS ->
+                                        (next - groupRules) + OrganizeRule.DROP_ORIGINAL_GROUPS + OrganizeRule.NO_SMART_GROUPING
+                                    OrganizeRule.NO_SMART_GROUPING,
+                                    OrganizeRule.REGROUP_BY_TYPE,
+                                    OrganizeRule.REGROUP_BY_QUALITY ->
+                                        (next - groupRules) + OrganizeRule.DROP_ORIGINAL_GROUPS + rule
                                     else -> next
                                 }
                                 if (state.preview != null) {
@@ -1043,9 +1059,15 @@ private fun OrganizeRulePanel(
                 )
                 GroupRuleBlock(
                     keepOriginal = OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules,
+                    dropOriginal = OrganizeRule.DROP_ORIGINAL_GROUPS in state.selectedRules,
+                    noSmartGrouping = OrganizeRule.NO_SMART_GROUPING in state.selectedRules,
                     regroupByType = OrganizeRule.REGROUP_BY_TYPE in state.selectedRules,
+                    regroupByQuality = OrganizeRule.REGROUP_BY_QUALITY in state.selectedRules,
                     onKeepOriginal = { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
+                    onDropOriginal = { onRuleChange(OrganizeRule.DROP_ORIGINAL_GROUPS, true) },
+                    onNoSmartGrouping = { onRuleChange(OrganizeRule.NO_SMART_GROUPING, true) },
                     onRegroupByType = { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
+                    onRegroupByQuality = { onRuleChange(OrganizeRule.REGROUP_BY_QUALITY, true) },
                 )
                 RuleCheckbox(
                     OrganizeRule.SORT_BY_RESPONSE_TIME,
@@ -1119,21 +1141,36 @@ private fun RuleCheckbox(
 @Composable
 private fun GroupRuleBlock(
     keepOriginal: Boolean,
+    dropOriginal: Boolean,
+    noSmartGrouping: Boolean,
     regroupByType: Boolean,
+    regroupByQuality: Boolean,
     onKeepOriginal: () -> Unit,
+    onDropOriginal: () -> Unit,
+    onNoSmartGrouping: () -> Unit,
     onRegroupByType: () -> Unit,
+    onRegroupByQuality: () -> Unit,
 ) {
-    Row(
+    Column(
         Modifier.clip(RoundedCornerShape(7.dp))
             .border(1.dp, Line, RoundedCornerShape(7.dp))
             .background(Color.White)
-            .padding(horizontal = 7.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text("分组", fontSize = UiTypography.compact, color = Muted)
-        RuleRadio("保留原组", keepOriginal, onKeepOriginal)
-        RuleRadio("智能归类", regroupByType, onRegroupByType)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text("分组", fontSize = UiTypography.compact, color = Muted)
+            RuleRadio("保留原组", keepOriginal, onKeepOriginal)
+            RuleRadio("不保留原组", dropOriginal, onDropOriginal)
+        }
+        if (dropOriginal) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("智能分组", fontSize = UiTypography.compact, color = Muted)
+                RuleRadio("不启用", noSmartGrouping, onNoSmartGrouping)
+                RuleRadio("按类型", regroupByType, onRegroupByType)
+                RuleRadio("按质量", regroupByQuality, onRegroupByQuality)
+            }
+        }
     }
 }
 
@@ -1363,7 +1400,8 @@ private fun sourceTypeLabel(type: Int): String = when (type) {
     0 -> "文本"
     1 -> "有声"
     2 -> "漫画"
-    3 -> "其他"
+    3 -> "文件"
+    4 -> "视频"
     else -> "其他"
 }
 
