@@ -55,6 +55,26 @@ internal fun shouldShowInExceptionReview(status: ProbeStatus?, deleteMarked: Boo
     !deleteMarked && status != null &&
         status != ProbeStatus.OK && status != ProbeStatus.SKIPPED
 
+/**
+ * Single source of truth for the category filters shown above the source list.
+ * Both row visibility and the displayed counts use this predicate.
+ */
+internal fun isSourceIncludedInFilter(
+    filter: String,
+    hasDuplicateGroup: Boolean,
+    needsProbe: Boolean,
+    probeStatus: ProbeStatus?,
+    deleteMarked: Boolean,
+): Boolean = when (filter) {
+    "全部" -> true
+    "重复候选" -> hasDuplicateGroup
+    "待校验" -> needsProbe
+    "校验通过" -> probeStatus == ProbeStatus.OK
+    "异常 / 复核" -> shouldShowInExceptionReview(probeStatus, deleteMarked)
+    "待删除" -> deleteMarked
+    else -> true
+}
+
 internal fun <T> resolveSelectedId(
     selectedId: Int?,
     items: List<T>,
