@@ -140,6 +140,24 @@ class DeduperTest {
     }
 
     @Test
+    fun `核心配置完整度优先于偶然更快的响应速度`() {
+        val complete = Docs.doc("规则较完整", "https://same.example")
+        val lean = Docs.docFromJson(
+            """{"bookSourceName":"配置较少","bookSourceUrl":"https://same.example","searchUrl":"https://example.com/search?q=%s","ruleSearch":{"bookList":"//div"}}"""
+        )
+
+        val report = Deduper.run(
+            listOf(complete, lean),
+            probeResults = mapOf(
+                0 to ProbeResult(0, ProbeStatus.OK, elapsedMs = 1_200),
+                1 to ProbeResult(1, ProbeStatus.OK, elapsedMs = 100),
+            ),
+        )
+
+        assertEquals(0, report.groups.single().keep)
+    }
+
+    @Test
     fun `JSON顶层业务字段数量仅在其他因素相同后参与比较`() {
         val ordinary = Docs.doc("普通字段", "https://same.example")
         val extraTopLevelField = Docs.doc("额外字段", "https://same.example").also {
