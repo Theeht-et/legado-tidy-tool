@@ -175,6 +175,12 @@ object Organizer {
             weighted += availability * 50
             availableWeight += 50
             reasons += if (availability == 100) "校验可用" else "校验未通过（${status.label}）"
+        } else {
+            reasons += when (status) {
+                ProbeStatus.NO_SEARCH_URL -> "缺少搜索规则，未参与可用性评分"
+                ProbeStatus.UNSUPPORTED -> "不支持自动校验，未参与可用性评分"
+                else -> "未校验，未参与可用性评分"
+            }
         }
 
         val elapsed = probe?.takeIf {
@@ -191,6 +197,8 @@ object Organizer {
             weighted += speed * 30
             availableWeight += 30
             reasons += "响应 ${elapsed}ms"
+        } else {
+            reasons += "无有效响应耗时，未参与速度评分"
         }
 
         val completeness = (doc.ruleCompleteness * 10).coerceIn(0, 100)
