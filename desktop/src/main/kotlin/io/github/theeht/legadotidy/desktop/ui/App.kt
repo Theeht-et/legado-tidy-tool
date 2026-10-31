@@ -415,18 +415,26 @@ fun TidyApp() {
         state.busy = true
         state.error = null
         state.total = state.sources.size
-        state.completed = state.sources.count { it.probe != null }
         val skipProbe = state.skipProbe
+        val exploreMode = state.exploreMode
+        val entry = if (exploreMode) ProbeEntry.EXPLORE else ProbeEntry.SEARCH
+        val depth = if (state.withToc) ProbeDepth.FULL_CHAIN else ProbeDepth.SEARCH
         val concurrency = state.concurrency.coerceIn(1, 2000)
-        state.notice = if (skipProbe) "按设置跳过真实校验。" else "正在使用 Legado 引擎校验书源。"
         val snapshot = state.sources.toList()
-        val pending = snapshot.filter { it.probe == null }
+        val pending = snapshot.filter { source ->
+            val previous = source.probe
+            previous == null || previous.entry != entry || previous.depth != depth
+        }
+        state.completed = snapshot.size - pending.size
+        state.notice = if (skipProbe) "按设置跳过真实校验。" else {
+            if (exploreMode) "正在使用 Legado 发现分类入口校验书源。" else "正在使用 Legado 搜索入口校验书源。"
+        }
         val options = ProbeOptions(
-            depth = if (state.withToc) ProbeDepth.FULL_CHAIN else ProbeDepth.SEARCH,
+            depth = depth,
             timeoutMs = state.timeoutSeconds.coerceAtLeast(1) * 1000L,
             keyword = state.keyword,
             proxy = state.proxy.takeIf { it.isNotBlank() },
-            entry = if (state.exploreMode) ProbeEntry.EXPLORE else ProbeEntry.SEARCH,
+            entry = entry,
             maxExplorePages = state.explorePages,
         )
         activeJob = scope.launch {
@@ -438,24 +446,35 @@ fun TidyApp() {
                         async(Dispatchers.IO) {
                             val index = snapshot.indexOfFirst { it.id == source.id }
                             val result = when {
-                                state.exploreMode && !source.doc.canExplore -> ProbeResult(
+                                exploreMode && !source.doc.canExplore -> ProbeResult(
                                     index,
                                     ProbeStatus.NO_EXPLORE_CATEGORY,
                                     detail = "未配置上游发现入口（需要 exploreUrl）",
+                                    entry = entry,
+                                    depth = depth,
                                 )
-                                !state.exploreMode && !source.doc.canSearch -> ProbeResult(
+                                !exploreMode && !source.doc.canSearch -> ProbeResult(
                                     index,
                                     ProbeStatus.NO_SEARCH_URL,
                                     detail = "未配置上游搜索入口（普通源需要 searchUrl，JS 源需要 mainJs）",
+                                    entry = entry,
+                                    depth = depth,
                                 )
-                                skipProbe -> ProbeResult(index, ProbeStatus.SKIPPED, detail = "按设置跳过校验")
+                                skipProbe -> ProbeResult(
+                                    index, ProbeStatus.SKIPPED, detail = "按设置跳过校验",
+                                    entry = entry, depth = depth,
+                                )
                                 else -> {
                                     try {
                                         gate.withPermit { probeEngine.probe(index, source.doc, options) }
                                     } catch (e: CancellationException) {
                                         throw e
                                     } catch (e: Throwable) {
-                                        ProbeResult(index, ProbeStatus.ERROR, detail = e.message ?: e::class.java.simpleName)
+                                        ProbeResult(
+                                            index, ProbeStatus.ERROR,
+                                            detail = e.message ?: e::class.java.simpleName,
+                                            entry = entry, depth = depth,
+                                        )
                                     }
                                 }
                             }
