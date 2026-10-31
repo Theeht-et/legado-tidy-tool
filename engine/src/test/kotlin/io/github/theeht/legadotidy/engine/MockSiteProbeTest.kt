@@ -57,9 +57,7 @@ class MockSiteProbeTest {
             )
         }
 
-        // 详情页直接带目录：真实站点里「详情页即目录页」是最常见的一种。
-        // 想覆盖「目录在单独页面」，加一个 ruleBookInfo.tocUrl 就行；
-        // 这里只求把链路跑通，所以取更简单的那种。
+        // 详情页直接带目录：覆盖上游先取书籍详情、再取目录的真实调用顺序。
         server.createContext("/book/1/") { exchange ->
             respond(
                 exchange,
@@ -74,6 +72,17 @@ class MockSiteProbeTest {
                     <li><a href="/book/1/c2">第二章</a></li>
                   </ul>
                 </body></html>
+                """.trimIndent(),
+            )
+        }
+
+        server.createContext("/book/1/c1") { exchange ->
+            respond(
+                exchange,
+                """
+                <!DOCTYPE html>
+                <html><head><meta charset="utf-8"></head>
+                <body><div class="content">这是第一章的正文内容。</div></body></html>
                 """.trimIndent(),
             )
         }
@@ -112,6 +121,9 @@ class MockSiteProbeTest {
             "chapterList": "class.ch@tag.li",
             "chapterName": "tag.a@text",
             "chapterUrl": "tag.a@href"
+          },
+          "ruleContent": {
+            "content": "class.content@text"
           }
         }
     """.trimIndent()
@@ -138,6 +150,30 @@ class MockSiteProbeTest {
 
         assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
         assertEquals("目录 2 章", result.detail)
+        assertTrue(result.stageResults.any {
+            it.stage == io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO &&
+                it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
+    }
+
+    @Test
+    fun `全链路校验会依次完成搜索详情目录和正文`() = runBlocking {
+        val result = LegadoProbeEngine().probe(0, doc(), options(ProbeDepth.FULL_CHAIN))
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertEquals(
+            listOf(
+                io.github.theeht.legadotidy.probe.ProbeStage.SEARCH,
+                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
+                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
+                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
+            ),
+            result.stageResults.map { it.stage },
+        )
+        assertTrue(result.stageResults.all {
+            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
+        assertTrue(result.detail.orEmpty().contains("正文校验成功"))
     }
 
     @Test
