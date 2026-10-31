@@ -221,6 +221,25 @@ class SelectedOrganizerTest {
         assertEquals(notMeasured, skipped)
     }
 
+    @Test
+    fun `质量四档分数边界正确`() {
+        val fields = listOf(
+            "searchUrl", "exploreUrl", "loginUrl", "loginUi", "header",
+            "bookUrlPattern", "enabledCookieJar", "exploreScreen", "eventListener",
+        )
+        fun sourceWithConfiguredFieldCount(count: Int): BookSourceDoc {
+            val raw = JsonParser.parseString("""{"bookSourceType":0}""").asJsonObject
+            fields.take(count - 1).forEach { raw.addProperty(it, "configured") }
+            return BookSourceDoc(raw)
+        }
+
+        val assessments = listOf(9, 7, 5, 4).map {
+            Organizer.assessQuality(sourceWithConfiguredFieldCount(it), null)
+        }
+        assertEquals(listOf(90, 70, 50, 40), assessments.map { it.score })
+        assertEquals(listOf("优质", "良好", "普通", "合格"), assessments.map { it.grade })
+    }
+
     private fun doc(json: String): BookSourceDoc =
         BookSourceDoc(JsonParser.parseString(json).asJsonObject)
 }
