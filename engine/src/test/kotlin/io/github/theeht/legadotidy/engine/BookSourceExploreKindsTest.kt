@@ -6,9 +6,16 @@ import io.legado.app.help.CacheManager
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.help.source.initializeExploreInfoMap
+import io.legado.app.help.source.withExploreSession
 import io.legado.app.ui.main.explore.ExploreAdapter
 import io.legado.app.utils.MD5Utils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -126,6 +133,26 @@ class BookSourceExploreKindsTest {
         } finally {
             ExploreAdapter.exploreInfoMapList.remove(source.bookSourceUrl)
         }
+    }
+
+    @Test
+    fun `相同书源 URL 的发现会话互斥执行`() = runBlocking {
+        val source = source("[]")
+        val active = AtomicInteger()
+        val maximum = AtomicInteger()
+        coroutineScope {
+            (1..8).map {
+                async(Dispatchers.Default) {
+                    withExploreSession(source.bookSourceUrl) {
+                        val now = active.incrementAndGet()
+                        maximum.updateAndGet { previous -> maxOf(previous, now) }
+                        delay(10)
+                        active.decrementAndGet()
+                    }
+                }
+            }.awaitAll()
+        }
+        assertEquals(1, maximum.get())
     }
 
     @Test
