@@ -1398,8 +1398,8 @@ private fun TableActionButton(label: String, onClick: () -> Unit, enabled: Boole
 
 private fun sourceTypeLabel(type: Int): String = when (type) {
     0 -> "文本"
-    1 -> "有声"
-    2 -> "漫画"
+    1 -> "音频"
+    2 -> "图片"
     3 -> "文件"
     4 -> "视频"
     else -> "其他"
