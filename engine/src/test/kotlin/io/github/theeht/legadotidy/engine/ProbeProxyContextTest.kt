@@ -91,6 +91,8 @@ class ProbeProxyContextTest {
         assertNull(ProbeProxyContext.currentProxy())
     }
 
-    private fun OkHttpClient.proxyPort(): Int =
-        (proxy.address() as InetSocketAddress).port
+    private fun OkHttpClient.proxyPort(): Int {
+        val configuredProxy = proxy ?: error("Expected an explicitly configured proxy")
+        return (configuredProxy.address() as InetSocketAddress).port
+    }
 }
