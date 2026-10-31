@@ -14,7 +14,25 @@ object TidyText {
     private val ZERO_WIDTH = Regex("[\\u200B-\\u200F\\uFEFF]")
     private val CIRCLED_NUMBERS = Regex("""[\u2460-\u2473\u24EA]""")
     private val WHITESPACE = Regex("[\\s\\u00A0\\u3000]+")
-    private val BRACKETED = Regex("[（(【\\[][^）)】\\]]*[）)】\\]]")
+    private val BRACKET_PAIRS = mapOf(
+        '(' to ')', '（' to '）', '[' to ']', '［' to '］', '【' to '】',
+        '{' to '}', '｛' to '｝', '<' to '>', '＜' to '＞',
+        '〔' to '〕', '〖' to '〗', '〘' to '〙', '〚' to '〛',
+        '❨' to '❩', '❪' to '❫', '❬' to '❭', '❮' to '❯',
+        '❰' to '❱', '❲' to '❳', '❴' to '❵', '⟨' to '⟩',
+        '⟪' to '⟫', '⦃' to '⦄', '⦅' to '⦆', '⦇' to '⦈',
+        '⦉' to '⦊', '⦋' to '⦌', '⦍' to '⦐', '⦑' to '⦒',
+    )
+    private val BRACKET_CLOSERS = BRACKET_PAIRS.values.toSet()
+    private val URL_DOMAIN = Regex(
+        """(?i)(?:https?://)?(?:www\\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+(?:com|cn|net|org|edu|gov|io|co|me|tv|cc|top|xyz|vip|info|biz|site|online|live|app|club|work|pro|fun|store|tech| mobi)(?::\\d{1,5})?(?:/[^\\s<>\\\"'，。；、]*)?""",
+    )
+    private val URL_PREFIX = Regex(
+        """(?i)^\\s*(https?://)?(?:www\\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+(?:com|cn|net|org|edu|gov|io|co|me|tv|cc|top|xyz|vip|info|biz|site|online|live|app|club|work|pro|fun|store|tech|mobi)(?::\\d{1,5})?(/[^\\s<>\\\"'，。；、]*)?\\s*""",
+    )
+    private val URL_SUFFIX = Regex(
+        """(?i)\\s*(?:https?://)?(?:www\\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+(?:com|cn|net|org|edu|gov|io|co|me|tv|cc|top|xyz|vip|info|biz|site|online|live|app|club|work|pro|fun|store|tech|mobi)(?::\\d{1,5})?(?:/[^\\s<>\\\"'，。；、]*)?\\s*$""",
+    )
     private val TRAILING_SEP = Regex("\\s*[-_|｜·・—–]\\s*[^-_|｜·・—–]{1,12}$")
     private val REPEATED_WS = Regex("\\s{2,}")
     private val AD_TERMS = "免广告|广告推广|官方推荐|精品源|高速源|优质源|稳定源|优[+＋]+|推荐|精品|高速|优质|稳定|广告|VIP|福利|会员专享|免费"
@@ -39,6 +57,65 @@ object TidyText {
     private val EMPTY_BRACKETS = Regex("[【［\\[（(「『]+\\s*[】］\\]）)」』]+")
     private val EDGE_NAME_PUNCTUATION = Regex("^[\\s,，。:：;；|｜]+|[\\s,，。:：;；|｜]+$")
 
+
+    /**
+     * Removes only fully matched bracket pairs, including nested/mixed pairs.
+     * An unmatched opener is preserved so malformed input cannot erase the rest of a name.
+     */
+    private fun removePairedBracketContents(raw: String): String {
+        val output = StringBuilder(raw.length)
+        var index = 0
+        while (index < raw.length) {
+            val opener = raw[index]
+            if (opener !in BRACKET_PAIRS) {
+                output.append(opener)
+                index++
+                continue
+            }
+            val stack = ArrayDeque<Char>()
+            stack.addLast(BRACKET_PAIRS.getValue(opener))
+            var cursor = index + 1
+            var matchedEnd = -1
+            while (cursor < raw.length && stack.isNotEmpty()) {
+                val current = raw[cursor]
+                if (current in BRACKET_PAIRS) {
+                    stack.addLast(BRACKET_PAIRS.getValue(current))
+                } else if (current in BRACKET_CLOSERS && current == stack.last()) {
+                    stack.removeLast()
+                    if (stack.isEmpty()) matchedEnd = cursor
+                }
+                cursor++
+            }
+            if (matchedEnd >= 0) {
+                output.append(' ')
+                index = matchedEnd + 1
+            } else {
+                output.append(opener)
+                index++
+            }
+        }
+        return output.toString()
+    }
+
+    private fun removeLeadingUrl(raw: String): String {
+        var value = raw
+        while (true) {
+            val match = URL_PREFIX.find(value) ?: return value
+            val path = match.groups[2]?.value.orEmpty()
+            val retained = path.trim('/').substringAfterLast('/').substringBefore('?').substringBefore('#')
+            value = if (retained.isNotBlank()) "$retained " + value.substring(match.range.last + 1) else value.substring(match.range.last + 1)
+            value = value.trimStart()
+        }
+    }
+
+    private fun removeTrailingUrl(raw: String): String {
+        var value = raw
+        while (true) {
+            val match = URL_SUFFIX.find(value) ?: return value
+            value = value.substring(0, match.range.first).trimEnd()
+        }
+    }
+
     /** 全角 → 半角（仅 ASCII 区 + 全角空格）。 */
     fun halfWidth(s: String): String {
         val sb = StringBuilder(s.length)
@@ -59,7 +136,7 @@ object TidyText {
         var s = halfWidth(raw)
         s = EMOJI.replace(s, "")
         s = ZERO_WIDTH.replace(s, "")
-        s = BRACKETED.replace(s, "")
+        s = removePairedBracketContents(s)
         s = TRAILING_SEP.replace(s, "")
         s = WHITESPACE.replace(s, "")
         return s.lowercase()
