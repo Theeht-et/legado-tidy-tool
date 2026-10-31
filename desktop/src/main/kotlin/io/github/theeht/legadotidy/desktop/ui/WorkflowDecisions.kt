@@ -131,7 +131,10 @@ internal fun usesOrganizerOutputOrder(rules: Set<OrganizeRule>): Boolean =
 
 /** Preserving an existing group is a no-op; only regrouping or manual edits need a JSON write. */
 internal fun shouldApplyGroups(rules: Set<OrganizeRule>, hasManualGroupEdits: Boolean): Boolean =
-    OrganizeRule.REGROUP_BY_TYPE in rules || hasManualGroupEdits
+    OrganizeRule.DROP_ORIGINAL_GROUPS in rules ||
+        OrganizeRule.REGROUP_BY_TYPE in rules ||
+        OrganizeRule.REGROUP_BY_QUALITY in rules ||
+        hasManualGroupEdits
 
 /**
  * The probe engine checks a source using its URL and source type. Name, group and
