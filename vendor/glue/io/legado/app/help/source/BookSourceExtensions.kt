@@ -125,6 +125,15 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
     }
 }
 
+/**
+ * ExploreAdapter normally persists an InfoMap marked by infoMap.save() when its
+ * screen pauses. A headless validation has no UI lifecycle, so flush that same
+ * upstream InfoMap after each category/page request that may have modified it.
+ */
+fun BookSource.flushExploreInfoMapIfNeeded() {
+    exploreInfoMapList[bookSourceUrl]?.takeIf { it.needSave }?.saveNow()
+}
+
 suspend fun BookSourcePart.clearExploreKindsCache() {
     withContext(Dispatchers.IO) {
         val key = getExploreKindsKey()
