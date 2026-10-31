@@ -87,4 +87,26 @@ class TidyTextTest {
         assertEquals("星河书源 官方", TidyText.normalizeNamePunctuation("星河书源——官方"))
     }
 
+    @Test
+    fun `符号清理移除 emoji 和带圈序号但保留括号内文字`() {
+        assertEquals("得奇小说(优+++)", TidyText.cleanDecorations("⑧📚得奇小说(优+++)✨"))
+        assertEquals("小小阅读/书香之家app[免费]", TidyText.cleanDecorations("小小阅读/书香之家app[免费]"))
+    }
+
+    @Test
+    fun `多余文字清理完整移除优级免费和井号尾缀`() {
+        assertEquals("得奇小说", TidyText.removeAdvertisingWords(TidyText.cleanDecorations("得奇小说(优+++)")))
+        assertEquals("小小阅读/书香之家app", TidyText.removeAdvertisingWords(TidyText.cleanDecorations("小小阅读/书香之家app[免费]")))
+        assertEquals("阅友小说", TidyText.removeAdvertisingWords("阅友小说#一程"))
+        assertEquals("阅友小说", TidyText.removeAdvertisingWords("阅友小说＃1、2、3、4"))
+    }
+
+    @Test
+    fun `英文噪声只清理明确分隔的标记不伤害正常站名`() {
+        val decorated = TidyText.cleanDecorations("md🏷+新笔趣阁🎉🎉cookie")
+        assertEquals("新笔趣阁", TidyText.removeAdvertisingWords(decorated))
+        assertEquals("PO18文学", TidyText.removeAdvertisingWords(TidyText.cleanDecorations("PO18文学")))
+        assertEquals("PO18文学cookie", TidyText.removeAdvertisingWords(TidyText.cleanDecorations("PO18文学cookie")))
+    }
+
 }
