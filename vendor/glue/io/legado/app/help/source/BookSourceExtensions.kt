@@ -77,6 +77,7 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
                                 }.toString().trim()
                             }.also {
                                 CacheManager.put(exploreKindsKey, it)
+                                CacheManager.flush()
                             }
                         }
                     }
@@ -132,6 +133,7 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
  */
 fun BookSource.flushExploreInfoMapIfNeeded() {
     exploreInfoMapList[bookSourceUrl]?.takeIf { it.needSave }?.saveNow()
+    CacheManager.flush()
 }
 
 suspend fun BookSourcePart.clearExploreKindsCache() {
@@ -139,6 +141,7 @@ suspend fun BookSourcePart.clearExploreKindsCache() {
         val source = getBookSource() ?: return@withContext
         val key = source.getExploreKindsKey()
         CacheManager.delete(key)
+        CacheManager.flush()
         exploreKindsMap.remove(key)
     }
 }
