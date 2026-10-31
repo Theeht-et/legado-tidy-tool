@@ -422,6 +422,7 @@ fun TidyApp() {
         val keyword = state.keyword
         val timeoutMs = state.timeoutSeconds.coerceAtLeast(1) * 1000L
         val maxExplorePages = state.explorePages
+        val proxy = state.proxy.trim().takeIf { it.isNotEmpty() }
         val concurrency = state.concurrency.coerceIn(1, 2000)
         val snapshot = state.sources.toList()
         val pending = snapshot.filter { source ->
@@ -431,6 +432,7 @@ fun TidyApp() {
                 previous.depth != depth ||
                 previous.keyword != keyword ||
                 previous.timeoutMs != timeoutMs ||
+                previous.proxy != proxy ||
                 (entry == ProbeEntry.EXPLORE && previous.maxExplorePages != maxExplorePages) ||
                 (!skipProbe && previous.status == ProbeStatus.SKIPPED)
         }
@@ -442,7 +444,7 @@ fun TidyApp() {
             depth = depth,
             timeoutMs = timeoutMs,
             keyword = keyword,
-            proxy = state.proxy.takeIf { it.isNotBlank() },
+            proxy = proxy,
             entry = entry,
             maxExplorePages = maxExplorePages,
         )
@@ -464,6 +466,7 @@ fun TidyApp() {
                                     keyword = keyword,
                                     timeoutMs = timeoutMs,
                                     maxExplorePages = maxExplorePages,
+                                    proxy = proxy,
                                 )
                                 !exploreMode && !source.doc.canSearch -> ProbeResult(
                                     index,
@@ -2287,7 +2290,8 @@ private fun SettingsDialog(state: WorkflowState, onDismiss: () -> Unit, onChoose
                 OutlinedTextField(
                     value = state.proxy,
                     onValueChange = { state.proxy = it },
-                    label = { Text("代理地址（可选）") },
+                    label = { Text("本轮默认代理地址（可选）") },
+                    supportingText = { Text("书源自身 header.proxy 优先；支持 http / socks4 / socks5。") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
