@@ -365,7 +365,7 @@ class LegadoProbeEngine(
 
     private fun httpStatus(e: Throwable): Int? {
         val text = e.message ?: return null
-        val match = Regex("""\\b(4\\d{2}|5\\d{2})\\b""").find(text) ?: return null
+        val match = Regex("""\b(4\d{2}|5\d{2})\b""").find(text) ?: return null
         return match.value.toIntOrNull()
     }
 
