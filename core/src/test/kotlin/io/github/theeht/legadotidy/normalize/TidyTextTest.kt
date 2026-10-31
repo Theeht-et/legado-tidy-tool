@@ -133,6 +133,8 @@ class TidyTextTest {
         assertEquals("PO18文学", TidyText.removeAdvertisingWords("PO18文学"))
         assertEquals("PO18文学cookie", TidyText.removeAdvertisingWords("PO18文学cookie"))
         assertEquals("a.b 书源", TidyText.removeAdvertisingWords("a.b 书源"))
+        assertEquals("书源", TidyText.removeAdvertisingWords("https://www.example.com:8443/path?q=1#top 书源"))
+        assertEquals("书源", TidyText.removeAdvertisingWords("书源 example.net:8080/path?q=1"))
     }
 
 }
