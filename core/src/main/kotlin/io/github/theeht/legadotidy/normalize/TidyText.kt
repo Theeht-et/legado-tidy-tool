@@ -80,7 +80,7 @@ object TidyText {
             val match = URL_PREFIX.find(value) ?: return value
             val path = match.groups[2]?.value.orEmpty()
             val retained = path.trim('/').substringAfterLast('/').substringBefore('?').substringBefore('#')
-            value = if (retained.isNotBlank()) "\${retained} " + value.substring(match.range.last + 1)
+            value = if (retained.isNotBlank()) "${retained} " + value.substring(match.range.last + 1)
             else value.substring(match.range.last + 1)
             value = value.trimStart()
         }
@@ -181,7 +181,7 @@ object TidyText {
         val slash = rest.indexOf('/')
         val host = if (slash < 0) rest else rest.substring(0, slash)
         val path = if (slash < 0) "" else rest.substring(slash)
-        return "\${scheme}://\${host.lowercase()}\${path}".trimEnd('/')
+        return "${scheme}://${host.lowercase()}${path}".trimEnd('/')
     }
 
     fun host(raw: String): String {
