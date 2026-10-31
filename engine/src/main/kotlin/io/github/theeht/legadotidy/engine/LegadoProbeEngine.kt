@@ -185,7 +185,7 @@ class LegadoProbeEngine(
                     book = WebBook.getBookInfoAwait(
                         bookSource = bookSource,
                         book = candidate,
-                        canReName = false,
+                        canReName = true,
                     )
                     1
                 }
