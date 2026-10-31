@@ -2281,25 +2281,30 @@ private fun ReportDialog(state: WorkflowState, onDismiss: () -> Unit) {
     )
 }
 
-private fun ruleDifferenceLabels(candidates: List<WorkflowSource>, source: WorkflowSource): List<String> {
+private fun ruleDifferenceKeys(candidates: List<WorkflowSource>): List<String> {
     if (candidates.size < 2) return emptyList()
-    val ruleKeys = candidates
+    return candidates
         .flatMap { candidate -> candidate.doc.raw.entrySet().map { it.key } }
         .filter { it.startsWith("rule", ignoreCase = true) }
         .distinct()
         .filter { key -> candidates.map { it.doc.raw.get(key) }.distinct().size > 1 }
-    return ruleKeys.map { key ->
-        when (key) {
-            "ruleSearch" -> "搜索"
-            "ruleExplore" -> "发现"
-            "ruleBookInfo" -> "书籍信息"
-            "ruleToc" -> "目录"
-            "ruleContent" -> "正文"
-            "ruleReview" -> "段评"
-            else -> key.removePrefix("rule").ifBlank { key }
-        }
-    }
 }
+
+private fun ruleLabel(key: String): String = when (key) {
+    "ruleSearch" -> "搜索"
+    "ruleExplore" -> "发现"
+    "ruleBookInfo" -> "书籍信息"
+    "ruleToc" -> "目录"
+    "ruleContent" -> "正文"
+    "ruleReview" -> "段评"
+    else -> key.removePrefix("rule").ifBlank { key }
+}
+
+private fun ruleDifferenceSummary(keys: List<String>, source: WorkflowSource): String =
+    keys.joinToString("；") { key ->
+        val value = source.doc.raw.get(key)?.toString()?.takeIf { it.isNotBlank() } ?: "未配置"
+        "${ruleLabel(key)}：${value.take(46)}${if (value.length > 46) "…" else ""}"
+    }
 
 @Composable
 private fun CompareGroupDialog(
@@ -2314,13 +2319,13 @@ private fun CompareGroupDialog(
     var keepAll by remember(group.number) {
         mutableStateOf(candidates.isNotEmpty() && candidates.all { !it.deleteMarked })
     }
-    val ruleDifferences = ruleDifferenceLabels(candidates, candidates.firstOrNull() ?: return)
+    val ruleDifferenceKeys = ruleDifferenceKeys(candidates)
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 900.dp).heightIn(max = 420.dp, maxHeight = 640.dp),
+            modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 900.dp).heightIn(min = 420.dp, max = 640.dp),
             shape = RoundedCornerShape(10.dp),
             color = Color.White,
             shadowElevation = 20.dp,
@@ -2356,7 +2361,7 @@ private fun CompareGroupDialog(
                         val recommended = source.id == group.suggestedKeepId
                         val selectedKeep = !keepAll && source.id == keepId
                         val proposedKeep = keepAll || selectedKeep
-                        val differences = ruleDifferences
+                        val differences = ruleDifferenceSummary(ruleDifferenceKeys, source)
                         Row(
                             Modifier.fillMaxWidth()
                                 .background(if (selectedKeep) SoftBlue else Color.White)
@@ -2396,7 +2401,7 @@ private fun CompareGroupDialog(
                                     Text("规则配置一致", fontSize = UiTypography.label, color = Muted)
                                 } else {
                                     Text(
-                                        differences.joinToString("、"),
+                                        differences,
                                         fontSize = UiTypography.label,
                                         color = PrimaryDeep,
                                         maxLines = 2,
