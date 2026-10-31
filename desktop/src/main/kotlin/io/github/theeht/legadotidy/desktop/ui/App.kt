@@ -580,7 +580,7 @@ fun TidyApp() {
         val rules = state.selectedRules
         state.applyCleanNames = rules.any {
             it == OrganizeRule.CLEAN_DECORATIONS ||
-                it == OrganizeRule.REMOVE_ADVERTISING_WORDS ||
+                it == OrganizeRule.REMOVE_ADVERTISING_WORDS
         } || preview.values.any { it.nameEdited }
         state.applyGroups = shouldApplyGroups(rules, preview.values.any { it.groupEdited })
         state.applyOrder = OrganizeRule.SORT_BY_RESPONSE_TIME in rules
