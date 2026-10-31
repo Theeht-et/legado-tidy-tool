@@ -61,6 +61,7 @@ data class ProbeOptions(
     val depth: ProbeDepth = ProbeDepth.SEARCH,
     val timeoutMs: Long = 20_000,
     val keyword: String = "剑来",
+    /** 本轮默认代理；书源 header.proxy 存在时以书源配置为准。 */
     val proxy: String? = null,
     val entry: ProbeEntry = ProbeEntry.SEARCH,
     /** 连续发现页上限；命中上游“本页无新增书籍即停止”规则时会提前结束。 */
