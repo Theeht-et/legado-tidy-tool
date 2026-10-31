@@ -68,6 +68,13 @@ class LegadoProbeEngine(
         var bookCount = 0
         var httpCode: Int? = null
 
+        val perStageTimeoutMs = options.timeoutMs.coerceAtLeast(1L)
+        val chainTimeoutMs = if (perStageTimeoutMs > Long.MAX_VALUE / 4) {
+            Long.MAX_VALUE
+        } else {
+            perStageTimeoutMs * 4
+        }
+
         suspend fun runStage(
             stage: ProbeStage,
             emptyDetail: String,
@@ -76,13 +83,23 @@ class LegadoProbeEngine(
             activeStage = stage
             val stageStarted = System.currentTimeMillis()
             return try {
-                val count = action()
+                val count = withTimeout(perStageTimeoutMs) { action() }
                 ProbeStageResult(
                     stage = stage,
                     status = if (count > 0) ProbeStageStatus.SUCCESS else ProbeStageStatus.EMPTY,
                     itemCount = count.coerceAtLeast(0),
                     elapsedMs = System.currentTimeMillis() - stageStarted,
                     detail = if (count > 0) null else emptyDetail,
+                )
+            } catch (e: TimeoutCancellationException) {
+                // An individual stage timeout is recoverable; a parent timeout must propagate.
+                currentCoroutineContext().ensureActive()
+                ProbeStageResult(
+                    stage = stage,
+                    status = ProbeStageStatus.FAILED,
+                    elapsedMs = System.currentTimeMillis() - stageStarted,
+                    detail = "阶段超过 " + perStageTimeoutMs + "ms",
+                    failureStatus = ProbeStatus.TIMEOUT,
                 )
             } catch (e: Throwable) {
                 // Do not turn parent cancellation into a failed source result.
@@ -120,7 +137,7 @@ class LegadoProbeEngine(
             )
 
         return try {
-            withTimeout(options.timeoutMs.coerceAtLeast(1L)) {
+            withTimeout(chainTimeoutMs) {
                 val bookSource = gson.fromJson(source.raw, BookSource::class.java)
                     ?: return@withTimeout result(ProbeStatus.ERROR, "书源反序列化失败")
 
