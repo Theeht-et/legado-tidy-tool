@@ -1067,14 +1067,14 @@ private fun RuleCheckMark(checked: Boolean) {
             .border(1.dp, if (checked) Primary else ControlBorder, RoundedCornerShape(3.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        if (checked) Text("✓", color = Color.White, fontSize = UiTypography.caption, fontWeight = FontWeight.Bold)
+        if (checked) Text("✓", color = Color.White, fontSize = UiTypography.compact, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
 private fun RuleRadio(label: String, selected: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onClick).padding(vertical = 2.dp),
+        Modifier.clip(RoundedCornerShape(7.dp)).clickable(onClick = onClick).padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
