@@ -140,6 +140,24 @@ class DeduperTest {
     }
 
     @Test
+    fun `无法自动校验的书源不按明确失效处理`() {
+        val unsupported = Docs.docFromJson(
+            """{"bookSourceName":"工具无法校验","bookSourceUrl":"https://same.example","searchUrl":"https://example.com/search?q=%s","ruleSearch":{"bookList":"//div"}}"""
+        )
+        val richerButUnverified = Docs.doc("配置完整但跳过", "https://same.example")
+
+        val report = Deduper.run(
+            listOf(unsupported, richerButUnverified),
+            probeResults = mapOf(
+                0 to ProbeResult(0, ProbeStatus.UNSUPPORTED),
+                1 to ProbeResult(1, ProbeStatus.SKIPPED),
+            ),
+        )
+
+        assertEquals(1, report.groups.single().keep)
+    }
+
+    @Test
     fun `核心配置完整度优先于偶然更快的响应速度`() {
         val complete = Docs.doc("规则较完整", "https://same.example")
         val lean = Docs.docFromJson(

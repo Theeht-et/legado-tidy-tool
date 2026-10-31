@@ -120,14 +120,14 @@ object Deduper {
         .trimEnd('/')
 
     /**
-     * 可用的实际校验结果优先；网络/超时错误属于不确定结果，不等同于规则失效。
-     * 跳过或缺失结果也不伪装成失败，继续由配置因素比较。
+     * 只有实际搜索成功或明确缺少搜索入口/解析为空，才形成确定的质量差异。
+     * 网络、超时、HTTP、JS 和运行环境不支持等结果不能证明书源本身不可用，
+     * 与跳过/缺失结果一样继续比较配置能力。
      */
     private fun probeQuality(result: ProbeResult?): Int = when (result?.status) {
         ProbeStatus.OK -> 0
-        null, ProbeStatus.SKIPPED -> 1
-        ProbeStatus.NETWORK, ProbeStatus.TIMEOUT, ProbeStatus.HTTP_ERROR, ProbeStatus.ERROR -> 2
-        ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS -> 3
+        ProbeStatus.NO_SEARCH_URL, ProbeStatus.PARSE_EMPTY -> 2
+        else -> 1
     }
 
     /** 只在成功校验时比较实测耗时；失败、跳过和缺失结果不提供速度依据。 */
