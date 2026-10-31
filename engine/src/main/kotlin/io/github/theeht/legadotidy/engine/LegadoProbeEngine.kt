@@ -471,9 +471,11 @@ class LegadoProbeEngine(
         stages: List<ProbeStageResult>,
         depth: ProbeDepth = ProbeDepth.WITH_TOC,
     ): String? {
-        if (depth == ProbeDepth.SEARCH && stages.none {
-                it.stage == ProbeStage.EXPLORE_CATEGORIES || it.stage == ProbeStage.EXPLORE
-            }) return null
+        val hasExplore = stages.any {
+            it.stage == ProbeStage.EXPLORE_CATEGORIES || it.stage == ProbeStage.EXPLORE
+        }
+        if (depth == ProbeDepth.SEARCH && !hasExplore) return null
+
         val problems = stages.filter { it.status != ProbeStageStatus.SUCCESS }
         if (problems.isNotEmpty()) {
             return problems.joinToString("；") { stage ->
@@ -483,25 +485,30 @@ class LegadoProbeEngine(
                 stage.stage.label + stage.status.label + "：" + reason
             }
         }
-        val explorePages = stages.count { it.stage == ProbeStage.EXPLORE }
-        if (explorePages > 0) {
+
+        val exploreSummary = if (hasExplore) {
             val categoryCount = stages.firstOrNull {
                 it.stage == ProbeStage.EXPLORE_CATEGORIES
             }?.itemCount ?: 0
-            if (depth == ProbeDepth.SEARCH) {
-                val limitReached = stages.any {
-                    it.stage == ProbeStage.EXPLORE && it.detail?.contains("达到本次配置的") == true
-                }
-                val suffix = if (limitReached) "（达到配置页数上限，结果可能不完整）" else ""
-                return "发现分类 $categoryCount 个；已按上游规则请求 $explorePages 页$suffix"
+            val pageCount = stages.count { it.stage == ProbeStage.EXPLORE }
+            val limitReached = stages.any {
+                it.stage == ProbeStage.EXPLORE && it.detail?.contains("达到本次配置的") == true
             }
+            val suffix = if (limitReached) "（达到配置页数上限，结果可能不完整）" else ""
+            "发现分类 $categoryCount 个；已按上游规则请求 $pageCount 页$suffix"
+        } else {
+            null
         }
+
+        if (depth == ProbeDepth.SEARCH) return exploreSummary
+
         val chapterCount = stages.firstOrNull { it.stage == ProbeStage.TOC }?.itemCount ?: 0
-        return if (depth == ProbeDepth.FULL_CHAIN) {
+        val chainSummary = if (depth == ProbeDepth.FULL_CHAIN) {
             "目录 $chapterCount 章；正文校验成功"
         } else {
             "目录 $chapterCount 章"
         }
+        return listOfNotNull(exploreSummary, chainSummary).joinToString("；")
     }
 
     /**
