@@ -116,7 +116,11 @@ object Organizer {
 
         if (explicitRules && OrganizeRule.SORT_BY_RESPONSE_TIME in rules) {
             val byElapsed = compareBy<Int> { index ->
-                results[index]?.takeIf { it.elapsedMs > 0 }?.elapsedMs ?: Long.MAX_VALUE
+                results[index]?.takeIf {
+                    it.status != ProbeStatus.SKIPPED &&
+                        it.status != ProbeStatus.NO_SEARCH_URL &&
+                        it.status != ProbeStatus.UNSUPPORTED && it.elapsedMs > 0
+                }?.elapsedMs ?: Long.MAX_VALUE
             }.thenBy { it }
             val rankByIndex = HashMap<Int, Int>(sources.size)
             val pools = byGroup.map { (group, members) ->
@@ -173,7 +177,9 @@ object Organizer {
             reasons += if (availability == 100) "校验可用" else "校验未通过（${status.label}）"
         }
 
-        val elapsed = probe?.elapsedMs?.takeIf { it > 0 }
+        val elapsed = probe?.takeIf {
+            it.status !in setOf(ProbeStatus.SKIPPED, ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED)
+        }?.elapsedMs?.takeIf { it > 0 }
         if (elapsed != null) {
             val speed = when {
                 elapsed <= 1_000 -> 100
