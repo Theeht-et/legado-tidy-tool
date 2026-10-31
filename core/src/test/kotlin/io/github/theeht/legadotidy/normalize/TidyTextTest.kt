@@ -103,10 +103,11 @@ class TidyTextTest {
 
     @Test
     fun `英文噪声只清理明确分隔的标记不伤害正常站名`() {
-        val decorated = TidyText.cleanDecorations("md🏷+新笔趣阁🎉🎉cookie")
-        assertEquals("新笔趣阁", TidyText.removeAdvertisingWords(decorated))
+        val markerText = TidyText.removeAdvertisingWords("md🏷+新笔趣阁🎉🎉cookie")
+        assertEquals("新笔趣阁", TidyText.removeAdvertisingWords(TidyText.cleanDecorations(markerText)))
         assertEquals("PO18文学", TidyText.removeAdvertisingWords(TidyText.cleanDecorations("PO18文学")))
         assertEquals("PO18文学cookie", TidyText.removeAdvertisingWords(TidyText.cleanDecorations("PO18文学cookie")))
+        assertEquals("PO18文学 cookie", TidyText.removeAdvertisingWords(TidyText.cleanDecorations("PO18文学 cookie")))
     }
 
 }
