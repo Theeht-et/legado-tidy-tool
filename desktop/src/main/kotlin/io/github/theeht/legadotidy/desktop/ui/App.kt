@@ -1123,10 +1123,9 @@ private fun GroupRuleBlock(
     regroupByType: Boolean,
     onKeepOriginal: () -> Unit,
     onRegroupByType: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier.clip(RoundedCornerShape(7.dp))
+        Modifier.clip(RoundedCornerShape(7.dp))
             .border(1.dp, Line, RoundedCornerShape(7.dp))
             .background(Color.White)
             .padding(horizontal = 7.dp, vertical = 4.dp),
