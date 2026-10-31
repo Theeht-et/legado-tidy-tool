@@ -7,6 +7,7 @@ import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -60,7 +61,6 @@ class PipelineTest {
             sources,
             PipelineConfig(
                 probe = ProbeOptions(proxy = " http://127.0.0.1:7890 "),
-                skipProbe = false,
             ),
         )
         assertEquals(ProbeStatus.NO_SEARCH_URL, result.probeResults.getValue(0).status)
@@ -101,7 +101,6 @@ class PipelineTest {
             listOf(source),
             PipelineConfig(
                 probe = ProbeOptions(entry = ProbeEntry.EXPLORE),
-                skipProbe = false,
             ),
         )
 
@@ -132,9 +131,25 @@ class PipelineTest {
     }
 
     @Test
-    fun `跳过校验时全部标为 SKIPPED`() = runBlocking {
-        val sources = List(2) { Docs.doc("源$it", "https://s$it.com") }
-        val result = Pipeline(null).run(sources, PipelineConfig(skipProbe = true))
-        assertTrue(result.probeResults.values.all { it.status == ProbeStatus.SKIPPED })
+    fun `引擎取消异常会向上传播而不是转换成单源 ERROR`() = runBlocking {
+        val engine = object : ProbeEngine {
+            override suspend fun probe(
+                index: Int,
+                source: BookSourceDoc,
+                options: ProbeOptions,
+            ): ProbeResult {
+                throw CancellationException("cancelled by engine")
+            }
+        }
+        val failure = runCatching {
+            Pipeline(engine).run(listOf(Docs.doc("cancel", "https://cancel.test")))
+        }.exceptionOrNull()
+        assertTrue(failure is CancellationException)
+    }
+
+    @Test
+    fun `默认校验选项为完整搜索链`() {
+        assertEquals(io.github.theeht.legadotidy.probe.ProbeDepth.FULL_CHAIN, ProbeOptions().depth)
+        assertEquals(ProbeEntry.SEARCH, ProbeOptions().entry)
     }
 }

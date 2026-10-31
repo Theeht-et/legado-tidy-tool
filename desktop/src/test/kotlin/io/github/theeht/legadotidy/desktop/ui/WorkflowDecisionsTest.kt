@@ -134,19 +134,21 @@ class WorkflowDecisionsTest {
     }
 
     @Test
-    fun `没有搜索规则的源进入待删除而网络故障保留复核`() {
-        assertTrue(shouldMarkForDeletionByDefault(ProbeStatus.NO_SEARCH_URL))
-        assertTrue(shouldMarkForDeletionByDefault(ProbeStatus.UNSUPPORTED))
-        assertTrue(shouldMarkForDeletionByDefault(ProbeStatus.PARSE_EMPTY))
-        // A missing discovery category only makes the selected entry mode inapplicable;
-        // it must not auto-delete a source that may have a working search entry.
-        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.NO_EXPLORE_CATEGORY))
-        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.NETWORK))
-        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.TIMEOUT))
-        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.SKIPPED))
-        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.PARTIAL))
+    fun `任一校验未通过都默认标记待删除`() {
+        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.OK))
+        ProbeStatus.values().filter { it != ProbeStatus.OK }.forEach { status ->
+            assertTrue(shouldMarkForDeletionByDefault(status), status.name)
+        }
         assertTrue(shouldShowInExceptionReview(ProbeStatus.PARTIAL, deleteMarked = false))
         assertFalse(shouldShowInExceptionReview(ProbeStatus.PARTIAL, deleteMarked = true))
+    }
+
+    @Test
+    fun `重复组重新计算时保留用户明确作出的删除决定`() {
+        assertFalse(resolveDeleteMark(defaultMarked = true, currentMarked = false, hasUserDecision = true))
+        assertTrue(resolveDeleteMark(defaultMarked = false, currentMarked = true, hasUserDecision = true))
+        assertTrue(resolveDeleteMark(defaultMarked = true, currentMarked = false, hasUserDecision = false))
+        assertFalse(resolveDeleteMark(defaultMarked = false, currentMarked = true, hasUserDecision = false))
     }
 
     @Test

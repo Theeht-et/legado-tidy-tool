@@ -14,6 +14,7 @@ import io.github.theeht.legadotidy.probe.ProbeEngine
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -55,7 +56,6 @@ data class PipelineConfig(
     val export: ExportConfig = ExportConfig(),
     /** 并发上限。超过 200 后挠吐提升有限，超时却会成批出现。 */
     val concurrency: Int = 200,
-    val skipProbe: Boolean = false,
     /** null 表示不导出（只跑前三个阶段）。 */
     val exportDir: Path? = null,
     val exportFileName: String? = null,
@@ -79,7 +79,7 @@ data class PipelineResult(
  * 只管「顺序、进度、并发」；具体怎么探测由 [ProbeEngine] 提供。
  * 单源失败只记录，不中断整轮；阶段异常会包成 [PipelineEvent.Failed] 再抛出。
  */
-class Pipeline(private val engine: ProbeEngine?) {
+class Pipeline(private val engine: ProbeEngine) {
 
     suspend fun run(
         sources: List<BookSourceDoc>,
@@ -93,18 +93,13 @@ class Pipeline(private val engine: ProbeEngine?) {
             // ---- S1 校验：所有导入书源（包括重复候选）都先获得独立结果 ----
             events.send(PipelineEvent.PhaseStarted(Phase.PROBE, sources.size))
             var mark = TimeSource.Monotonic.markNow()
-            val probeResults: Map<Int, ProbeResult> = when {
-                config.skipProbe || engine == null -> sources.indices.associateWith { i ->
-                    ProbeResult(i, ProbeStatus.SKIPPED, detail = "已跳过校验")
-                }
-                else -> probeAll(sources, config, events)
-            }
+            val probeResults: Map<Int, ProbeResult> = probeAll(sources, config, events)
             val ok = probeResults.values.count { it.status == ProbeStatus.OK }
             events.send(
                 PipelineEvent.PhaseFinished(
                     Phase.PROBE,
                     mark.elapsedNow().inWholeMilliseconds,
-                    if (config.skipProbe || engine == null) "已跳过" else "可用 $ok/${probeResults.size}",
+                    "可用 $ok/${probeResults.size}",
                 )
             )
 
@@ -163,7 +158,7 @@ class Pipeline(private val engine: ProbeEngine?) {
         config: PipelineConfig,
         events: Channel<PipelineEvent>,
     ): Map<Int, ProbeResult> = coroutineScope {
-        val probeEngine = engine ?: return@coroutineScope emptyMap()
+        val probeEngine = engine
         val gate = Semaphore(config.concurrency.coerceIn(1, 2000))
         val done = AtomicInteger()
         val ok = AtomicInteger()
@@ -197,20 +192,23 @@ class Pipeline(private val engine: ProbeEngine?) {
                     )
                 } else {
                     gate.withPermit {
-                        runCatching { probeEngine.probe(i, source, config.probe) }
-                            .getOrElse { e ->
-                                ProbeResult(
-                                    index = i,
-                                    status = ProbeStatus.ERROR,
-                                    detail = e.toString(),
-                                    entry = config.probe.entry,
-                                    depth = config.probe.depth,
-                                    keyword = config.probe.keyword,
-                                    timeoutMs = config.probe.timeoutMs,
-                                    maxExplorePages = config.probe.maxExplorePages,
-                                    proxy = proxy,
-                                )
-                            }
+                        try {
+                            probeEngine.probe(i, source, config.probe)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Throwable) {
+                            ProbeResult(
+                                index = i,
+                                status = ProbeStatus.ERROR,
+                                detail = e.toString(),
+                                entry = config.probe.entry,
+                                depth = config.probe.depth,
+                                keyword = config.probe.keyword,
+                                timeoutMs = config.probe.timeoutMs,
+                                maxExplorePages = config.probe.maxExplorePages,
+                                proxy = proxy,
+                            )
+                        }
                     }
                 }
                 results[i] = result
@@ -225,8 +223,8 @@ class Pipeline(private val engine: ProbeEngine?) {
         results.mapIndexed { i, r ->
             i to (r ?: ProbeResult(
                 index = i,
-                status = ProbeStatus.SKIPPED,
-                detail = "未返回结果",
+                status = ProbeStatus.ERROR,
+                detail = "校验引擎未返回结果",
                 entry = config.probe.entry,
                 depth = config.probe.depth,
                 keyword = config.probe.keyword,

@@ -17,7 +17,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.help.http.ProbeProxyContext
 import io.legado.app.help.http.parseProxyConfig
-import io.legado.app.help.source.exploreKinds
+import io.legado.app.help.source.exploreKindsInSession
+import io.legado.app.help.source.withExploreSession
 import io.legado.app.help.source.flushExploreInfoMapIfNeeded
 import io.legado.app.help.source.initializeExploreInfoMap
 import io.legado.app.model.webBook.WebBook
@@ -54,7 +55,7 @@ class LegadoProbeEngine(
         val started = System.currentTimeMillis()
         val proxy = options.proxy?.trim()?.takeIf { it.isNotEmpty() }
 
-        staticVerdict(source, options.entry)?.let { verdict ->
+        staticVerdict(source, options.entry, options.depth)?.let { verdict ->
             val stage = if (options.entry == ProbeEntry.EXPLORE) {
                 ProbeStage.EXPLORE_CATEGORIES
             } else {
@@ -200,7 +201,8 @@ class LegadoProbeEngine(
                 proxy = proxy,
             )
 
-        return try {
+        suspend fun executeProbe(): ProbeResult {
+            return try {
             withContext(ProbeProxyContext(proxy)) {
                 withTimeout(chainTimeoutMs) {
                     val bookSource = gson.fromJson(source.raw, BookSource::class.java)
@@ -245,7 +247,7 @@ class LegadoProbeEngine(
                                 stage = ProbeStage.EXPLORE_CATEGORIES,
                                 emptyDetail = "没有可用于自动校验的 URL 类型发现分类",
                             ) {
-                                categories = bookSource.exploreKinds()
+                                categories = bookSource.exploreKindsInSession()
                                 bookSource.initializeExploreInfoMap(categories)
                                 bookSource.flushExploreInfoMapIfNeeded()
                                 categories.count {
@@ -513,6 +515,12 @@ class LegadoProbeEngine(
                 detail = summarizeStages(stageResults, options.depth) ?: shortReason(e),
             )
         }
+        }
+        return if (options.entry == ProbeEntry.EXPLORE) {
+            withExploreSession(source.url) { executeProbe() }
+        } else {
+            executeProbe()
+        }
     }
 
     private fun summarizeStages(
@@ -566,6 +574,7 @@ class LegadoProbeEngine(
     internal fun staticVerdict(
         source: BookSourceDoc,
         entry: ProbeEntry = ProbeEntry.SEARCH,
+        depth: ProbeDepth = ProbeDepth.FULL_CHAIN,
     ): StaticVerdict? {
         if (entry == ProbeEntry.SEARCH && !source.canSearch) {
             return StaticVerdict(
@@ -580,13 +589,22 @@ class LegadoProbeEngine(
             )
         }
 
-        // 只检查实际参与请求/规则执行的字段；header、展示字段与 ruleContent.webJs
-        // 不能单凭出现 "webView" 字样就判定需要浏览器。
+        // Only inspect rules that the selected entry and depth actually execute.
+        // Search-only validation must not be rejected because an unrelated explore/review/content rule
+        // needs a browser; full-chain search includes search, book info, TOC and content.
+        val activeRulePrefixes = buildSet {
+            add(if (entry == ProbeEntry.SEARCH) "ruleSearch" else "ruleExplore")
+            if (depth != ProbeDepth.SEARCH) {
+                add("ruleBookInfo")
+                add("ruleToc")
+            }
+            if (depth == ProbeDepth.FULL_CHAIN) add("ruleContent")
+        }
+        val activeEntryUrl = if (entry == ProbeEntry.SEARCH) "searchUrl" else "exploreUrl"
         val activeRules = source.behaviorFields()
             .filter { (key, _) ->
-                (key == "searchUrl" || key == "exploreUrl" || key == "mainJs" ||
-                    key == "loginCheckJs" || key.startsWith("rule")) &&
-                    !key.endsWith(".webJs")
+                key == activeEntryUrl || key == "mainJs" || key == "loginCheckJs" ||
+                    activeRulePrefixes.any { prefix -> key == prefix || key.startsWith("$prefix.") }
             }
             .values
             .joinToString("\n") { it }
