@@ -80,7 +80,22 @@ def check(rels: list[str]) -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"[glue] OK：{present}/{len(rels)} 个文件；校验级代理补丁已应用")
+    upstream_smoke = (
+        "fun getProxyClient(proxy: String? = null): OkHttpClient {\\n"
+        "    if (proxy.isNullOrBlank()) {\\n"
+        "        return okHttpClient\\n"
+        "    }\\n"
+        "    val proxyConfig = parseProxyConfig(proxy)"
+    ).encode("utf-8")
+    try:
+        patched_smoke = apply_project_overlays(HTTP_HELPER_REL, upstream_smoke).decode("utf-8")
+    except Exception as e:  # noqa: BLE001 — CI also verifies the rebuild patch itself
+        print(f"[glue] 代理补丁自检失败：{e}", file=sys.stderr)
+        return 1
+    if PROBE_PROXY_MARKER not in patched_smoke:
+        print("[glue] 代理补丁自检未生成预期代码。", file=sys.stderr)
+        return 1
+    print(f"[glue] OK：{present}/{len(rels)} 个文件；校验级代理补丁及重建补丁均通过")
     return 0
 
 
