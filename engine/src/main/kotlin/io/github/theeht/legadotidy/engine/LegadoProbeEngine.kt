@@ -328,31 +328,47 @@ class LegadoProbeEngine(
             )
         }
 
-        val rules = source.behaviorFields()
+        // 只检查实际参与请求/规则执行的字段；header、展示字段与 ruleContent.webJs
+        // 不能单凭出现 "webView" 字样就判定需要浏览器。
+        val activeRules = source.behaviorFields()
+            .filter { (key, _) ->
+                (key == "searchUrl" || key == "exploreUrl" || key == "mainJs" ||
+                    key == "loginCheckJs" || key.startsWith("rule")) &&
+                    !key.endsWith(".webJs")
+            }
             .values
             .joinToString("\n") { it }
-            .lowercase()
 
-        if (rules.contains("webview") || rules.contains("webjs")) {
-            return StaticVerdict(ProbeStatus.UNSUPPORTED, "webView/webJs 需要浏览器渲染，当前环境不支持")
+        val webViewOption = Regex(
+            """(?i)["']?webView["']?\\s*:\\s*(?:true|1|"true"|'true')""",
+        ).containsMatchIn(activeRules)
+        val javaWebViewCall = Regex(
+            """(?i)\\bjava\\s*\\.\\s*webView\\s*\\(""",
+        ).containsMatchIn(activeRules)
+        val webViewGetSourceCall = Regex(
+            """(?i)\\bwebViewGetSource\\s*\\(""",
+        ).containsMatchIn(activeRules)
+        if (webViewOption || javaWebViewCall || webViewGetSourceCall) {
+            return StaticVerdict(ProbeStatus.UNSUPPORTED, "规则明确要求 WebView，当前无浏览器环境")
         }
-        if (rules.contains("getverificationcode")) {
+
+        fun calls(name: String): Boolean =
+            Regex("""(?i)\\b${Regex.escape(name)}\\s*\\(""").containsMatchIn(activeRules)
+
+        if (calls("getVerificationCode")) {
             return StaticVerdict(ProbeStatus.UNSUPPORTED, "getVerificationCode 需要人工完成验证码")
         }
-        if (rules.contains("startbrowser")) {
+        if (calls("startBrowser") || calls("startBrowserAwait")) {
             return StaticVerdict(ProbeStatus.UNSUPPORTED, "startBrowser 需要人工介入浏览器")
         }
-        if (rules.contains("showbrowser")) {
+        if (calls("showBrowser")) {
             return StaticVerdict(ProbeStatus.UNSUPPORTED, "showBrowser 需要交互式浏览器")
         }
-        if (rules.contains("openvideoplayer")) {
+        if (calls("openVideoPlayer")) {
             return StaticVerdict(ProbeStatus.UNSUPPORTED, "openVideoPlayer 需要播放器支持")
         }
-        if (rules.contains("openurl")) {
+        if (calls("openUrl")) {
             return StaticVerdict(ProbeStatus.UNSUPPORTED, "openUrl 需要外部应用或页面跳转")
-        }
-        if (source.loginUrl.isNotBlank() && source.loginCheckJs.isNotBlank()) {
-            return StaticVerdict(ProbeStatus.UNSUPPORTED, "loginUrl 与 loginCheckJs 表明书源需要登录")
         }
         return null
     }
@@ -360,7 +376,7 @@ class LegadoProbeEngine(
     private fun classify(e: Throwable): Pair<ProbeStatus, Int?> {
         val msg = e.message?.lowercase() ?: ""
         if (
-            msg.contains("webview") || msg.contains("webjs") ||
+            msg.contains("webview") ||
             msg.contains("getverificationcode") || msg.contains("startbrowser") ||
             msg.contains("showbrowser") || msg.contains("openvideoplayer") ||
             msg.contains("openurl")
