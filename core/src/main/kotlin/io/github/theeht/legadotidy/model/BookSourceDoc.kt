@@ -117,6 +117,13 @@ class BookSourceDoc(val raw: JsonObject) {
     val canSearch: Boolean
         get() = mainJs.isNotBlank() || searchUrl.isNotBlank()
 
+    /**
+     * 是否具备发现分类入口。上游先解析 exploreUrl，再筛选 type=url 且 URL 非空的分类；
+     * 不能要求 searchUrl，因为发现型书源可以完全没有搜索入口。
+     */
+    val canExplore: Boolean
+        get() = exploreUrl.isNotBlank()
+
     /** 是否包含上游规则组或 JS 主脚本。可选规则组缺失不视为格式错误。 */
     val hasAnyRule: Boolean
         get() = mainJs.isNotEmpty() || SourceField.RULE_GROUPS.any { !ruleGroup(it).isEmpty() }
