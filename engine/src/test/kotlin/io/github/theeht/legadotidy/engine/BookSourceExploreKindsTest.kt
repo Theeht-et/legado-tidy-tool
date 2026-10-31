@@ -2,11 +2,14 @@ package io.github.theeht.legadotidy.engine
 
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.help.CacheManager
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
+import io.legado.app.utils.MD5Utils
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import java.util.UUID
 
@@ -58,18 +61,21 @@ class BookSourceExploreKindsTest {
     }
 
     @Test
-    fun `at js 分类先执行脚本并解析其 JSON 返回值`() = runBlocking {
+    fun `at js 分类执行结果会持久缓存并在清理时删除磁盘索引`() = runBlocking {
         val source = source(
             """@js: JSON.stringify([{title:'JS 男频',url:'/js-male',type:'url'}])""",
         )
+        val cacheKey = MD5Utils.md5Encode(source.bookSourceUrl + source.exploreUrl)
         try {
             val kinds = source.exploreKinds()
 
             assertEquals(1, kinds.size)
             assertEquals("JS 男频", kinds.single().title)
             assertEquals("/js-male", kinds.single().url)
+            assertTrue(CacheManager.get(cacheKey, true).orEmpty().contains("JS 男频"))
         } finally {
             source.clearExploreKindsCache()
+            assertNull(CacheManager.get(cacheKey, true))
         }
     }
 
