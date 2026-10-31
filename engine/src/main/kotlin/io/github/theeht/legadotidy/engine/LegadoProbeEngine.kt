@@ -75,6 +75,7 @@ class LegadoProbeEngine(
         var hits: List<SearchBook> = emptyList()
         var bookCount = 0
         var httpCode: Int? = null
+        var exploreLimitReached = false
 
         val perStageTimeoutMs = options.timeoutMs.coerceAtLeast(1L)
         // 搜索链最多四个阶段；发现链还包含分类解析和最多 N 次分页请求。
@@ -287,8 +288,16 @@ class LegadoProbeEngine(
                             }
 
                             stageResults += pageStage.copy(
-                                detail = "分类「${category.title}」第 ${page} 页返回 ${pageBooks.size} 条，新增 ${addedCount} 条",
+                                detail = buildString {
+                                    append("分类「${category.title}」第 ${page} 页返回 ${pageBooks.size} 条，新增 ${addedCount} 条")
+                                    if (page == maxPages && addedCount > 0) {
+                                        append("；达到本次配置的 ${maxPages} 页上限，未确认是否还有后续结果")
+                                    }
+                                },
                             )
+                            if (page == maxPages && addedCount > 0) {
+                                exploreLimitReached = true
+                            }
                         }
 
                         hits = uniqueBooks.toList()
@@ -302,7 +311,7 @@ class LegadoProbeEngine(
                             it.stage == ProbeStage.EXPLORE && it.status == ProbeStageStatus.FAILED
                         }
                     return@withTimeout result(
-                        if (hasExplorePageFailure) ProbeStatus.PARTIAL else ProbeStatus.OK,
+                        if (hasExplorePageFailure || exploreLimitReached) ProbeStatus.PARTIAL else ProbeStatus.OK,
                         if (options.entry == ProbeEntry.EXPLORE) {
                             summarizeStages(stageResults, options.depth)
                         } else {
@@ -390,7 +399,8 @@ class LegadoProbeEngine(
                     }
                 }
 
-                val allPassed = stageResults.all { it.status == ProbeStageStatus.SUCCESS }
+                val allPassed = stageResults.all { it.status == ProbeStageStatus.SUCCESS } &&
+                    !exploreLimitReached
                 result(
                     status = if (allPassed) ProbeStatus.OK else ProbeStatus.PARTIAL,
                     detail = summarizeStages(stageResults, options.depth),
