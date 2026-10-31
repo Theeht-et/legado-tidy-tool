@@ -70,6 +70,13 @@ object Organizer {
             } else {
                 var name = doc.name
                 // Remove standalone symbols first; cleanDecorations preserves paired brackets for text matching.
+                // Inspect symbol-delimited English marker tokens before their emoji boundaries are removed.
+                if (
+                    OrganizeRule.CLEAN_DECORATIONS in rules &&
+                    OrganizeRule.REMOVE_ADVERTISING_WORDS in rules
+                ) {
+                    name = TidyText.removeAdvertisingWords(name)
+                }
                 if (OrganizeRule.CLEAN_DECORATIONS in rules) {
                     name = TidyText.cleanDecorations(name)
                 }
