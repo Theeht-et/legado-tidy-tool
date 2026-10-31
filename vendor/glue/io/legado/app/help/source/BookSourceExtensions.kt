@@ -132,8 +132,11 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
  * upstream InfoMap after each category/page request that may have modified it.
  */
 fun BookSource.flushExploreInfoMapIfNeeded() {
-    exploreInfoMapList[bookSourceUrl]?.takeIf { it.needSave }?.saveNow()
-    CacheManager.flush()
+    val infoMap = exploreInfoMapList[bookSourceUrl]
+    if (infoMap?.needSave == true) {
+        infoMap.saveNow()
+        CacheManager.flush()
+    }
 }
 
 suspend fun BookSourcePart.clearExploreKindsCache() {
