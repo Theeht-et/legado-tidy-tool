@@ -2518,6 +2518,10 @@ private fun EditSourceDialog(
                 }
                 OutlinedTextField(value = group, onValueChange = { group = it }, label = { Text("分组") }, modifier = Modifier.fillMaxWidth())
                 if (previewMode) {
+                    preview?.quality?.let { quality ->
+                        Text("质量评分：" + quality.grade + "（" + quality.score + "分）", fontSize = UiTypography.label, fontWeight = FontWeight.SemiBold, color = Primary)
+                        Text("评分依据：" + quality.reasons.joinToString("；"), fontSize = UiTypography.caption, color = Muted)
+                    }
                     Text("这里只编辑整理方案中的值；点击「确认整理并进入导出」后才会应用。", fontSize = UiTypography.label, color = Muted)
                 } else {
                     Text("只修改已填写的字段，其余未知 JSON 字段会原样保留。", fontSize = UiTypography.label, color = Muted)
