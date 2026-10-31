@@ -31,7 +31,7 @@ data class OrganizeConfig(
     val maxNameLength: Int = 40,
     val unknownGroup: String = "未分组",
     /** Legado bookSourceType: 0 文本、1 音频、2 图片、3 文件、4 视频。 */
-    val typeNames: Map<Int, String> = mapOf(0 to "文本", 1 to "音频", 2 to "图片", 3 to "文件", 4 to "视频"),
+    val typeNames: Map<Int, String> = mapOf(0 to "文本", 1 to "音频", 2 to "图片", 3 to "文件"),
     /**
      * null 表示旧版固定整理行为，保证 CLI 兼容；
      * 非 null 表示严格只执行集合内显式选择的规则。
@@ -106,7 +106,7 @@ object Organizer {
             else when (groupingMode) {
                 GroupingMode.KEEP_ORIGINAL -> doc.group
                 GroupingMode.NO_SMART_GROUPING -> config.unknownGroup
-                GroupingMode.BY_TYPE -> config.typeNames[doc.type] ?: config.unknownGroup
+                GroupingMode.BY_TYPE -> config.typeNames[doc.type] ?: if (doc.type == 4) "视频" else config.unknownGroup
                 GroupingMode.BY_QUALITY -> qualityOf.getValue(index).grade
             }
         }
