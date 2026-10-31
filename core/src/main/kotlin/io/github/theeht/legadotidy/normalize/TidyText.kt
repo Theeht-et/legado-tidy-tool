@@ -16,10 +16,10 @@ object TidyText {
     )
     private val BRACKET_CLOSERS = BRACKET_PAIRS.values.toSet()
     private val URL_PREFIX = Regex(
-        """(?i)^\s*(https?://)?(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|cn|net|org|edu|gov|io|co|me|tv|cc|top|xyz|vip|info|biz|site|online|live|app|club|work|pro|fun|store|tech|mobi|in|ru|de|uk|la|ws|to|so|wiki|icu|cloud|ren|link|click|space|world|art|one|today|press|pw|name)(?::\d{1,5})?(/[^\s<>"'，。；、]*)?\s*""",
+        """(?i)^\s*(https?://)?(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|cn|net|org|edu|gov|io|co|me|tv|cc|top|xyz|vip|info|biz|site|online|live|app|club|work|pro|fun|store|tech|mobi|in|ru|de|uk|la|ws|to|so|wiki|icu|cloud|ren|link|click|space|world|art|one|today|press|pw|name)(?::\d{1,5})?([/?#][^\s<>"'，。；、]*)?\s*""",
     )
     private val URL_SUFFIX = Regex(
-        """(?i)\s*(?:https?://)?(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|cn|net|org|edu|gov|io|co|me|tv|cc|top|xyz|vip|info|biz|site|online|live|app|club|work|pro|fun|store|tech|mobi|in|ru|de|uk|la|ws|to|so|wiki|icu|cloud|ren|link|click|space|world|art|one|today|press|pw|name)(?::\d{1,5})?(?:/[^\s<>"'，。；、]*)?\s*$""",
+        """(?i)\s*(?:https?://)?(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|cn|net|org|edu|gov|io|co|me|tv|cc|top|xyz|vip|info|biz|site|online|live|app|club|work|pro|fun|store|tech|mobi|in|ru|de|uk|la|ws|to|so|wiki|icu|cloud|ren|link|click|space|world|art|one|today|press|pw|name)(?::\d{1,5})?(?:[/?#][^\s<>"'，。；、]*)?\s*$""",
     )
     private val TRAILING_SEP = Regex("""\s*[-_|｜·・—–]\s*[^-_|｜·・—–]{1,12}$""")
     private val REPEATED_WS = Regex("""\s{2,}""")
