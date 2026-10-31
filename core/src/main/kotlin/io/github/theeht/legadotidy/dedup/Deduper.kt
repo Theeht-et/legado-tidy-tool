@@ -1,6 +1,8 @@
 package io.github.theeht.legadotidy.dedup
 
 import io.github.theeht.legadotidy.model.BookSourceDoc
+import io.github.theeht.legadotidy.probe.ProbeResult
+import io.github.theeht.legadotidy.probe.ProbeStatus
 
 /** HTML 原型使用的 URL 完全重复分组。 */
 enum class DedupKind(val label: String) {
@@ -41,10 +43,11 @@ data class DedupReport(
 }
 
 /**
- * 去重规则与 HTML v3 原型保持一致：
- * 1. 仅按规范化后的 bookSourceUrl 分组；
- * 2. 不因规则字段相同或内容相似而把不同 URL 的书源误判为重复；
- * 3. 组内按原型 sourceScore 选择默认保留项，平分时保持输入顺序。
+ * 去重规则：
+ * 1. 仅按规范化后的 bookSourceUrl 分组，不因规则相似而误判不同 URL；
+ * 2. 先比较实际校验结果，再比较核心/辅助配置与规则完整度；
+ * 3. JSON 顶层业务字段数量只作为最后一个质量比较因素；
+ * 4. 所有因素仍相同时稳定保留输入顺序靠前的候选。
  *
  * 本阶段只产生建议，不修改原始书源。
  */
@@ -52,8 +55,28 @@ object Deduper {
 
     private val URL_SCHEME = Regex("^https?://", RegexOption.IGNORE_CASE)
 
+    private val NON_QUALITY_TOP_LEVEL_FIELDS = setOf(
+        "bookSourceUrl",
+        "bookSourceName",
+        "bookSourceGroup",
+        "bookSourceType",
+        "enabled",
+        "enabledExplore",
+        "bookSourceEnabled",
+        "weight",
+        "bookSourceComment",
+        "variableComment",
+        "customOrder",
+        "lastUpdateTime",
+        "respondTime",
+    )
+
     @Suppress("UNUSED_PARAMETER")
-    fun run(sources: List<BookSourceDoc>, config: DedupConfig = DedupConfig()): DedupReport {
+    fun run(
+        sources: List<BookSourceDoc>,
+        config: DedupConfig = DedupConfig(),
+        probeResults: Map<Int, ProbeResult> = emptyMap(),
+    ): DedupReport {
         if (sources.size <= 1) return DedupReport(emptyList(), sources.size)
 
         val buckets = LinkedHashMap<String, MutableList<Int>>()
@@ -66,8 +89,14 @@ object Deduper {
             .asSequence()
             .filter { it.size >= 2 }
             .map { members ->
-                val keep = members.maxWithOrNull(
-                    compareBy<Int> { keepScore(sources[it]) }.thenBy { -it },
+                val keep = members.minWithOrNull(
+                    compareBy<Int> { probeQuality(probeResults[it]) }
+                        .thenBy { successfulProbeElapsedMs(probeResults[it]) }
+                        .thenByDescending { coreCapabilityCount(sources[it]) }
+                        .thenByDescending { auxiliaryCapabilityCount(sources[it]) }
+                        .thenByDescending { sources[it].ruleCompleteness }
+                        .thenByDescending { qualityTopLevelFieldCount(sources[it]) }
+                        .thenBy { it },
                 ) ?: members.first()
                 DedupGroup(
                     kind = DedupKind.EXACT,
@@ -90,51 +119,36 @@ object Deduper {
         .substringBefore('#')
         .trimEnd('/')
 
-    /** 与 HTML 原型 sourceScore 一致，用于组内默认保留推荐和对比面板显示。 */
-    fun keepScore(source: BookSourceDoc): Double {
-        val raw = source.raw
-        var score = 0.0
-        if (!explicitlyFalse(raw, "enabled") && !explicitlyFalse(raw, "bookSourceEnabled")) score += 10.0
-        if (firstTruthy(raw, "searchUrl", "searchUrlRule", "ruleSearch", "ruleSearchUrl")) score += 8.0
-        if (firstTruthy(raw, "exploreUrl", "exploreUrlRule", "bookSourceExploreUrl")) score += 4.0
-        if (firstTruthy(raw, "ruleBookInfo", "bookSourceInfoRule")) score += 2.0
-        if (firstTruthy(raw, "ruleBookContent", "bookSourceContentRule")) score += 2.0
-        if (firstTruthy(raw, "bookSourceComment")) score += 1.0
-        val weight = when {
-            jsTruthy(raw.get("weight")) -> rawNumber(raw, "weight") ?: Double.NaN
-            jsTruthy(raw.get("bookSourceWeight")) -> rawNumber(raw, "bookSourceWeight") ?: Double.NaN
-            else -> 0.0
+    /**
+     * 可用的实际校验结果优先；网络/超时错误属于不确定结果，不等同于规则失效。
+     * 跳过或缺失结果也不伪装成失败，继续由配置因素比较。
+     */
+    private fun probeQuality(result: ProbeResult?): Int = when (result?.status) {
+        ProbeStatus.OK -> 0
+        null, ProbeStatus.SKIPPED -> 1
+        ProbeStatus.NETWORK, ProbeStatus.TIMEOUT, ProbeStatus.HTTP_ERROR, ProbeStatus.ERROR -> 2
+        ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS -> 3
+    }
+
+    /** 只在成功校验时比较实测耗时；失败、跳过和缺失结果不提供速度依据。 */
+    private fun successfulProbeElapsedMs(result: ProbeResult?): Long =
+        result?.takeIf { it.status == ProbeStatus.OK && it.elapsedMs > 0 }?.elapsedMs ?: Long.MAX_VALUE
+
+    private fun coreCapabilityCount(source: BookSourceDoc): Int = listOf(
+        source.canSearch,
+        !source.ruleBookInfo.isEmpty(),
+        !source.ruleToc.isEmpty(),
+        !source.ruleContent.isEmpty(),
+    ).count { it }
+
+    private fun auxiliaryCapabilityCount(source: BookSourceDoc): Int = listOf(
+        source.exploreUrl.isNotBlank() || !source.ruleExplore.isEmpty(),
+        !source.ruleReview.isEmpty(),
+    ).count { it }
+
+    /** 用户偏好、展示元数据和统计字段不参与最后的 JSON 字段数量比较。 */
+    private fun qualityTopLevelFieldCount(source: BookSourceDoc): Int =
+        source.raw.entrySet().count { (key, value) ->
+            key !in NON_QUALITY_TOP_LEVEL_FIELDS && !value.isJsonNull
         }
-        score += weight * 0.1
-        score += raw.size() * 0.01
-        return score
-    }
-
-    private fun firstTruthy(raw: com.google.gson.JsonObject, vararg keys: String): Boolean =
-        keys.any { key -> jsTruthy(raw.get(key)) }
-
-    private fun jsTruthy(value: com.google.gson.JsonElement?): Boolean {
-        if (value == null || value.isJsonNull) return false
-        if (value.isJsonObject || value.isJsonArray) return true
-        if (!value.isJsonPrimitive) return false
-        val primitive = value.asJsonPrimitive
-        return when {
-            primitive.isBoolean -> primitive.asBoolean
-            primitive.isNumber -> primitive.asDouble != 0.0 && !primitive.asDouble.isNaN()
-            primitive.isString -> primitive.asString.isNotEmpty()
-            else -> false
-        }
-    }
-
-    /** HTML checks strict boolean false; strings such as "false" are not false. */
-    private fun explicitlyFalse(raw: com.google.gson.JsonObject, key: String): Boolean {
-        val value = raw.get(key) ?: return false
-        return value.isJsonPrimitive && value.asJsonPrimitive.isBoolean && !value.asBoolean
-    }
-
-    private fun rawNumber(raw: com.google.gson.JsonObject, key: String): Double? {
-        val value = raw.get(key) ?: return null
-        if (value.isJsonNull || !value.isJsonPrimitive) return null
-        return runCatching { value.asDouble }.getOrNull()
-    }
 }

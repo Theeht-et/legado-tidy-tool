@@ -3,6 +3,8 @@ package io.github.theeht.legadotidy.dedup
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.github.theeht.legadotidy.model.BookSourceDoc
+import io.github.theeht.legadotidy.probe.ProbeResult
+import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -103,6 +105,49 @@ class DeduperTest {
         )
         val report = Deduper.run(listOf(poor, rich))
         assertEquals(1, report.groups.size)
+        assertEquals(1, report.groups.single().keep)
+    }
+
+
+    @Test
+    fun `实际校验成功优先于配置字段更多但校验失败的候选`() {
+        val richButFailed = Docs.doc("规则较多但失败", "https://same.example")
+        val leanButWorking = Docs.docFromJson(
+            """{"bookSourceName":"实际可用","bookSourceUrl":"https://same.example","searchUrl":"https://example.com/search?q=%s","ruleSearch":{"bookList":"//div"}}"""
+        )
+
+        val report = Deduper.run(
+            listOf(richButFailed, leanButWorking),
+            probeResults = mapOf(
+                0 to ProbeResult(0, ProbeStatus.NETWORK, elapsedMs = 100),
+                1 to ProbeResult(1, ProbeStatus.OK, elapsedMs = 500),
+            ),
+        )
+
+        assertEquals(1, report.groups.single().keep)
+    }
+
+    @Test
+    fun `启用状态不影响重复书源保留推荐`() {
+        val enabled = Docs.doc("启用书源", "https://same.example")
+        val disabled = Docs.doc("关闭书源", "https://same.example").also {
+            it.raw.addProperty("enabled", false)
+        }
+
+        val report = Deduper.run(listOf(enabled, disabled))
+
+        assertEquals(0, report.groups.single().keep)
+    }
+
+    @Test
+    fun `JSON顶层业务字段数量仅在其他因素相同后参与比较`() {
+        val ordinary = Docs.doc("普通字段", "https://same.example")
+        val extraTopLevelField = Docs.doc("额外字段", "https://same.example").also {
+            it.raw.addProperty("futureBookSourceField", "preserved")
+        }
+
+        val report = Deduper.run(listOf(ordinary, extraTopLevelField))
+
         assertEquals(1, report.groups.single().keep)
     }
 

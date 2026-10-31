@@ -27,8 +27,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.TimeSource
 
 enum class Phase(val label: String) {
-    DEDUP("去重"),
     PROBE("校验"),
+    DEDUP("去重"),
     ORGANIZE("整理"),
     EXPORT("导出"),
 }
@@ -90,21 +90,9 @@ class Pipeline(private val engine: ProbeEngine?) {
         val pump = launch { for (e in events) emit(e) }
 
         try {
-            // ---- S1 去重 ----
-            events.send(PipelineEvent.PhaseStarted(Phase.DEDUP, sources.size))
-            var mark = TimeSource.Monotonic.markNow()
-            val dedup = Deduper.run(sources, config.dedup)
-            events.send(
-                PipelineEvent.PhaseFinished(
-                    Phase.DEDUP,
-                    mark.elapsedNow().inWholeMilliseconds,
-                    "重复组 ${dedup.groups.size}，建议保留 ${dedup.keepCount}/${dedup.total}",
-                )
-            )
-
-            // ---- S2 校验 ----
+            // ---- S1 校验：所有导入书源（包括重复候选）都先获得独立结果 ----
             events.send(PipelineEvent.PhaseStarted(Phase.PROBE, sources.size))
-            mark = TimeSource.Monotonic.markNow()
+            var mark = TimeSource.Monotonic.markNow()
             val probeResults: Map<Int, ProbeResult> = when {
                 config.skipProbe || engine == null -> sources.indices.associateWith { i ->
                     ProbeResult(i, ProbeStatus.SKIPPED, detail = "已跳过校验")
@@ -117,6 +105,18 @@ class Pipeline(private val engine: ProbeEngine?) {
                     Phase.PROBE,
                     mark.elapsedNow().inWholeMilliseconds,
                     if (config.skipProbe || engine == null) "已跳过" else "可用 $ok/${probeResults.size}",
+                )
+            )
+
+            // ---- S2 去重：将校验结果用于重复组默认保留建议 ----
+            events.send(PipelineEvent.PhaseStarted(Phase.DEDUP, sources.size))
+            mark = TimeSource.Monotonic.markNow()
+            val dedup = Deduper.run(sources, config.dedup, probeResults)
+            events.send(
+                PipelineEvent.PhaseFinished(
+                    Phase.DEDUP,
+                    mark.elapsedNow().inWholeMilliseconds,
+                    "重复组 ${dedup.groups.size}，建议保留 ${dedup.keepCount}/${dedup.total}",
                 )
             )
 

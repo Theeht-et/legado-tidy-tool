@@ -213,8 +213,8 @@ internal fun desktopLayoutSpec(availableWidth: Dp, availableHeight: Dp): Desktop
 
 private enum class WorkflowStage(val label: String) {
     IMPORT("导入书源"),
-    DEDUP_REVIEW("去重审核"),
     PROBE_REVIEW("书源校验"),
+    DEDUP_REVIEW("去重审核"),
     ORGANIZE_REVIEW("整理审核"),
     EXPORT("导出结果"),
 }
@@ -225,7 +225,7 @@ private data class WorkflowSource(
     val duplicateGroup: Int? = null,
     val probe: ProbeResult? = null,
     val deleteMarked: Boolean = false,
-    val suggestion: String = "待去重",
+    val suggestion: String = "待校验",
 )
 
 private data class DuplicateGroupUi(
@@ -332,7 +332,7 @@ fun TidyApp() {
             state.previewOrder = emptyList()
             state.exported = null
             state.error = null
-            state.notice = "已导入 ${docs.size} 个书源；原始文件不会被修改。"
+            state.notice = "已导入 ${docs.size} 个书源；下一步先校验全部书源，原始文件不会被修改。"
             state.removedCount = 0
             state.completed = 0
             state.total = 0
@@ -343,14 +343,21 @@ fun TidyApp() {
 
     fun startDedup() {
         if (state.busy || state.sources.isEmpty()) return
+        if (state.sources.any { it.probe == null }) {
+            state.error = "还有书源没有校验结果，不能开始去重。"
+            return
+        }
         state.busy = true
         state.error = null
-        state.notice = "正在分析重复候选，不会直接删除书源。"
+        state.notice = "正在结合校验结果分析重复候选，不会直接删除书源。"
         activeJob = scope.launch {
             try {
                 val snapshot = state.sources.toList()
+                val probeResults = snapshot.mapIndexedNotNull { index, source ->
+                    source.probe?.let { index to it.copy(index = index) }
+                }.toMap()
                 val report = withContext(Dispatchers.Default) {
-                    Deduper.run(snapshot.map { it.doc })
+                    Deduper.run(snapshot.map { it.doc }, probeResults = probeResults)
                 }
                 val groups = report.groups.mapIndexed { index, group ->
                     DuplicateGroupUi(
@@ -368,8 +375,9 @@ fun TidyApp() {
                     val keep = group?.suggestedKeepId == source.id
                     source.copy(
                         duplicateGroup = group?.number,
-                        deleteMarked = group != null && !keep,
+                        deleteMarked = if (group == null) source.deleteMarked else !keep,
                         suggestion = when {
+                            group == null && source.deleteMarked -> source.suggestion
                             group == null -> "未发现重复"
                             keep -> "建议保留"
                             else -> "建议删除"
@@ -381,7 +389,7 @@ fun TidyApp() {
                 state.stage = WorkflowStage.DEDUP_REVIEW
                 state.sourceFilter = "全部"
                 state.selectedId = state.sources.firstOrNull()?.id
-                state.notice = "去重分析完成：发现 ${groups.size} 个重复组。进入校验时才会应用删除标记。"
+                state.notice = "去重分析完成：发现 ${groups.size} 个重复组；系统保留建议已参考本次校验结果。"
             } catch (e: CancellationException) {
                 state.error = "去重分析已停止。"
             } catch (e: Throwable) {
@@ -470,7 +478,16 @@ fun TidyApp() {
         }
     }
 
-    fun confirmDedupAndValidate() {
+    fun startValidation() {
+        if (state.busy || state.sources.isEmpty()) return
+        state.duplicateGroups = emptyList()
+        state.duplicateReport = null
+        state.stage = WorkflowStage.PROBE_REVIEW
+        state.sourceFilter = "全部"
+        runValidation()
+    }
+
+    fun confirmDedup() {
         val emptyDuplicateGroup = state.duplicateGroups.firstOrNull { group ->
             group.sourceIds.isNotEmpty() && group.sourceIds.all { id ->
                 state.sources.firstOrNull { it.id == id }?.deleteMarked == true
@@ -486,20 +503,6 @@ fun TidyApp() {
         if (!commitMarkedDeletions(state)) return
         state.duplicateGroups = emptyList()
         state.duplicateReport = null
-        state.stage = WorkflowStage.PROBE_REVIEW
-        state.sourceFilter = "全部"
-        state.sources.indices.forEach { index ->
-            state.sources[index] = state.sources[index].copy(duplicateGroup = null, probe = null)
-        }
-        runValidation()
-    }
-
-    fun confirmValidation() {
-        if (state.sources.any { it.probe == null }) {
-            state.error = "还有书源没有校验结果。请完成或停止后继续校验，再进入整理。"
-            return
-        }
-        if (!commitMarkedDeletions(state)) return
         state.sources.indices.forEach { index ->
             state.sources[index] = state.sources[index].copy(duplicateGroup = null)
         }
@@ -513,7 +516,17 @@ fun TidyApp() {
         state.preview = null
         state.previewOrder = emptyList()
         state.error = null
-        state.notice = "校验阶段已确认。现在选择需要执行的整理规则；未勾选的规则不会执行。"
+        state.notice = "去重阶段已确认。现在选择需要执行的整理规则；未勾选的规则不会执行。"
+    }
+
+    fun confirmValidation() {
+        if (state.sources.any { it.probe == null }) {
+            state.error = "还有书源没有校验结果。请完成或停止后继续校验，再开始去重。"
+            return
+        }
+        state.error = null
+        state.notice = "校验结果已确认。现在根据所有书源的校验结果识别重复项并生成保留建议。"
+        startDedup()
     }
 
     fun generateOrganizePreview() {
@@ -737,8 +750,8 @@ fun TidyApp() {
                     WorkflowNavigationBar(
                         state = state,
                         onShowImportInfo = { state.showImportInfo = true },
-                        onStartDedup = ::startDedup,
-                        onConfirmDedup = ::confirmDedupAndValidate,
+                        onStartValidation = ::startValidation,
+                        onConfirmDedup = ::confirmDedup,
                         onStop = { activeJob?.cancel() },
                         onContinueValidation = ::runValidation,
                         onConfirmValidation = ::confirmValidation,
@@ -888,11 +901,6 @@ fun TidyApp() {
                             source.doc,
                             editedDocument(source.doc, name, url, group, type, enabled),
                         )
-                        val anyMetadataChanged = name != source.doc.name ||
-                            url != source.doc.url ||
-                            group != source.doc.group ||
-                            type != source.doc.type ||
-                            enabled != isDocumentEnabled(source.doc)
                         updateSource(state, id) { old ->
                             val edited = editedDocument(old.doc, name, url, group, type, enabled)
                             when {
@@ -906,22 +914,42 @@ fun TidyApp() {
                                 else -> old.copy(doc = edited)
                             }
                         }
-                        if (state.stage == WorkflowStage.DEDUP_REVIEW && anyMetadataChanged) {
-                            // These fields influence candidate grouping or keep scoring. Invalidate
-                            // old recommendations instead of letting stale groups delete the wrong source.
-                            state.stage = WorkflowStage.IMPORT
+                        if (state.stage == WorkflowStage.DEDUP_REVIEW && editedProbeInputsChanged) {
+                            // URL/type edits invalidate this source's probe and all URL-based duplicate groups.
+                            // Keep other sources' probe results; restore their pre-dedup validation marks.
+                            state.stage = WorkflowStage.PROBE_REVIEW
                             state.sourceFilter = "全部"
                             state.duplicateGroups = emptyList()
                             state.duplicateReport = null
                             state.sources.indices.forEach { index ->
-                                state.sources[index] = state.sources[index].copy(
+                                val current = state.sources[index]
+                                val isEditedSource = current.id == id
+                                val hasUserDecision = current.suggestion == "用户标记删除" ||
+                                    current.suggestion == "用户决定保留"
+                                val probe = if (isEditedSource) null else current.probe
+                                val deleteMarked = when {
+                                    isEditedSource -> false
+                                    hasUserDecision -> current.deleteMarked
+                                    else -> probe?.let { shouldMarkForDeletionByDefault(it.status) } == true
+                                }
+                                state.sources[index] = current.copy(
                                     duplicateGroup = null,
-                                    deleteMarked = false,
-                                    suggestion = "待去重",
-                                    probe = null,
+                                    probe = probe,
+                                    deleteMarked = deleteMarked,
+                                    suggestion = when {
+                                        isEditedSource -> "待重新校验"
+                                        hasUserDecision -> current.suggestion
+                                        deleteMarked -> "建议删除"
+                                        probe?.status == ProbeStatus.OK -> "建议保留"
+                                        probe?.status == ProbeStatus.SKIPPED -> "跳过校验"
+                                        probe != null -> "建议复核"
+                                        else -> "待重新校验"
+                                    },
                                 )
                             }
-                            state.notice = "源信息已修改，旧去重建议已重置。请重新开始去重。"
+                            state.completed = state.sources.count { it.probe != null }
+                            state.total = state.sources.size
+                            state.notice = "书源地址或类型已修改，相关校验结果已失效；其他书源结果已保留。请重新校验后再去重。"
                         } else if (
                             (state.stage == WorkflowStage.PROBE_REVIEW ||
                                 state.stage == WorkflowStage.ORGANIZE_REVIEW) && editedProbeInputsChanged
@@ -981,7 +1009,7 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
                 Text(
                     if (state.inputFile == null) "导入本地文件，按阶段审核后导出"
                     else "${state.sources.size} 个当前书源 · " + when (state.stage) {
-                        WorkflowStage.IMPORT -> "待开始"
+                        WorkflowStage.IMPORT -> "待校验"
                         WorkflowStage.EXPORT -> "待导出"
                         else -> "处理中"
                     },
@@ -1384,11 +1412,11 @@ private fun SourceRowItem(
     val name = preview?.name ?: source.doc.name
     val group = preview?.group ?: source.doc.group
     val compareNames = state.stage == WorkflowStage.ORGANIZE_REVIEW && state.preview != null
-    val status = source.probe?.status?.label ?: if (state.stage == WorkflowStage.IMPORT || state.stage == WorkflowStage.DEDUP_REVIEW) "待校验" else "未校验"
+    val status = source.probe?.status?.label ?: "待校验"
     val elapsed = source.probe?.let { if (it.elapsedMs >= 1000) "${"%.1f".format(it.elapsedMs / 1000.0)}s" else "${it.elapsedMs}ms" } ?: "—"
     val advice = when {
         source.deleteMarked -> "待删除"
-        state.stage == WorkflowStage.IMPORT -> "等待去重"
+        state.stage == WorkflowStage.IMPORT -> "等待校验"
         source.suggestion.isNotBlank() -> source.suggestion
         else -> "待审核"
     }
@@ -1965,7 +1993,7 @@ private fun DetailField(label: String, value: String) {
 private fun WorkflowNavigationBar(
     state: WorkflowState,
     onShowImportInfo: () -> Unit,
-    onStartDedup: () -> Unit,
+    onStartValidation: () -> Unit,
     onConfirmDedup: () -> Unit,
     onStop: () -> Unit,
     onContinueValidation: () -> Unit,
@@ -2031,11 +2059,11 @@ private fun WorkflowNavigationBar(
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
                     ) { Text("导入信息", fontSize = UiTypography.label) }
                     Button(
-                        onClick = onStartDedup,
+                        onClick = onStartValidation,
                         enabled = state.sources.isNotEmpty() && !state.busy,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                    ) { Text("开始去重", fontSize = UiTypography.label) }
+                    ) { Text("开始校验", fontSize = UiTypography.label) }
                 }
                 WorkflowStage.DEDUP_REVIEW -> {
                     Button(
@@ -2043,7 +2071,7 @@ private fun WorkflowNavigationBar(
                         enabled = state.sources.isNotEmpty() && !state.busy,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                    ) { Text("确认去重并进入校验", fontSize = UiTypography.label) }
+                    ) { Text("确认去重并进入整理", fontSize = UiTypography.label) }
                 }
                 WorkflowStage.PROBE_REVIEW -> {
                     OutlinedButton(
@@ -2067,7 +2095,7 @@ private fun WorkflowNavigationBar(
                             enabled = state.sources.isNotEmpty(),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                        ) { Text("确认校验并进入整理", fontSize = UiTypography.label) }
+                        ) { Text("确认校验并开始去重", fontSize = UiTypography.label) }
                     }
                 }
                 WorkflowStage.ORGANIZE_REVIEW -> {
