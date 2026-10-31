@@ -108,10 +108,7 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
 
                     categoryRule.startsWith("<js>", ignoreCase = true) -> {
                         CacheManager.get(exploreKindsKey)?.takeIf { it.isNotBlank() } ?: run {
-                            val exploreInfoMap = exploreInfoMapList[bookSourceUrl]
-                                ?: InfoMap(bookSourceUrl).also {
-                                    exploreInfoMapList.put(bookSourceUrl, it)
-                                }
+                            val exploreInfoMap = getOrCreateExploreInfoMap()
                             runScriptWithContext {
                                 evalJS(categoryRule.substring(4, categoryRule.lastIndexOf("<"))) {
                                     put("infoMap", exploreInfoMap)
