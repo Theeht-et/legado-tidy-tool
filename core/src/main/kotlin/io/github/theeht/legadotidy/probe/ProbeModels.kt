@@ -81,6 +81,8 @@ data class ProbeResult(
     val keyword: String = "剑来",
     val timeoutMs: Long = 20_000,
     val maxExplorePages: Int = 3,
+    /** Normalized per-validation proxy; source-level header.proxy can override it. */
+    val proxy: String? = null,
 ) {
     val ok: Boolean get() = status == ProbeStatus.OK
 }
