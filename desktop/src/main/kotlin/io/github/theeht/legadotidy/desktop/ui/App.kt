@@ -484,6 +484,7 @@ fun TidyApp() {
                                     entry = entry, depth = depth,
                                     keyword = keyword, timeoutMs = timeoutMs,
                                     maxExplorePages = maxExplorePages,
+                                    proxy = proxy,
                                 )
                                 else -> {
                                     try {
@@ -497,6 +498,7 @@ fun TidyApp() {
                                             entry = entry, depth = depth,
                                             keyword = keyword, timeoutMs = timeoutMs,
                                             maxExplorePages = maxExplorePages,
+                                            proxy = proxy,
                                         )
                                     }
                                 }
