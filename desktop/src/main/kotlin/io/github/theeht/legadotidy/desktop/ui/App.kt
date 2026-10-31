@@ -86,6 +86,7 @@ import io.github.theeht.legadotidy.organize.OrganizeRule
 import io.github.theeht.legadotidy.organize.Organizer
 import io.github.theeht.legadotidy.organize.OrganizedSource
 import io.github.theeht.legadotidy.probe.ProbeDepth
+import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
@@ -278,6 +279,8 @@ private class WorkflowState {
     var concurrency by mutableStateOf(100)
     var timeoutSeconds by mutableStateOf(20)
     var skipProbe by mutableStateOf(false)
+    var exploreMode by mutableStateOf(false)
+    var explorePages by mutableStateOf(3)
     var withToc by mutableStateOf(false)
     var proxy by mutableStateOf("")
     var exportDir by mutableStateOf(defaultExportDir())
@@ -423,6 +426,8 @@ fun TidyApp() {
             timeoutMs = state.timeoutSeconds.coerceAtLeast(1) * 1000L,
             keyword = state.keyword,
             proxy = state.proxy.takeIf { it.isNotBlank() },
+            entry = if (state.exploreMode) ProbeEntry.EXPLORE else ProbeEntry.SEARCH,
+            maxExplorePages = state.explorePages,
         )
         activeJob = scope.launch {
             try {
@@ -433,7 +438,12 @@ fun TidyApp() {
                         async(Dispatchers.IO) {
                             val index = snapshot.indexOfFirst { it.id == source.id }
                             val result = when {
-                                !source.doc.canSearch -> ProbeResult(
+                                state.exploreMode && !source.doc.canExplore -> ProbeResult(
+                                    index,
+                                    ProbeStatus.NO_EXPLORE_CATEGORY,
+                                    detail = "未配置上游发现入口（需要 exploreUrl）",
+                                )
+                                !state.exploreMode && !source.doc.canSearch -> ProbeResult(
                                     index,
                                     ProbeStatus.NO_SEARCH_URL,
                                     detail = "未配置上游搜索入口（普通源需要 searchUrl，JS 源需要 mainJs）",
@@ -2249,6 +2259,21 @@ private fun SettingsDialog(state: WorkflowState, onDismiss: () -> Unit, onChoose
                     Text("跳过真实校验", fontSize = UiTypography.body, color = Ink)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = state.exploreMode, onCheckedChange = { state.exploreMode = it })
+                    Spacer(Modifier.width(8.dp))
+                    Text("改用发现分类入口校验（选第一个 URL 分类）", fontSize = UiTypography.body, color = Ink)
+                }
+                if (state.exploreMode) {
+                    OutlinedTextField(
+                        value = state.explorePages.toString(),
+                        onValueChange = { it.toIntOrNull()?.let { value -> state.explorePages = value.coerceIn(1, 10) } },
+                        label = { Text("发现最大页数（1–10，默认 3）") },
+                        supportingText = { Text("按上游规则逐页请求；某页没有新增书籍时提前停止。达到上限会标记为部分通过。") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = state.withToc, onCheckedChange = { state.withToc = it })
                     Spacer(Modifier.width(8.dp))
                     Text("继续校验详情、目录和正文（完整链路，更慢）", fontSize = UiTypography.body, color = Ink)
@@ -2632,7 +2657,7 @@ private data class ProbeStatusStyle(val background: Color, val foreground: Color
 private fun probeStatusStyle(status: ProbeStatus?): ProbeStatusStyle = when (status) {
     ProbeStatus.OK -> ProbeStatusStyle(SoftGreen, Ok)
     ProbeStatus.PARTIAL, ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> ProbeStatusStyle(SoftAmber, Warn)
-    ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS, ProbeStatus.ERROR ->
+    ProbeStatus.NO_SEARCH_URL, ProbeStatus.NO_EXPLORE_CATEGORY, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS, ProbeStatus.ERROR ->
         ProbeStatusStyle(SoftRed, Bad)
     else -> ProbeStatusStyle(SoftSlate, Muted)
 }
