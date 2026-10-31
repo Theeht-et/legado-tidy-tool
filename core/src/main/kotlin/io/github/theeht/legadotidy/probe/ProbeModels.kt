@@ -75,9 +75,12 @@ data class ProbeResult(
     val elapsedMs: Long = 0,
     val detail: String? = null,
     val stageResults: List<ProbeStageResult> = emptyList(),
-    /** The selected entry and depth make prior validation results safely reusable. */
+    /** Inputs that determine whether this result can be reused by a later validation run. */
     val entry: ProbeEntry = ProbeEntry.SEARCH,
     val depth: ProbeDepth = ProbeDepth.SEARCH,
+    val keyword: String = "剑来",
+    val timeoutMs: Long = 20_000,
+    val maxExplorePages: Int = 3,
 ) {
     val ok: Boolean get() = status == ProbeStatus.OK
 }
