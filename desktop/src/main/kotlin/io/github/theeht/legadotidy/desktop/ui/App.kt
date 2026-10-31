@@ -2319,7 +2319,7 @@ private fun CompareGroupDialog(
     var keepAll by remember(group.number) {
         mutableStateOf(candidates.isNotEmpty() && candidates.all { !it.deleteMarked })
     }
-    val ruleDifferenceKeys = ruleDifferenceKeys(candidates)
+    val differingRuleKeys = ruleDifferenceKeys(candidates)
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -2361,7 +2361,7 @@ private fun CompareGroupDialog(
                         val recommended = source.id == group.suggestedKeepId
                         val selectedKeep = !keepAll && source.id == keepId
                         val proposedKeep = keepAll || selectedKeep
-                        val differences = ruleDifferenceSummary(ruleDifferenceKeys, source)
+                        val differences = ruleDifferenceSummary(differingRuleKeys, source)
                         Row(
                             Modifier.fillMaxWidth()
                                 .background(if (selectedKeep) SoftBlue else Color.White)
