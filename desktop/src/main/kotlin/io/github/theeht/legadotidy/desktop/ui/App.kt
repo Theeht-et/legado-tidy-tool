@@ -786,7 +786,6 @@ fun TidyApp() {
                             onDetail = { id -> state.selectedId = id; detailDialogId = id },
                             onEdit = { editingId = it },
                             onCompare = { comparingGroup = it },
-                            onGeneratePreview = ::generateOrganizePreview,
                             onRuleChange = { rule, checked ->
                                 val next = if (checked) state.selectedRules + rule else state.selectedRules - rule
                                 state.selectedRules = when (rule) {
@@ -1146,7 +1145,6 @@ private fun SourceListPanel(
     onEdit: (Int) -> Unit,
     onCompare: (Int) -> Unit,
     onRuleChange: (OrganizeRule, Boolean) -> Unit,
-    onGeneratePreview: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
