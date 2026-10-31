@@ -26,9 +26,9 @@ object TidyText {
     private val AD_SUFFIX = Regex("[：:_ -]*(?:$AD_TERMS)$", RegexOption.IGNORE_CASE)
     private val AD_STANDALONE = Regex("""\b(?:VIP|AD|ADS)\b""", RegexOption.IGNORE_CASE)
     // "MD" is only a marker when immediately followed by a decorative symbol.
-    private val DECORATIVE_MD_PREFIX = Regex("""(?i)^md(?=[\p{So}\p{Sk}\uFE0F\u200D+＋])""")
+    private val DECORATIVE_MD_PREFIX = Regex("""(?i)^md(?=\s*[+＋])""")
     // Remove only a standalone cookie suffix; never strip arbitrary English substrings.
-    private val COOKIE_SUFFIX = Regex("""(?i)(?<![A-Za-z0-9])cookie$""")
+    private val COOKIE_SUFFIX = Regex("""(?i)(?<=\s)cookie$""")
     private val HASH_SUFFIX = Regex("""[#＃][\s\S]*$""")
     private val DECORATIVE_SYMBOLS = Regex("[★☆◆◇■□●○✦✧✪✿❖※♛♚♔♕♡♥❤⚡🔥✨🌟☀️☘️]+")
     // Preserve paired brackets for the text-cleaning rule; trim only decorative edge separators.
@@ -78,9 +78,10 @@ object TidyText {
     /** 只移除 emoji、装饰符号和带圈序号；成对括号及文字留给“清理多余文字”处理。 */
     fun cleanDecorations(raw: String): String {
         var s = ZERO_WIDTH.replace(raw, "")
-        s = EMOJI.replace(s, "")
+        // Replace icons with spacing rather than joining words that were separated by an icon.
+        s = EMOJI.replace(s, " ")
         s = CIRCLED_NUMBERS.replace(s, "")
-        s = DECORATIVE_SYMBOLS.replace(s, "")
+        s = DECORATIVE_SYMBOLS.replace(s, " ")
         s = DECORATION_PREFIX.replace(s, "")
         s = DECORATION_SUFFIX.replace(s, "")
         s = REPEATED_WS.replace(s, " ")
