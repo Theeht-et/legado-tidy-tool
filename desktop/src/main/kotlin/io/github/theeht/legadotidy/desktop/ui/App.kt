@@ -129,7 +129,11 @@ private val SoftAmber = Color(0xFFFFF3DC)
 private val SoftRed = Color(0xFFFFEEEE)
 private val SoftNeutral = Color(0xFFF5F7FA)
 private val SoftSlate = Color(0xFFEDF1F6)
+private val UnconfiguredSurface = Color(0xFFE3E9F1)
+private val UnconfiguredBorder = Color(0xFFB8C5D4)
+private val UnconfiguredText = Color(0xFF43536A)
 private object UiTypography {
+    val compact = 11.sp
     val caption = 12.sp
     val label = 13.sp
     val body = 14.sp
@@ -557,7 +561,7 @@ fun TidyApp() {
                 }
                 state.preview = previewRows
                 state.previewOrder = orderedIds
-                state.notice = "整理预览已生成。请检查新名称、分组和顺序，再确认应用。"
+                state.notice = "整理方案已生成。请在书源列表中对照原名称与新名称，并检查分组和顺序，再确认应用。"
             } catch (e: CancellationException) {
                 state.error = "整理预览已取消。"
             } catch (e: Throwable) {
@@ -1016,43 +1020,38 @@ private fun OrganizeRulePanel(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("整理规则", fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = Ink)
                 Spacer(Modifier.width(7.dp))
-                Text("勾选项才执行", fontSize = UiTypography.caption, color = Muted)
+                Text("勾选项才执行", fontSize = UiTypography.compact, color = Muted)
             }
-            Row(
+            FlowRow(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 RuleCheckbox(
                     OrganizeRule.CLEAN_DECORATIONS,
                     OrganizeRule.CLEAN_DECORATIONS in state.selectedRules,
                     onRuleChange,
-                    modifier = Modifier.weight(1f),
                 )
                 RuleCheckbox(
                     OrganizeRule.REMOVE_ADVERTISING_WORDS,
                     OrganizeRule.REMOVE_ADVERTISING_WORDS in state.selectedRules,
                     onRuleChange,
-                    modifier = Modifier.weight(1f),
                 )
                 RuleCheckbox(
                     OrganizeRule.NORMALIZE_PUNCTUATION,
                     OrganizeRule.NORMALIZE_PUNCTUATION in state.selectedRules,
                     onRuleChange,
-                    modifier = Modifier.weight(1f),
                 )
                 GroupRuleBlock(
                     keepOriginal = OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules,
                     regroupByType = OrganizeRule.REGROUP_BY_TYPE in state.selectedRules,
                     onKeepOriginal = { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
                     onRegroupByType = { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
-                    modifier = Modifier.weight(1f),
                 )
                 RuleCheckbox(
                     OrganizeRule.SORT_BY_RESPONSE_TIME,
                     OrganizeRule.SORT_BY_RESPONSE_TIME in state.selectedRules,
                     onRuleChange,
-                    modifier = Modifier.weight(1f),
                 )
             }
         }
@@ -1088,7 +1087,7 @@ private fun RuleRadio(label: String, selected: Boolean, onClick: () -> Unit) {
                 Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(Primary),
             )
         }
-        Text(label, fontSize = UiTypography.label, color = BodyText)
+        Text(label, fontSize = UiTypography.caption, color = BodyText)
     }
 }
 
@@ -1100,23 +1099,20 @@ private fun RuleCheckbox(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier.height(68.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .border(1.dp, if (checked) SoftBlueBorder else Line, RoundedCornerShape(6.dp))
+        modifier.clip(RoundedCornerShape(7.dp))
+            .border(1.dp, if (checked) SoftBlueBorder else Line, RoundedCornerShape(7.dp))
             .background(if (checked) SoftBlue else Color.White)
             .clickable { onRuleChange(rule, !checked) }
-            .padding(horizontal = 8.dp, vertical = 7.dp),
+            .padding(horizontal = 7.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         RuleCheckMark(checked)
         Text(
             rule.label,
-            modifier = Modifier.weight(1f),
-            fontSize = UiTypography.caption,
+            fontSize = UiTypography.compact,
             color = if (checked) Primary else BodyText,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 1,
         )
     }
 }
@@ -1129,23 +1125,17 @@ private fun GroupRuleBlock(
     onRegroupByType: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier.height(68.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .border(1.dp, if (keepOriginal || regroupByType) SoftBlueBorder else Line, RoundedCornerShape(6.dp))
-            .background(if (keepOriginal || regroupByType) SoftBlue else Color.White)
-            .padding(horizontal = 8.dp, vertical = 5.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+    Row(
+        modifier.clip(RoundedCornerShape(7.dp))
+            .border(1.dp, Line, RoundedCornerShape(7.dp))
+            .background(Color.White)
+            .padding(horizontal = 7.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("分组方式", fontSize = UiTypography.caption, color = Muted, maxLines = 1)
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            RuleRadio("保留原组", keepOriginal, onKeepOriginal)
-            RuleRadio("智能归类", regroupByType, onRegroupByType)
-        }
+        Text("分组", fontSize = UiTypography.compact, color = Muted)
+        RuleRadio("保留原组", keepOriginal, onKeepOriginal)
+        RuleRadio("智能归类", regroupByType, onRegroupByType)
     }
 }
 
@@ -1255,7 +1245,7 @@ private fun SourceListPanel(
                 val tableWidth = maxOf(maxWidth, 1040.dp)
                 Row(Modifier.fillMaxHeight().horizontalScroll(rememberScrollState())) {
                 Column(Modifier.width(tableWidth).fillMaxHeight()) {
-            TableHeader()
+            TableHeader(showNameComparison = state.stage == WorkflowStage.ORGANIZE_REVIEW && state.preview != null)
             HorizontalDivider(color = Line)
             if (state.sources.isEmpty()) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -1334,13 +1324,20 @@ private fun SourceListPanel(
 
 
 @Composable
-private fun TableHeader() {
+private fun TableHeader(showNameComparison: Boolean = false) {
     Row(
         Modifier.fillMaxWidth().background(SoftNeutral).padding(horizontal = 9.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("源名", Modifier.weight(1.55f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
-        Text("URL", Modifier.weight(2.15f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
+        if (showNameComparison) {
+            Row(Modifier.weight(2.35f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("原名称", Modifier.weight(1f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
+                Text("新名称", Modifier.weight(1f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = Primary)
+            }
+        } else {
+            Text("源名", Modifier.weight(1.55f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
+        }
+        Text("URL", Modifier.weight(if (showNameComparison) 1.95f else 2.15f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
         Text("类型", Modifier.weight(0.65f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
         Text("分组", Modifier.weight(0.9f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
         Text("耗时", Modifier.weight(0.6f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
@@ -1385,6 +1382,7 @@ private fun SourceRowItem(
     val preview = state.preview?.get(source.id).takeIf { state.stage == WorkflowStage.ORGANIZE_REVIEW || state.stage == WorkflowStage.EXPORT }
     val name = preview?.name ?: source.doc.name
     val group = preview?.group ?: source.doc.group
+    val compareNames = state.stage == WorkflowStage.ORGANIZE_REVIEW && preview != null
     val status = source.probe?.status?.label ?: if (state.stage == WorkflowStage.IMPORT || state.stage == WorkflowStage.DEDUP_REVIEW) "待校验" else "未校验"
     val elapsed = source.probe?.let { if (it.elapsedMs >= 1000) "${"%.1f".format(it.elapsedMs / 1000.0)}s" else "${it.elapsedMs}ms" } ?: "—"
     val advice = when {
@@ -1399,18 +1397,44 @@ private fun SourceRowItem(
             .clickable { state.selectedId = source.id }.padding(horizontal = 9.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            name.ifBlank { "（未命名）" },
-            Modifier.weight(1.55f).padding(end = 5.dp),
-            fontSize = UiTypography.body,
-            fontWeight = FontWeight.SemiBold,
-            color = Ink,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (compareNames) {
+            Row(
+                Modifier.weight(2.35f).padding(end = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    source.doc.name.ifBlank { "（未命名）" },
+                    Modifier.weight(1f),
+                    fontSize = UiTypography.body,
+                    color = BodyText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    preview?.name?.ifBlank { "（未命名）" } ?: "—",
+                    Modifier.weight(1f),
+                    fontSize = UiTypography.body,
+                    fontWeight = FontWeight.SemiBold,
+                    color = PrimaryDeep,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        } else {
+            Text(
+                name.ifBlank { "（未命名）" },
+                Modifier.weight(1.55f).padding(end = 5.dp),
+                fontSize = UiTypography.body,
+                fontWeight = FontWeight.SemiBold,
+                color = Ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Text(
             source.doc.url.ifBlank { "—" },
-            Modifier.weight(2.15f).padding(end = 5.dp),
+            Modifier.weight(if (compareNames) 1.95f else 2.15f).padding(end = 5.dp),
             fontSize = UiTypography.label,
             fontWeight = FontWeight.Medium,
             color = Ink,
@@ -1720,15 +1744,6 @@ private fun DetailPanel(
                 }
                 HorizontalDivider(color = Line)
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    DetailMetric("书源类型", sourceTypeLabel(source.doc.type), Modifier.weight(1f))
-                    DetailMetric("已配置规则字段", source.doc.ruleCompleteness.toString(), Modifier.weight(1f))
-                    DetailMetric("响应耗时", source.probe?.let { "${it.elapsedMs} ms" } ?: "暂无", Modifier.weight(1f))
-                }
-                HorizontalDivider(color = Line)
-                Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1765,7 +1780,7 @@ private fun DetailPanel(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     if (selectedDetailTab == SourceDetailTab.OVERVIEW) {
-                        DetailOverviewContent(source, preview)
+                        DetailOverviewContent(source)
                     } else {
                         DetailSectionsContent(
                             tab = selectedDetailTab,
@@ -1807,7 +1822,16 @@ private fun DetailPanel(
 }
 
 @Composable
-private fun DetailOverviewContent(source: WorkflowSource, preview: PreviewSource?) {
+private fun DetailOverviewContent(source: WorkflowSource) {
+    Text("书源概况", fontSize = UiTypography.emphasis, fontWeight = FontWeight.Bold, color = Ink)
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        DetailMetric("书源类型", sourceTypeLabel(source.doc.type), Modifier.weight(1f))
+        DetailMetric("已配置规则字段", source.doc.ruleCompleteness.toString(), Modifier.weight(1f))
+        DetailMetric("响应耗时", source.probe?.let { "${it.elapsedMs} ms" } ?: "暂无", Modifier.weight(1f))
+    }
     Text("审核与处理信息", fontSize = UiTypography.emphasis, fontWeight = FontWeight.Bold, color = Ink)
     Card(
         Modifier.fillMaxWidth(),
@@ -1840,31 +1864,6 @@ private fun DetailOverviewContent(source: WorkflowSource, preview: PreviewSource
                     Text(result.detail.orEmpty(), fontSize = UiTypography.label, color = BodyText, lineHeight = 16.sp)
                 }
                 result.httpCode?.let { Text("HTTP 状态码：$it", fontSize = UiTypography.caption, color = Muted) }
-            }
-        }
-    }
-    if (preview != null) {
-        Text("整理预览", fontSize = UiTypography.emphasis, fontWeight = FontWeight.Bold, color = Ink)
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(9.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(
-                Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(SoftRed).padding(11.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                Text("修改前", fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = Bad)
-                Text(source.doc.name.ifBlank { "（未命名）" }, fontSize = UiTypography.label, color = BodyText)
-                Text(source.doc.group.ifBlank { "未分组" }, fontSize = UiTypography.caption, color = Muted)
-            }
-            Column(
-                Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(SoftGreen).padding(11.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                Text("预览结果", fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = Ok)
-                Text(preview.name.ifBlank { "（未命名）" }, fontSize = UiTypography.label, color = BodyText)
-                Text(preview.group.ifBlank { "未分组" }, fontSize = UiTypography.caption, color = Muted)
             }
         }
     }
@@ -1929,20 +1928,20 @@ private fun DetailMetric(label: String, value: String, modifier: Modifier = Modi
 private fun DetailValueCard(field: SourceDetailField, modifier: Modifier = Modifier) {
     Column(
         modifier.clip(RoundedCornerShape(8.dp))
-            .border(1.dp, if (field.configured) Line else SoftSlate, RoundedCornerShape(8.dp))
-            .background(if (field.configured) Color.White else SoftSlate)
+            .border(1.dp, if (field.configured) Line else UnconfiguredBorder, RoundedCornerShape(8.dp))
+            .background(if (field.configured) Color.White else UnconfiguredSurface)
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(field.label, Modifier.weight(1f), fontSize = UiTypography.label, fontWeight = FontWeight.SemiBold, color = Ink)
-            Text(if (field.configured) "已配置" else "未配置", fontSize = UiTypography.caption, color = if (field.configured) Ok else Muted)
+            Text(if (field.configured) "已配置" else "未配置", fontSize = UiTypography.caption, color = if (field.configured) Ok else UnconfiguredText)
         }
         Text(field.key, fontSize = UiTypography.caption, color = Muted)
         Text(
             field.value,
             fontSize = UiTypography.body,
-            color = if (field.configured) Ink else Muted,
+            color = if (field.configured) Ink else UnconfiguredText,
             lineHeight = 18.sp,
         )
     }
@@ -2000,7 +1999,6 @@ private fun WorkflowNavigationBar(
                 Text("当前阶段", fontSize = UiTypography.caption, color = Muted, maxLines = 1)
                 Text(state.stage.label, fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = Ink, maxLines = 1)
             }
-            Text("$stageNumber/5", fontSize = UiTypography.caption, color = Muted, maxLines = 1)
         }
         Row(
             Modifier.weight(1f).clip(RoundedCornerShape(6.dp))
