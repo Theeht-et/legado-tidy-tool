@@ -1217,29 +1217,27 @@ private fun SourceListPanel(
                 ) { Text("清除", fontSize = UiTypography.body) }
             }
             HorizontalDivider(color = Line)
-            if (state.stage != WorkflowStage.DEDUP_REVIEW) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(1.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    sourceFilterLabels.forEach { label ->
-                        val count = sourceFilterCount(state, label)
-                        val selected = state.sourceFilter == label
-                        Box(
-                            Modifier.clip(RoundedCornerShape(6.dp))
-                                .background(if (selected) SoftBlue else Color.Transparent)
-                                .border(1.dp, if (selected) SoftBlueBorder else Color.Transparent, RoundedCornerShape(6.dp))
-                                .clickable { state.sourceFilter = label }
-                                .padding(horizontal = 7.dp, vertical = 3.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text("$label $count", fontSize = UiTypography.label, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium, color = if (selected) Primary else BodyText, maxLines = 1)
-                        }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(1.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                sourceFilterLabels.forEach { label ->
+                    val count = sourceFilterCount(state, label)
+                    val selected = state.sourceFilter == label
+                    Box(
+                        Modifier.clip(RoundedCornerShape(6.dp))
+                            .background(if (selected) SoftBlue else Color.Transparent)
+                            .border(1.dp, if (selected) SoftBlueBorder else Color.Transparent, RoundedCornerShape(6.dp))
+                            .clickable { state.sourceFilter = label }
+                            .padding(horizontal = 7.dp, vertical = 3.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("$label $count", fontSize = UiTypography.label, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium, color = if (selected) Primary else BodyText, maxLines = 1)
                     }
                 }
-                HorizontalDivider(color = Line)
             }
+            HorizontalDivider(color = Line)
             if (state.stage == WorkflowStage.ORGANIZE_REVIEW) {
                 OrganizeRulePanel(
                     state = state,
@@ -2546,7 +2544,7 @@ private fun sourceMatchesFilter(state: WorkflowState, source: WorkflowSource): B
         source.doc.name, source.doc.url, source.doc.group, source.doc.type.toString(),
         source.probe?.status?.label.orEmpty(), source.suggestion, source.probe?.detail.orEmpty(),
     ).any { it.lowercase().contains(query) }
-    val matchesFilter = state.stage == WorkflowStage.DEDUP_REVIEW || isSourceIncludedInFilter(
+    val matchesFilter = isSourceIncludedInFilter(
         filter = state.sourceFilter,
         hasDuplicateGroup = source.duplicateGroup != null,
         needsProbe = source.probe == null,
