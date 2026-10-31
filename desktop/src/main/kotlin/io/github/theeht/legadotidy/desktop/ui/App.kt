@@ -85,7 +85,6 @@ import io.github.theeht.legadotidy.organize.OrganizeConfig
 import io.github.theeht.legadotidy.organize.OrganizeRule
 import io.github.theeht.legadotidy.organize.Organizer
 import io.github.theeht.legadotidy.organize.OrganizedSource
-import io.github.theeht.legadotidy.organize.QualityAssessment
 import io.github.theeht.legadotidy.probe.ProbeDepth
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeResult
@@ -242,7 +241,6 @@ private data class PreviewSource(
     val group: String,
     val status: ProbeStatus,
     val rank: Int,
-    val quality: QualityAssessment? = null,
     val nameEdited: Boolean = false,
     val groupEdited: Boolean = false,
 )
@@ -510,7 +508,6 @@ fun TidyApp() {
         state.selectedRules = setOf(
             OrganizeRule.CLEAN_DECORATIONS,
             OrganizeRule.REMOVE_ADVERTISING_WORDS,
-            OrganizeRule.NORMALIZE_PUNCTUATION,
             OrganizeRule.KEEP_ORIGINAL_GROUPS,
         )
         state.preview = null
@@ -558,7 +555,6 @@ fun TidyApp() {
                             group = organized.group,
                             status = organized.status,
                             rank = organized.rank,
-                            quality = organized.quality,
                         )
                     }
                 }
@@ -585,7 +581,6 @@ fun TidyApp() {
         state.applyCleanNames = rules.any {
             it == OrganizeRule.CLEAN_DECORATIONS ||
                 it == OrganizeRule.REMOVE_ADVERTISING_WORDS ||
-                it == OrganizeRule.NORMALIZE_PUNCTUATION
         } || preview.values.any { it.nameEdited }
         state.applyGroups = shouldApplyGroups(rules, preview.values.any { it.groupEdited })
         state.applyOrder = OrganizeRule.SORT_BY_RESPONSE_TIME in rules
@@ -999,16 +994,17 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (state.busy) LinearProgressIndicator(modifier = Modifier.width(52.dp).height(4.dp))
-            OutlinedButton(
+            Button(
                 onClick = onImport,
                 enabled = !state.busy,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 3.dp),
-            ) { Text("导入 JSON", fontSize = UiTypography.body) }
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
+            ) { Text("导入 JSON", fontSize = UiTypography.label) }
             OutlinedButton(
                 onClick = { state.showSettings = true },
                 enabled = !state.busy,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 3.dp),
-            ) { Text("⚙ 校验设置", fontSize = UiTypography.body) }
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
+            ) { Text("校验设置", fontSize = UiTypography.label) }
         }
     }
 }
@@ -1050,11 +1046,6 @@ private fun OrganizeRulePanel(
                 RuleCheckbox(
                     OrganizeRule.REMOVE_ADVERTISING_WORDS,
                     OrganizeRule.REMOVE_ADVERTISING_WORDS in state.selectedRules,
-                    onRuleChange,
-                )
-                RuleCheckbox(
-                    OrganizeRule.NORMALIZE_PUNCTUATION,
-                    OrganizeRule.NORMALIZE_PUNCTUATION in state.selectedRules,
                     onRuleChange,
                 )
                 GroupRuleBlock(
@@ -1477,10 +1468,7 @@ private fun SourceRowItem(
             overflow = TextOverflow.Ellipsis,
         )
         SmallChip(sourceTypeLabel(source.doc.type), SoftSlate, Muted, Modifier.weight(0.65f))
-        val groupLabel = if (OrganizeRule.REGROUP_BY_QUALITY in state.selectedRules) {
-            preview?.quality?.let { group + " · " + it.score + "分" } ?: group.ifBlank { "—" }
-        } else group.ifBlank { "—" }
-        Text(groupLabel, Modifier.weight(0.9f), fontSize = UiTypography.label, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(group.ifBlank { "—" }, Modifier.weight(0.9f), fontSize = UiTypography.label, color = BodyText, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(elapsed, Modifier.weight(0.6f), fontSize = UiTypography.caption, color = Muted, maxLines = 1)
         SmallChip(status, probeStyle.background, probeStyle.foreground, Modifier.weight(0.95f))
         SmallChip(
@@ -2230,12 +2218,12 @@ private fun SettingsDialog(state: WorkflowState, onDismiss: () -> Unit, onChoose
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = state.skipProbe, onCheckedChange = { state.skipProbe = it })
                     Spacer(Modifier.width(8.dp))
-                    Text("跳过真实校验", fontSize = UiTypography.body)
+                    Text("跳过真实校验", fontSize = UiTypography.body, color = Ink)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = state.withToc, onCheckedChange = { state.withToc = it })
                     Spacer(Modifier.width(8.dp))
-                    Text("校验时继续检查目录（更慢）", fontSize = UiTypography.body)
+                    Text("校验时继续检查目录（更慢）", fontSize = UiTypography.body, color = Ink)
                 }
                 OutlinedTextField(
                     value = state.exportDir,
@@ -2280,12 +2268,12 @@ private fun ReportDialog(state: WorkflowState, onDismiss: () -> Unit) {
                 DetailField("已从工作池移除", state.removedCount.toString())
                 DetailField("待删除标记", state.sources.count { it.deleteMarked }.toString())
                 HorizontalDivider(color = Line)
-                Text("校验分类", fontWeight = FontWeight.SemiBold, fontSize = UiTypography.body)
+                Text("校验分类", fontWeight = FontWeight.SemiBold, fontSize = UiTypography.body, color = Ink)
                 if (counts.isEmpty()) Text("尚无校验结果", color = Muted, fontSize = UiTypography.body)
                 counts.forEach { (status, count) ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(status.label, Modifier.weight(1f), fontSize = UiTypography.body, color = probeStatusStyle(status).foreground)
-                        Text(count.toString(), fontSize = UiTypography.body, fontWeight = FontWeight.SemiBold)
+                        Text(count.toString(), fontSize = UiTypography.body, fontWeight = FontWeight.SemiBold, color = Ink)
                     }
                 }
                 if (state.stage == WorkflowStage.EXPORT || state.preview != null) {
@@ -2516,15 +2504,11 @@ private fun EditSourceDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Switch(checked = enabled, onCheckedChange = { enabled = it })
                         Spacer(Modifier.width(8.dp))
-                        Text("启用书源", fontSize = UiTypography.body)
+                        Text("启用书源", fontSize = UiTypography.body, color = Ink)
                     }
                 }
                 OutlinedTextField(value = group, onValueChange = { group = it }, label = { Text("分组") }, modifier = Modifier.fillMaxWidth())
                 if (previewMode) {
-                    preview?.quality?.let { quality ->
-                        Text("质量评分：" + quality.grade + "（" + quality.score + "分）", fontSize = UiTypography.label, fontWeight = FontWeight.SemiBold, color = Primary)
-                        Text("评分依据：" + quality.reasons.joinToString("；"), fontSize = UiTypography.caption, color = Muted)
-                    }
                     Text("这里只编辑整理方案中的值；点击「确认整理并进入导出」后才会应用。", fontSize = UiTypography.label, color = Muted)
                 } else {
                     Text("只修改已填写的字段，其余未知 JSON 字段会原样保留。", fontSize = UiTypography.label, color = Muted)
