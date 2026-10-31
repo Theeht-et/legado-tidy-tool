@@ -179,6 +179,8 @@ class WorkflowDecisionsTest {
     fun `保留原组不触发无意义写回而重分组和手动编辑会写回`() {
         assertFalse(shouldApplyGroups(setOf(OrganizeRule.KEEP_ORIGINAL_GROUPS), false))
         assertTrue(shouldApplyGroups(setOf(OrganizeRule.REGROUP_BY_TYPE), false))
+        assertTrue(shouldApplyGroups(setOf(OrganizeRule.REGROUP_BY_QUALITY), false))
+        assertTrue(shouldApplyGroups(setOf(OrganizeRule.DROP_ORIGINAL_GROUPS, OrganizeRule.NO_SMART_GROUPING), false))
         assertTrue(shouldApplyGroups(setOf(OrganizeRule.KEEP_ORIGINAL_GROUPS), true))
         assertFalse(shouldApplyGroups(emptySet(), false))
     }
