@@ -2,6 +2,10 @@ package io.github.theeht.legadotidy.engine
 
 import io.legado.app.help.http.ProbeProxyContext
 import io.legado.app.help.http.getProxyClient
+import io.github.theeht.legadotidy.model.BookSourceDoc
+import io.github.theeht.legadotidy.probe.ProbeOptions
+import io.github.theeht.legadotidy.probe.ProbeStatus
+import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -12,6 +16,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.net.InetSocketAddress
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
@@ -32,8 +37,11 @@ class ProbeProxyContextTest {
                         delay(20)
                         val defaultClient = getProxyClient()
                         val sourceClient = getProxyClient("http://127.0.0.1:$sourcePort")
-                        defaultPort to sourcePort to
-                            (defaultClient.proxyPort() to sourceClient.proxyPort())
+                        Triple(
+                            defaultPort,
+                            sourcePort,
+                            defaultClient.proxyPort() to sourceClient.proxyPort(),
+                        )
                     }
                 }
             }.awaitAll()
@@ -41,7 +49,7 @@ class ProbeProxyContextTest {
 
         assertEquals(
             expected.map { it.first to it.second },
-            actual.map { it.first to it.second },
+            actual.map { it.third },
         )
         assertNull(ProbeProxyContext.currentProxy())
     }
@@ -55,6 +63,31 @@ class ProbeProxyContextTest {
             }
             assertEquals("http://127.0.0.1:18703", ProbeProxyContext.currentProxy())
         }
+        assertNull(ProbeProxyContext.currentProxy())
+    }
+
+
+    @Test
+    fun `无效代理配置在网络请求前返回明确错误`() = runBlocking {
+        val source = BookSourceDoc(
+            JsonParser.parseString(
+                """{
+                  "bookSourceUrl":"https://example.test",
+                  "searchUrl":"/search",
+                  "ruleSearch":{"bookList":"div.book","name":"h2","bookUrl":"href"}
+                }""",
+            ).asJsonObject,
+        )
+
+        val result = LegadoProbeEngine().probe(
+            index = 0,
+            source = source,
+            options = ProbeOptions(proxy = "not a proxy"),
+        )
+
+        assertEquals(ProbeStatus.ERROR, result.status)
+        assertEquals("not a proxy", result.proxy)
+        assertContains(result.detail.orEmpty(), "代理配置无效")
         assertNull(ProbeProxyContext.currentProxy())
     }
 
