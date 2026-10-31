@@ -43,7 +43,6 @@ data class OrganizeConfig(
 data class QualityAssessment(
     val score: Int,
     val grade: String,
-    val reasons: List<String>,
 )
 
 data class OrganizedSource(
@@ -75,9 +74,16 @@ object Organizer {
         val explicitRules = selected != null
 
         val statusOf = sources.indices.associateWith { results[it]?.status ?: ProbeStatus.SKIPPED }
-        val qualityOf = sources.indices.associateWith { index ->
-            assessQuality(sources[index], results[index])
+        val groupingMode = config.groupingMode ?: when {
+            OrganizeRule.REGROUP_BY_QUALITY in rules -> GroupingMode.BY_QUALITY
+            OrganizeRule.REGROUP_BY_TYPE in rules -> GroupingMode.BY_TYPE
+            OrganizeRule.DROP_ORIGINAL_GROUPS in rules -> GroupingMode.NO_SMART_GROUPING
+            else -> GroupingMode.KEEP_ORIGINAL
         }
+        // 只有选择按质量分组时才计算质量等级；其他整理路径完全不执行评分。
+        val qualityByIndex = if (explicitRules && groupingMode == GroupingMode.BY_QUALITY) {
+            sources.indices.associateWith { index -> assessQuality(sources[index], results[index]) }
+        } else emptyMap()
         val nameOf = sources.map { doc ->
             if (!explicitRules) {
                 TidyText.display(doc.name, config.maxNameLength)
@@ -92,19 +98,13 @@ object Organizer {
             }
         }
 
-        val groupingMode = config.groupingMode ?: when {
-            OrganizeRule.REGROUP_BY_QUALITY in rules -> GroupingMode.BY_QUALITY
-            OrganizeRule.REGROUP_BY_TYPE in rules -> GroupingMode.BY_TYPE
-            OrganizeRule.DROP_ORIGINAL_GROUPS in rules -> GroupingMode.NO_SMART_GROUPING
-            else -> GroupingMode.KEEP_ORIGINAL
-        }
         val groupOf = sources.mapIndexed { index, doc ->
             if (!explicitRules) resolveGroup(doc, config)
             else when (groupingMode) {
                 GroupingMode.KEEP_ORIGINAL -> doc.group
                 GroupingMode.NO_SMART_GROUPING -> config.unknownGroup
                 GroupingMode.BY_TYPE -> config.typeNames[doc.type] ?: if (doc.type == 4) "视频" else config.unknownGroup
-                GroupingMode.BY_QUALITY -> qualityOf.getValue(index).grade
+                GroupingMode.BY_QUALITY -> qualityByIndex.getValue(index).grade
             }
         }
 
@@ -161,7 +161,6 @@ object Organizer {
     fun assessQuality(doc: BookSourceDoc, probe: ProbeResult?): QualityAssessment {
         var weighted = 0.0
         var availableWeight = 0
-        val reasons = mutableListOf<String>()
 
         val status = probe?.status
         if (status != null && status !in setOf(
@@ -171,13 +170,6 @@ object Organizer {
             val availability = if (status == ProbeStatus.OK) 100 else 0
             weighted += availability * 50
             availableWeight += 50
-            reasons += if (availability == 100) "校验可用" else "校验未通过（${status.label}）"
-        } else {
-            reasons += when (status) {
-                ProbeStatus.NO_SEARCH_URL -> "缺少搜索规则，未参与可用性评分"
-                ProbeStatus.UNSUPPORTED -> "不支持自动校验，未参与可用性评分"
-                else -> "未校验，未参与可用性评分"
-            }
         }
 
         val elapsed = probe?.takeIf {
@@ -193,15 +185,11 @@ object Organizer {
             }
             weighted += speed * 30
             availableWeight += 30
-            reasons += "响应 ${elapsed}ms"
-        } else {
-            reasons += "无有效响应耗时，未参与速度评分"
         }
 
         val completeness = (doc.ruleCompleteness * 10).coerceIn(0, 100)
         weighted += completeness * 20
         availableWeight += 20
-        reasons += "已配置字段 ${doc.ruleCompleteness} 项"
 
         val score = if (availableWeight == 0) 0 else (weighted / availableWeight).toInt().coerceIn(0, 100)
         val grade = when {
@@ -210,7 +198,7 @@ object Organizer {
             score >= 50 -> "普通"
             else -> "合格"
         }
-        return QualityAssessment(score, grade, reasons)
+        return QualityAssessment(score, grade)
     }
 
     /** 旧版 CLI 默认分组行为保持不变。 */
