@@ -16,6 +16,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.help.source.exploreKinds
+import io.legado.app.help.source.flushExploreInfoMapIfNeeded
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.GSON
 import kotlinx.coroutines.TimeoutCancellationException
@@ -196,6 +197,7 @@ class LegadoProbeEngine(
                             emptyDetail = "没有可用于自动校验的 URL 类型发现分类",
                         ) {
                             categories = bookSource.exploreKinds()
+                            bookSource.flushExploreInfoMapIfNeeded()
                             categories.count {
                                 it.type == ExploreKind.Type.url &&
                                     !it.url.isNullOrBlank() &&
@@ -248,6 +250,7 @@ class LegadoProbeEngine(
                                     url = categoryUrl,
                                     page = page,
                                 )
+                                bookSource.flushExploreInfoMapIfNeeded()
                                 pageBooks.size
                             }
 
