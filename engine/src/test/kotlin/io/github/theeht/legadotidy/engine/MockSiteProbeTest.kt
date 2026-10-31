@@ -7,6 +7,7 @@ import io.github.theeht.legadotidy.model.SourceIO
 import io.github.theeht.legadotidy.probe.ProbeDepth
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeStatus
+import io.legado.app.utils.GSON
 import kotlinx.coroutines.runBlocking
 import java.net.InetSocketAddress
 import kotlin.test.AfterTest
@@ -203,6 +204,56 @@ class MockSiteProbeTest {
             io.github.theeht.legadotidy.probe.ProbeStageStatus.FAILED,
             result.stageResults.last().status,
         )
+    }
+
+    @Test
+    fun `JS 书源按上游函数链完成搜索详情目录和正文`() = runBlocking {
+        val mainJs = """
+            function search(key, page) {
+                return [{
+                    name: "JS 书源书",
+                    author: "JS 作者",
+                    bookUrl: baseUrl + "/js-book/",
+                    tocUrl: baseUrl + "/js-book/"
+                }];
+            }
+            // getBookInfo 是上游可选函数；缺失时应沿用搜索阶段字段。
+            function getChapters(book) {
+                return [
+                    { title: "JS 第一章", url: baseUrl + "/js-chapter/1" },
+                    { title: "JS 第二章", url: baseUrl + "/js-chapter/2" }
+                ];
+            }
+            function getContent(chapter, book, nextChapterUrl) {
+                return "JS 正文：" + chapter.title;
+            }
+        """.trimIndent()
+        val json = """
+            {
+              "bookSourceName": "本地 JS 书源",
+              "bookSourceUrl": "http://127.0.0.1:$port",
+              "bookSourceType": 0,
+              "mainJs": ${GSON.toJson(mainJs)}
+            }
+        """.trimIndent()
+        val jsDoc = BookSourceDoc(SourceIO.parse(json).single())
+
+        val result = LegadoProbeEngine().probe(0, jsDoc, options(ProbeDepth.FULL_CHAIN))
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertEquals(2, result.bookCount)
+        assertEquals(
+            listOf(
+                io.github.theeht.legadotidy.probe.ProbeStage.SEARCH,
+                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
+                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
+                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
+            ),
+            result.stageResults.map { it.stage },
+        )
+        assertTrue(result.stageResults.all {
+            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
     }
 
     @Test
