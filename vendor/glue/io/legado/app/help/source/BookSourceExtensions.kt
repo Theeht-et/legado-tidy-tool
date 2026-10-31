@@ -36,10 +36,6 @@ private fun BookSource.getExploreKindsKey(): String {
     return MD5Utils.md5Encode(bookSourceUrl + exploreUrl)
 }
 
-private fun BookSourcePart.getExploreKindsKey(): String {
-    return getBookSource()!!.getExploreKindsKey()
-}
-
 /**
  * 与 Legado 3.26101819 的 BookSource.exploreKinds() 保持相同解析语义：
  * - @js: 与 <js>...</js> 先执行脚本，并将同一份 InfoMap 注入脚本上下文；
@@ -136,7 +132,8 @@ fun BookSource.flushExploreInfoMapIfNeeded() {
 
 suspend fun BookSourcePart.clearExploreKindsCache() {
     withContext(Dispatchers.IO) {
-        val key = getExploreKindsKey()
+        val source = getBookSource() ?: return@withContext
+        val key = source.getExploreKindsKey()
         CacheManager.delete(key)
         exploreKindsMap.remove(key)
     }
