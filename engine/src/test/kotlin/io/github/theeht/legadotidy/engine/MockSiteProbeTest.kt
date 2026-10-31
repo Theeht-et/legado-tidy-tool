@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer
 import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.model.SourceIO
 import io.github.theeht.legadotidy.probe.ProbeDepth
+import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeStatus
 import io.legado.app.utils.GSON
@@ -34,11 +35,34 @@ class MockSiteProbeTest {
 
     private lateinit var server: HttpServer
     private var port: Int = 0
+    private val explorePagesRequested = java.util.Collections.synchronizedList(mutableListOf<Int>())
 
     @BeforeTest
     fun start() {
         server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         port = server.address.port
+
+        server.createContext("/explore") { exchange ->
+            val page = exchange.requestURI.rawQuery
+                ?.substringAfter("page=", "1")
+                ?.toIntOrNull() ?: 1
+            explorePagesRequested += page
+            val ids = when (exchange.requestURI.path) {
+                "/explore-limit" -> when (page) {
+                    1 -> listOf(11, 12)
+                    else -> listOf(13, 14)
+                }
+                else -> when (page) {
+                    1 -> listOf(1, 2)
+                    2 -> listOf(2, 3)
+                    else -> listOf(1, 2, 3)
+                }
+            }
+            val html = ids.joinToString("") { id ->
+                "<a href='/discovered/$id'>发现书 $id</a>"
+            }
+            respond(exchange, "<html><body>$html</body></html>")
+        }
 
         server.createContext("/search") { exchange ->
             respond(
@@ -266,6 +290,113 @@ class MockSiteProbeTest {
         )
         assertTrue(result.stageResults.all {
             it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+        })
+    }
+
+    private fun exploreDoc(url: String): BookSourceDoc {
+        val json = """
+            {
+              "bookSourceName": "本地发现书源",
+              "bookSourceUrl": "http://127.0.0.1:$port",
+              "bookSourceType": 0,
+              "exploreUrl": "本地分类::$url",
+              "ruleExplore": {
+                "bookList": "tag.a",
+                "name": "text",
+                "bookUrl": "href"
+              }
+            }
+        """.trimIndent()
+        return BookSourceDoc(SourceIO.parse(json).single())
+    }
+
+    @Test
+    fun `发现入口按页码请求并在无新增去重结果时按上游规则停止`() = runBlocking {
+        explorePagesRequested.clear()
+        val source = exploreDoc("/explore?page={{page}}")
+        val result = LegadoProbeEngine().probe(
+            0,
+            source,
+            ProbeOptions(
+                depth = ProbeDepth.SEARCH,
+                entry = ProbeEntry.EXPLORE,
+                maxExplorePages = 5,
+                timeoutMs = 10_000,
+            ),
+        )
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertEquals(3, result.bookCount)
+        assertEquals(listOf(1, 2, 3), explorePagesRequested.toList())
+        assertEquals(
+            3,
+            result.stageResults.count {
+                it.stage == io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE
+            },
+        )
+        assertTrue(result.stageResults.last().detail.orEmpty().contains("没有新增书籍"))
+    }
+
+    @Test
+    fun `达到发现页数上限时不误报完整成功`() = runBlocking {
+        explorePagesRequested.clear()
+        val source = exploreDoc("/explore-limit?page={{page}}")
+        val result = LegadoProbeEngine().probe(
+            0,
+            source,
+            ProbeOptions(
+                depth = ProbeDepth.SEARCH,
+                entry = ProbeEntry.EXPLORE,
+                maxExplorePages = 1,
+                timeoutMs = 10_000,
+            ),
+        )
+
+        assertEquals(ProbeStatus.PARTIAL, result.status)
+        assertEquals(2, result.bookCount)
+        assertEquals(listOf(1), explorePagesRequested.toList())
+        assertTrue(result.detail.orEmpty().contains("页上限"))
+    }
+
+    @Test
+    fun `JS 书源通过 explore 函数执行发现入口`() = runBlocking {
+        val mainJs = """
+            function explore(url, page) {
+                return JSON.stringify([{
+                    name: "JS 发现书",
+                    author: "JS 作者",
+                    bookUrl: baseUrl + "/js-discovered",
+                    tocUrl: baseUrl + "/js-discovered"
+                }]);
+            }
+        """.trimIndent()
+        val json = """
+            {
+              "bookSourceName": "本地 JS 发现书源",
+              "bookSourceUrl": "http://127.0.0.1:$port",
+              "bookSourceType": 0,
+              "exploreUrl": "@js: JSON.stringify([{title:'JS 分类',url:'/js-category',type:'url'}])",
+              "mainJs": ${GSON.toJson(mainJs)}
+            }
+        """.trimIndent()
+        val source = BookSourceDoc(SourceIO.parse(json).single())
+
+        val result = LegadoProbeEngine().probe(
+            0,
+            source,
+            ProbeOptions(
+                depth = ProbeDepth.SEARCH,
+                entry = ProbeEntry.EXPLORE,
+                maxExplorePages = 3,
+                timeoutMs = 10_000,
+            ),
+        )
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertEquals(1, result.bookCount)
+        assertTrue(result.stageResults.any {
+            it.stage == io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE_CATEGORIES &&
+                it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
         })
     }
 
