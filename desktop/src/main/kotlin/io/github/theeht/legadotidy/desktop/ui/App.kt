@@ -732,28 +732,34 @@ fun TidyApp() {
                             Text(it, Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp), color = Bad, fontSize = UiTypography.body)
                         }
                     }
-                    if (state.error == null && !state.busy) {
-                        state.notice?.takeIf { it.isNotBlank() }?.let { message ->
-                            Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
-                                    .background(SoftBlue)
-                                    .border(1.dp, SoftBlueBorder, RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Text("✓", fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = Primary)
-                                Text(
-                                    message,
-                                    Modifier.weight(1f),
-                                    fontSize = UiTypography.label,
-                                    color = Ink,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                    BottomActions(
+                        state = state,
+                        onShowImportInfo = { state.showImportInfo = true },
+                        onStartDedup = ::startDedup,
+                        onConfirmDedup = ::confirmDedupAndValidate,
+                        onStop = { activeJob?.cancel() },
+                        onContinueValidation = ::runValidation,
+                        onConfirmValidation = ::confirmValidation,
+                        onGeneratePreview = ::generateOrganizePreview,
+                        onConfirmOrganize = ::confirmOrganize,
+                        onExport = ::exportFile,
+                        onOpenFolder = {
+                            val file = state.exported?.file?.toFile()
+                            val dir = file?.parentFile ?: File(state.exportDir)
+                            runCatching { if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(dir) }
+                                .onFailure { state.error = "无法打开目录：${it.message}" }
+                        },
+                        onCopyImportLink = {
+                            try {
+                                val link = DirectLink.forSourceUrl(state.directUrl)
+                                Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(link), null)
+                                state.notice = "已复制 Legado 一键导入链接。"
+                                state.error = null
+                            } catch (e: Exception) {
+                                state.error = "无法生成导入链接：${e.message ?: e::class.java.simpleName}"
                             }
-                        }
-                    }
+                        },
+                    )
                     if (state.busy && state.total > 0 && state.stage == WorkflowStage.PROBE_REVIEW) {
                         Column(
                             Modifier.width(245.dp).padding(start = 2.dp),
@@ -771,7 +777,6 @@ fun TidyApp() {
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.Top,
                     ) {
-                        WorkflowStageCard(state.stage)
                         SourceListPanel(
                             state = state,
                             onDetail = { id -> state.selectedId = id; detailDialogId = id },
@@ -795,34 +800,6 @@ fun TidyApp() {
                         )
                     }
                 }
-                BottomActions(
-                    state = state,
-                    onShowImportInfo = { state.showImportInfo = true },
-                    onStartDedup = ::startDedup,
-                    onConfirmDedup = ::confirmDedupAndValidate,
-                    onStop = { activeJob?.cancel() },
-                    onContinueValidation = ::runValidation,
-                    onConfirmValidation = ::confirmValidation,
-                    onGeneratePreview = ::generateOrganizePreview,
-                    onConfirmOrganize = ::confirmOrganize,
-                    onExport = ::exportFile,
-                    onOpenFolder = {
-                        val file = state.exported?.file?.toFile()
-                        val dir = file?.parentFile ?: File(state.exportDir)
-                        runCatching { if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(dir) }
-                            .onFailure { state.error = "无法打开目录：${it.message}" }
-                    },
-                    onCopyImportLink = {
-                        try {
-                            val link = DirectLink.forSourceUrl(state.directUrl)
-                            Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(link), null)
-                            state.notice = "已复制 Legado 一键导入链接。"
-                            state.error = null
-                        } catch (e: Exception) {
-                            state.error = "无法生成导入链接：${e.message ?: e::class.java.simpleName}"
-                        }
-                    },
-                )
                 }
             }
         }
@@ -1018,51 +995,6 @@ private fun TopBar(state: WorkflowState, onImport: () -> Unit) {
 }
 
 
-@Composable
-private fun WorkflowStageCard(stage: WorkflowStage) {
-    val stageNumber = stage.ordinal + 1
-    Column(
-        Modifier.width(132.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.White)
-            .border(1.dp, Line, RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp, vertical = 11.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Box(
-                Modifier.size(22.dp).clip(RoundedCornerShape(50)).background(SoftBlue),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    stageNumber.toString(),
-                    fontSize = UiTypography.label,
-                    fontWeight = FontWeight.Bold,
-                    color = Primary,
-                )
-            }
-            Text("当前阶段", fontSize = UiTypography.caption, color = Muted)
-        }
-        Text(
-            stage.label,
-            fontSize = UiTypography.emphasis,
-            fontWeight = FontWeight.Bold,
-            color = Ink,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            "阶段 $stageNumber / ${WorkflowStage.values().size}",
-            fontSize = UiTypography.caption,
-            color = Muted,
-        )
-    }
-}
-
-
 
 
 
@@ -1086,50 +1018,41 @@ private fun OrganizeRulePanel(
                 Spacer(Modifier.width(7.dp))
                 Text("勾选项才执行", fontSize = UiTypography.caption, color = Muted)
             }
-            FlowRow(
+            Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 RuleCheckbox(
                     OrganizeRule.CLEAN_DECORATIONS,
                     OrganizeRule.CLEAN_DECORATIONS in state.selectedRules,
                     onRuleChange,
+                    modifier = Modifier.weight(1f),
                 )
                 RuleCheckbox(
                     OrganizeRule.REMOVE_ADVERTISING_WORDS,
                     OrganizeRule.REMOVE_ADVERTISING_WORDS in state.selectedRules,
                     onRuleChange,
+                    modifier = Modifier.weight(1f),
                 )
                 RuleCheckbox(
                     OrganizeRule.NORMALIZE_PUNCTUATION,
                     OrganizeRule.NORMALIZE_PUNCTUATION in state.selectedRules,
                     onRuleChange,
+                    modifier = Modifier.weight(1f),
                 )
-                Row(
-                    Modifier.clip(RoundedCornerShape(6.dp))
-                        .border(1.dp, Line, RoundedCornerShape(6.dp))
-                        .background(Color.White)
-                        .padding(horizontal = 7.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("分组", fontSize = UiTypography.caption, color = Muted)
-                    RuleRadio(
-                        label = "保留原组",
-                        selected = OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules,
-                        onClick = { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
-                    )
-                    RuleRadio(
-                        label = "智能归类",
-                        selected = OrganizeRule.REGROUP_BY_TYPE in state.selectedRules,
-                        onClick = { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
-                    )
-                }
+                GroupRuleBlock(
+                    keepOriginal = OrganizeRule.KEEP_ORIGINAL_GROUPS in state.selectedRules,
+                    regroupByType = OrganizeRule.REGROUP_BY_TYPE in state.selectedRules,
+                    onKeepOriginal = { onRuleChange(OrganizeRule.KEEP_ORIGINAL_GROUPS, true) },
+                    onRegroupByType = { onRuleChange(OrganizeRule.REGROUP_BY_TYPE, true) },
+                    modifier = Modifier.weight(1f),
+                )
                 RuleCheckbox(
                     OrganizeRule.SORT_BY_RESPONSE_TIME,
                     OrganizeRule.SORT_BY_RESPONSE_TIME in state.selectedRules,
                     onRuleChange,
+                    modifier = Modifier.weight(1f),
                 )
             }
         }
@@ -1176,32 +1099,53 @@ private fun RuleCheckbox(
     onRuleChange: (OrganizeRule, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    CompactRuleChip(
-        label = rule.label,
-        checked = checked,
-        onClick = { onRuleChange(rule, !checked) },
-        modifier = modifier,
-    )
+    Row(
+        modifier.height(68.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .border(1.dp, if (checked) SoftBlueBorder else Line, RoundedCornerShape(6.dp))
+            .background(if (checked) SoftBlue else Color.White)
+            .clickable { onRuleChange(rule, !checked) }
+            .padding(horizontal = 8.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        RuleCheckMark(checked)
+        Text(
+            rule.label,
+            modifier = Modifier.weight(1f),
+            fontSize = UiTypography.caption,
+            color = if (checked) Primary else BodyText,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 @Composable
-private fun CompactRuleChip(
-    label: String,
-    checked: Boolean,
-    onClick: () -> Unit,
+private fun GroupRuleBlock(
+    keepOriginal: Boolean,
+    regroupByType: Boolean,
+    onKeepOriginal: () -> Unit,
+    onRegroupByType: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier.clip(RoundedCornerShape(6.dp))
-            .border(1.dp, if (checked) SoftBlueBorder else Line, RoundedCornerShape(6.dp))
-            .background(if (checked) SoftBlue else Color.White)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 7.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    Column(
+        modifier.height(68.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .border(1.dp, if (keepOriginal || regroupByType) SoftBlueBorder else Line, RoundedCornerShape(6.dp))
+            .background(if (keepOriginal || regroupByType) SoftBlue else Color.White)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        RuleCheckMark(checked)
-        Text(label, fontSize = UiTypography.caption, color = if (checked) Primary else BodyText, maxLines = 1)
+        Text("分组方式", fontSize = UiTypography.caption, color = Muted, maxLines = 1)
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            RuleRadio("保留原组", keepOriginal, onKeepOriginal)
+            RuleRadio("智能归类", regroupByType, onRegroupByType)
+        }
     }
 }
 
@@ -2031,18 +1975,53 @@ private fun BottomActions(
     onOpenFolder: () -> Unit,
     onCopyImportLink: () -> Unit,
 ) {
+    val stageNumber = state.stage.ordinal + 1
     Row(
-        Modifier.fillMaxWidth().padding(top = 4.dp)
+        Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(Color.White)
             .border(1.dp, Line, RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+            .padding(horizontal = 9.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(
-            Modifier.fillMaxWidth(),
+            Modifier.width(154.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Box(
+                Modifier.size(25.dp).clip(RoundedCornerShape(50)).background(SoftBlue),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(stageNumber.toString(), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = Primary)
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Text("当前阶段", fontSize = UiTypography.caption, color = Muted, maxLines = 1)
+                Text(state.stage.label, fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = Ink, maxLines = 1)
+            }
+            Text("$stageNumber/5", fontSize = UiTypography.caption, color = Muted, maxLines = 1)
+        }
+        Row(
+            Modifier.weight(1f).clip(RoundedCornerShape(6.dp))
+                .background(SoftBlue.copy(alpha = 0.65f))
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("✓", fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = Primary)
+            Text(
+                state.notice?.takeIf { it.isNotBlank() } ?: "选择当前阶段的操作继续工作流",
+                Modifier.weight(1f),
+                fontSize = UiTypography.label,
+                color = Ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             when (state.stage) {
                 WorkflowStage.IMPORT -> {
