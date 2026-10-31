@@ -1894,10 +1894,28 @@ private fun DetailOverviewContent(source: WorkflowSource) {
                 lineHeight = 16.sp,
             )
             source.probe?.let { result ->
-                if (!result.detail.isNullOrBlank()) {
+                if (!result.detail.isNullOrBlank() || result.stageResults.isNotEmpty()) {
                     HorizontalDivider(color = Line)
                     Text("校验详情", fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = Ink)
-                    Text(result.detail.orEmpty(), fontSize = UiTypography.label, color = BodyText, lineHeight = 16.sp)
+                    result.stageResults.forEach { stage ->
+                        val count = if (stage.itemCount > 0) " · ${stage.itemCount} 项" else ""
+                        Text(
+                            "${stage.stage.label}：${stage.status.label}${count} · ${stage.elapsedMs}ms",
+                            fontSize = UiTypography.caption,
+                            color = when (stage.status) {
+                                io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS -> Ok
+                                io.github.theeht.legadotidy.probe.ProbeStageStatus.FAILED,
+                                io.github.theeht.legadotidy.probe.ProbeStageStatus.EMPTY -> Warn
+                                io.github.theeht.legadotidy.probe.ProbeStageStatus.NOT_RUN -> Muted
+                            },
+                        )
+                        stage.detail?.takeIf { it.isNotBlank() }?.let {
+                            Text(it, fontSize = UiTypography.caption, color = Muted, lineHeight = 15.sp)
+                        }
+                    }
+                    result.detail?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, fontSize = UiTypography.label, color = BodyText, lineHeight = 16.sp)
+                    }
                 }
                 result.httpCode?.let { Text("HTTP 状态码：$it", fontSize = UiTypography.caption, color = Muted) }
             }
@@ -2613,7 +2631,7 @@ private data class ProbeStatusStyle(val background: Color, val foreground: Color
 
 private fun probeStatusStyle(status: ProbeStatus?): ProbeStatusStyle = when (status) {
     ProbeStatus.OK -> ProbeStatusStyle(SoftGreen, Ok)
-    ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> ProbeStatusStyle(SoftAmber, Warn)
+    ProbeStatus.PARTIAL, ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> ProbeStatusStyle(SoftAmber, Warn)
     ProbeStatus.NO_SEARCH_URL, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS, ProbeStatus.ERROR ->
         ProbeStatusStyle(SoftRed, Bad)
     else -> ProbeStatusStyle(SoftSlate, Muted)
