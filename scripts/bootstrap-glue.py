@@ -81,10 +81,10 @@ def check(rels: list[str]) -> int:
         )
         return 1
     upstream_smoke = (
-        "fun getProxyClient(proxy: String? = null): OkHttpClient {\\n"
-        "    if (proxy.isNullOrBlank()) {\\n"
-        "        return okHttpClient\\n"
-        "    }\\n"
+        "fun getProxyClient(proxy: String? = null): OkHttpClient {\n"
+        "    if (proxy.isNullOrBlank()) {\n"
+        "        return okHttpClient\n"
+        "    }\n"
         "    val proxyConfig = parseProxyConfig(proxy)"
     ).encode("utf-8")
     try:
