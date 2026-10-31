@@ -46,6 +46,10 @@ private fun BookSource.getExploreKindsKey(): String {
  * 仅缓存锁的实现改为 ConcurrentHashMap，避免多个校验协程首次访问同一来源时
  * 因上游 lazy HashMap 初始化竞争而拿到不同 Mutex。
  */
+suspend fun BookSourcePart.exploreKinds(): List<ExploreKind> {
+    return getBookSource()?.exploreKinds() ?: emptyList()
+}
+
 suspend fun BookSource.exploreKinds(): List<ExploreKind> {
     val exploreKindsKey = getExploreKindsKey()
     exploreKindsMap[exploreKindsKey]?.let { return it }
