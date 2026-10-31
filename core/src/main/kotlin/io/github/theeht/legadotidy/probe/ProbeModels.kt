@@ -75,6 +75,9 @@ data class ProbeResult(
     val elapsedMs: Long = 0,
     val detail: String? = null,
     val stageResults: List<ProbeStageResult> = emptyList(),
+    /** The selected entry and depth make prior validation results safely reusable. */
+    val entry: ProbeEntry = ProbeEntry.SEARCH,
+    val depth: ProbeDepth = ProbeDepth.SEARCH,
 ) {
     val ok: Boolean get() = status == ProbeStatus.OK
 }
