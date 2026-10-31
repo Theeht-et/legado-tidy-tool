@@ -10,10 +10,10 @@ package io.github.theeht.legadotidy.normalize
  */
 object TidyText {
 
-    private val EMOJI = Regex("[\\p{So}\\p{Sk}\\p{Cs}\\uFE0F\\u200D\\u20E3]")
-    private val ZERO_WIDTH = Regex("[\\u200B-\\u200F\\uFEFF]")
+    private val EMOJI = Regex("[\p{So}\p{Sk}\p{Cs}\uFE0F\u200D\u20E3]")
+    private val ZERO_WIDTH = Regex("[\u200B-\u200F\uFEFF]")
     private val CIRCLED_NUMBERS = Regex("""[\u2460-\u2473\u24EA]""")
-    private val WHITESPACE = Regex("[\\s\\u00A0\\u3000]+")
+    private val WHITESPACE = Regex("[\s\u00A0\u3000]+")
     private val BRACKET_PAIRS = mapOf(
         '(' to ')', '（' to '）', '[' to ']', '［' to '］', '【' to '】',
         '{' to '}', '｛' to '｝', '<' to '>', '＜' to '＞',
@@ -25,16 +25,16 @@ object TidyText {
     )
     private val BRACKET_CLOSERS = BRACKET_PAIRS.values.toSet()
     private val URL_PREFIX = Regex(
-        """(?i)^\\s*(https?://)?(?:www\\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+(?:com|cn|net|org|edu|gov|io|co|me|tv|cc|top|xyz|vip|info|biz|site|online|live|app|club|work|pro|fun|store|tech|mobi)(?::\\d{1,5})?(/[^\\s<>\\\"'，。；、]*)?\\s*""",
+        """(?i)^\s*(https?://)?(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|cn|net|org|edu|gov|io|co|me|tv|cc|top|xyz|vip|info|biz|site|online|live|app|club|work|pro|fun|store|tech|mobi)(?::\d{1,5})?(/[^\s<>"'，。；、]*)?\s*""",
     )
     private val URL_SUFFIX = Regex(
-        """(?i)\\s*(?:https?://)?(?:www\\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+(?:com|cn|net|org|edu|gov|io|co|me|tv|cc|top|xyz|vip|info|biz|site|online|live|app|club|work|pro|fun|store|tech|mobi)(?::\\d{1,5})?(?:/[^\\s<>\\\"'，。；、]*)?\\s*$""",
+        """(?i)\s*(?:https?://)?(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|cn|net|org|edu|gov|io|co|me|tv|cc|top|xyz|vip|info|biz|site|online|live|app|club|work|pro|fun|store|tech|mobi)(?::\d{1,5})?(?:/[^\s<>"'，。；、]*)?\s*$""",
     )
-    private val TRAILING_SEP = Regex("\\s*[-_|｜·・—–]\\s*[^-_|｜·・—–]{1,12}$")
-    private val REPEATED_WS = Regex("\\s{2,}")
+    private val TRAILING_SEP = Regex("\s*[-_|｜·・—–]\s*[^-_|｜·・—–]{1,12}$")
+    private val REPEATED_WS = Regex("\s{2,}")
     private val AD_TERMS = "免广告|广告推广|官方推荐|精品源|高速源|优质源|稳定源|优[+＋]+|推荐|精品|高速|优质|稳定|广告|VIP|福利|会员专享|免费"
     private val AD_BRACKETED = Regex(
-        "[【［\\[（(][^】］\\]）)]*(?:$AD_TERMS)[^】］\\]）)]*[】］\\]）)]",
+        "[【［\[（(][^】］\]）)]*(?:$AD_TERMS)[^】］\]）)]*[】］\]）)]",
         RegexOption.IGNORE_CASE,
     )
     private val AD_PREFIX = Regex("^(?:$AD_TERMS)[：:_ -]*", RegexOption.IGNORE_CASE)
@@ -51,8 +51,8 @@ object TidyText {
     private val DECORATION_SUFFIX = Regex("""[\s|｜·•!！:：_=~～—–-]+$""")
     private val REPEATED_NAME_PUNCTUATION = Regex("[!！。．·•]{2,}")
     private val REPEATED_DASHES = Regex("[_~～—–-]{2,}")
-    private val EMPTY_BRACKETS = Regex("[【［\\[（(「『]+\\s*[】］\\]）)」』]+")
-    private val EDGE_NAME_PUNCTUATION = Regex("^[\\s,，。:：;；|｜]+|[\\s,，。:：;；|｜]+$")
+    private val EMPTY_BRACKETS = Regex("[【［\[（(「『]+\s*[】］\]）)」』]+")
+    private val EDGE_NAME_PUNCTUATION = Regex("^[\s,，。:：;；|｜]+|[\s,，。:：;；|｜]+$")
 
 
     /**
