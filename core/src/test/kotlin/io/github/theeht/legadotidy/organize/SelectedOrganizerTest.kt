@@ -5,7 +5,7 @@ import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlin.test.Test
-import kotlin.test.assertEquals
+import kotlin.test.assertEquals\nimport kotlin.test.assertTrue
 
 class SelectedOrganizerTest {
 
@@ -52,7 +52,7 @@ class SelectedOrganizerTest {
 
         assertEquals(listOf(1, 0), report.sources.map { it.index })
         assertEquals(listOf("银河书源", "星河书源"), report.sources.map { it.name })
-        assertEquals(listOf("有声", "有声"), report.sources.map { it.group })
+        assertEquals(listOf("音频", "音频"), report.sources.map { it.group })
         assertEquals(listOf(0, 1), report.sources.map { it.rank })
     }
 
@@ -85,7 +85,7 @@ class SelectedOrganizerTest {
         )
 
         assertEquals(listOf(1, 2, 0), report.sources.map { it.index })
-        assertEquals(listOf("漫画", "出版物", "有声"), report.sources.map { it.group })
+        assertEquals(listOf("图片", "文本", "音频"), report.sources.map { it.group })
         assertEquals(listOf(0, 0, 0), report.sources.map { it.rank })
     }
 
@@ -182,6 +182,38 @@ class SelectedOrganizerTest {
             listOf("得奇小说", "小小阅读/书香之家app", "阅友小说", "新笔趣阁", "PO18文学", "PO18文学cookie"),
             report.sources.map { it.name },
         )
+    }
+
+    @Test
+    fun `分组策略支持保留原组统一未分组及按类型`() {
+        val sources = listOf(
+            doc("""{"bookSourceName":"文本源","bookSourceUrl":"https://text.test","bookSourceType":0,"bookSourceGroup":"旧组"}"""),
+            doc("""{"bookSourceName":"音频源","bookSourceUrl":"https://audio.test","bookSourceType":1,"bookSourceGroup":"旧组"}"""),
+            doc("""{"bookSourceName":"图片源","bookSourceUrl":"https://image.test","bookSourceType":2,"bookSourceGroup":"其他旧组"}"""),
+            doc("""{"bookSourceName":"文件源","bookSourceUrl":"https://file.test","bookSourceType":3}"""),
+        )
+        fun groups(mode: GroupingMode) = Organizer.run(
+            sources, emptyMap(), OrganizeConfig(selectedRules = emptySet(), groupingMode = mode),
+        ).sources.associate { it.index to it.group }
+
+        assertEquals(listOf("旧组", "旧组", "其他旧组", ""), groups(GroupingMode.KEEP_ORIGINAL).values.toList())
+        assertEquals(listOf("未分组", "未分组", "未分组", "未分组"), groups(GroupingMode.NO_SMART_GROUPING).values.toList())
+        assertEquals(listOf("文本", "音频", "图片", "文件"), groups(GroupingMode.BY_TYPE).values.toList())
+    }
+
+    @Test
+    fun `质量分组使用四档中文名称且不把未校验当成失败`() {
+        val sources = listOf(
+            doc("""{"bookSourceName":"已验证","bookSourceUrl":"https://ok.test","bookSourceType":0,"searchUrl":"https://ok.test/search","ruleSearch":{"bookList":"x"}}"""),
+            doc("""{"bookSourceName":"未校验","bookSourceUrl":"https://skip.test","bookSourceType":0}"""),
+        )
+        val results = mapOf(0 to ProbeResult(0, ProbeStatus.OK, elapsedMs = 300))
+        val report = Organizer.run(
+            sources, results,
+            OrganizeConfig(selectedRules = emptySet(), groupingMode = GroupingMode.BY_QUALITY),
+        )
+        assertEquals(listOf("良好", "合格"), report.sources.map { it.group })
+        assertTrue(report.sources.all { it.quality != null })
     }
 
     private fun doc(json: String): BookSourceDoc =
