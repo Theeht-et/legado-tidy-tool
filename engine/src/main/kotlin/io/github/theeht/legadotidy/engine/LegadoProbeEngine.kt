@@ -229,6 +229,10 @@ class LegadoProbeEngine(
                             .drop(chapterIndex + 1)
                             .firstOrNull { !it.isVolume && it.url.isNotBlank() }
                             ?.url
+                            // Upstream's BookContent falls back to the first chapter when no next
+                            // chapter exists. Pass that boundary explicitly so the headless engine
+                            // never has to consult the shared in-memory appDb DAO.
+                            ?: chapters.firstOrNull { !it.isVolume && it.url.isNotBlank() }?.url
                         val content = runStage(
                             stage = ProbeStage.CONTENT,
                             emptyDetail = "上游正文解析结果为空",
