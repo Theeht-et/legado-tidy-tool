@@ -64,7 +64,8 @@ data class ProbeResult(
     val httpCode: Int? = null,
     val bookCount: Int = 0,
     val elapsedMs: Long = 0,
-    val detail: String? = null,   // UNSUPPORTED 时记录具体原因：webView / 验证码 / 登录 / 播放器 / 外部跳转
+    val detail: String? = null,
+    val stageResults: List<ProbeStageResult> = emptyList(),
 ) {
     val ok: Boolean get() = status == ProbeStatus.OK
 }
