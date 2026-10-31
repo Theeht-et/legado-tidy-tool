@@ -15,6 +15,8 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.help.http.ProbeProxyContext
+import io.legado.app.help.http.parseProxyConfig
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.help.source.flushExploreInfoMapIfNeeded
 import io.legado.app.help.source.initializeExploreInfoMap
@@ -23,6 +25,7 @@ import io.legado.app.utils.GSON
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -49,6 +52,7 @@ class LegadoProbeEngine(
 
     override suspend fun probe(index: Int, source: BookSourceDoc, options: ProbeOptions): ProbeResult {
         val started = System.currentTimeMillis()
+        val proxy = options.proxy?.trim()?.takeIf { it.isNotEmpty() }
 
         staticVerdict(source, options.entry)?.let { verdict ->
             val stage = if (options.entry == ProbeEntry.EXPLORE) {
@@ -66,6 +70,7 @@ class LegadoProbeEngine(
                 keyword = options.keyword,
                 timeoutMs = options.timeoutMs,
                 maxExplorePages = options.maxExplorePages,
+                proxy = proxy,
                 stageResults = listOf(
                     ProbeStageResult(
                         stage = stage,
@@ -75,6 +80,37 @@ class LegadoProbeEngine(
                     ),
                 ),
             )
+        }
+
+        if (proxy != null) {
+            val invalidProxy = runCatching { parseProxyConfig(proxy) }.exceptionOrNull()
+            if (invalidProxy != null) {
+                val stage = if (options.entry == ProbeEntry.EXPLORE) {
+                    ProbeStage.EXPLORE_CATEGORIES
+                } else {
+                    ProbeStage.SEARCH
+                }
+                return ProbeResult(
+                    index = index,
+                    status = ProbeStatus.ERROR,
+                    elapsedMs = System.currentTimeMillis() - started,
+                    detail = "代理配置无效：${invalidProxy.message ?: "格式不正确"}",
+                    entry = options.entry,
+                    depth = options.depth,
+                    keyword = options.keyword,
+                    timeoutMs = options.timeoutMs,
+                    maxExplorePages = options.maxExplorePages,
+                    proxy = proxy,
+                    stageResults = listOf(
+                        ProbeStageResult(
+                            stage = stage,
+                            status = ProbeStageStatus.NOT_RUN,
+                            detail = "代理配置无效，未发起网络请求",
+                            failureStatus = ProbeStatus.ERROR,
+                        ),
+                    ),
+                )
+            }
         }
 
         val stageResults = ArrayList<ProbeStageResult>(4)
@@ -161,10 +197,12 @@ class LegadoProbeEngine(
                 keyword = options.keyword,
                 timeoutMs = options.timeoutMs,
                 maxExplorePages = options.maxExplorePages,
+                proxy = proxy,
             )
 
         return try {
-            withTimeout(chainTimeoutMs) {
+            withContext(ProbeProxyContext(proxy)) {
+                withTimeout(chainTimeoutMs) {
                 val bookSource = gson.fromJson(source.raw, BookSource::class.java)
                     ?: return@withTimeout result(ProbeStatus.ERROR, "书源反序列化失败")
 
@@ -427,6 +465,7 @@ class LegadoProbeEngine(
                     status = if (allPassed) ProbeStatus.OK else ProbeStatus.PARTIAL,
                     detail = summarizeStages(stageResults, options.depth),
                 )
+                }
             }
         } catch (e: TimeoutCancellationException) {
             if (stageResults.lastOrNull()?.let {
