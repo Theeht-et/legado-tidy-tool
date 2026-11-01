@@ -148,45 +148,36 @@ class WorkflowDecisionsTest {
     }
 
     @Test
-    fun `去重建议不能撤销校验阶段已经标记的删除项`() {
-        assertTrue(
-            resolveDuplicateDeleteMark(
-                validationMarked = true,
-                duplicateSuggestedDelete = false,
-                currentMarked = true,
-                hasUserDecision = false,
-            ),
+    fun `每个阶段只清除本阶段的待删除标记`() {
+        val imported = listOf(
+            Row(id = 1, markedForDeletion = true),
+            Row(id = 2, markedForDeletion = false),
+            Row(id = 3, markedForDeletion = false),
         )
+
+        // Validation -> Dedup: validation marks are removed before duplicate analysis.
+        val afterValidation = planMarkedDeletions(imported) { it.markedForDeletion }.retained
+        assertEquals(listOf(2, 3), afterValidation.map { it.id })
+
+        // Dedup marks are newly assigned to the remaining pool; they do not inherit
+        // validation-stage marks or decisions from sources already removed.
+        val dedupPool = afterValidation.map { row ->
+            row.copy(markedForDeletion = row.id == 3)
+        }
+        val afterDedup = planMarkedDeletions(dedupPool) { it.markedForDeletion }.retained
+        assertEquals(listOf(2), afterDedup.map { it.id })
+
+        // Organize -> Export: the organize-stage mark is committed at its own boundary.
+        val organizePool = afterDedup.map { it.copy(markedForDeletion = true) }
+        val afterOrganize = planMarkedDeletions(organizePool) { it.markedForDeletion }.retained
+        assertTrue(afterOrganize.isEmpty())
     }
 
     @Test
-    fun `重复组对比不能把已标记删除项重新设为保留`() {
-        assertFalse(canBeSelectedAsDuplicateKeeper(deleteMarked = true))
-        assertTrue(canBeSelectedAsDuplicateKeeper(deleteMarked = false))
-        assertTrue(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = true, requestedKeep = true))
-        assertTrue(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = true, requestedKeep = false))
-        assertTrue(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = false, requestedKeep = false))
-        assertFalse(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = false, requestedKeep = true))
-    }
-
-    @Test
-    fun `去重建议可以新增删除标记但不能覆盖用户明确决定`() {
-        assertTrue(
-            resolveDuplicateDeleteMark(
-                validationMarked = false,
-                duplicateSuggestedDelete = true,
-                currentMarked = false,
-                hasUserDecision = false,
-            ),
-        )
-        assertFalse(
-            resolveDuplicateDeleteMark(
-                validationMarked = true,
-                duplicateSuggestedDelete = true,
-                currentMarked = false,
-                hasUserDecision = true,
-            ),
-        )
+    fun `去重建议可标记删除且用户明确保留选择优先`() {
+        assertTrue(resolveDeleteMark(defaultMarked = true, currentMarked = false, hasUserDecision = false))
+        assertFalse(resolveDeleteMark(defaultMarked = true, currentMarked = false, hasUserDecision = true))
+        assertTrue(resolveDeleteMark(defaultMarked = false, currentMarked = true, hasUserDecision = true))
     }
 
     @Test
