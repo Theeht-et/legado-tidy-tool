@@ -21,6 +21,7 @@ import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.http.ProbeProxyContext
 import io.legado.app.help.http.parseProxyConfig
 import io.legado.app.help.source.SuppressSourceNavigation
+import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.GSON
 import kotlinx.coroutines.TimeoutCancellationException
