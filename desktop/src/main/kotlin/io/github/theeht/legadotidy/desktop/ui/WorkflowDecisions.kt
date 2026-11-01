@@ -74,7 +74,7 @@ internal fun isSourceIncludedInFilter(
     "全部" -> true
     "重复候选" -> hasDuplicateGroup
     "待校验" -> needsProbe
-    "校验通过" -> probeStatus == ProbeStatus.OK
+    "校验通过" -> probeStatus == ProbeStatus.OK || probeStatus == ProbeStatus.UNCHECKABLE
     "异常 / 复核" -> shouldShowInExceptionReview(probeStatus, deleteMarked)
     "待删除" -> deleteMarked
     else -> true
