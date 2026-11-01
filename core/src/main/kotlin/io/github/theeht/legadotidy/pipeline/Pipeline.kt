@@ -168,47 +168,24 @@ class Pipeline(private val engine: ProbeEngine) {
 
         val jobs = sources.mapIndexed { i, source ->
             async(Dispatchers.Default) {
-                val missingEntry = when (config.probe.entry) {
-                    io.github.theeht.legadotidy.probe.ProbeEntry.SEARCH -> !source.canSearch
-                    io.github.theeht.legadotidy.probe.ProbeEntry.EXPLORE -> !source.canExplore
-                }
-                val result = if (missingEntry) {
-                    val (status, detail) = when (config.probe.entry) {
-                        io.github.theeht.legadotidy.probe.ProbeEntry.SEARCH ->
-                            ProbeStatus.NO_SEARCH_URL to "未配置上游搜索入口（普通源需要 searchUrl，JS 源需要 mainJs）"
-                        io.github.theeht.legadotidy.probe.ProbeEntry.EXPLORE ->
-                            ProbeStatus.NO_EXPLORE_CATEGORY to "未配置上游发现入口（需要 exploreUrl）"
-                    }
-                    ProbeResult(
-                        index = i,
-                        status = status,
-                        detail = detail,
-                        entry = config.probe.entry,
-                        depth = config.probe.depth,
-                        keyword = config.probe.keyword,
-                        timeoutMs = config.probe.timeoutMs,
-                        maxExplorePages = config.probe.maxExplorePages,
-                        proxy = proxy,
-                    )
-                } else {
-                    gate.withPermit {
-                        try {
-                            probeEngine.probe(i, source, config.probe)
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Throwable) {
-                            ProbeResult(
-                                index = i,
-                                status = ProbeStatus.ERROR,
-                                detail = e.toString(),
-                                entry = config.probe.entry,
-                                depth = config.probe.depth,
-                                keyword = config.probe.keyword,
-                                timeoutMs = config.probe.timeoutMs,
-                                maxExplorePages = config.probe.maxExplorePages,
-                                proxy = proxy,
-                            )
-                        }
+                val result = gate.withPermit {
+                    try {
+                        // 入口、是否跳过后续阶段和异常边界均由上游对齐的引擎决定。
+                        // Pipeline 不得根据 canSearch/canExplore 预先拦截，否则会绕过上游
+                        // checkSearch=false 时仍可继续发现、以及搜索异常时的真实终止语义。
+                        probeEngine.probe(i, source, config.probe)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        ProbeResult(
+                            index = i,
+                            status = ProbeStatus.ERROR,
+                            detail = e.toString(),
+                            keyword = config.probe.keyword,
+                            timeoutMs = config.probe.timeoutMs,
+                            proxy = proxy,
+                            options = config.probe.copy(proxy = proxy),
+                        )
                     }
                 }
                 results[i] = result
