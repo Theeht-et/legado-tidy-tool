@@ -70,7 +70,7 @@ data class PipelineResult(
     val organize: OrganizeReport,
     val exported: ExportResult?,
 ) {
-    val okCount: Int get() = probeResults.values.count { it.status == ProbeStatus.OK }
+    val okCount: Int get() = probeResults.values.count { it.ok }
 }
 
 /**
@@ -94,7 +94,7 @@ class Pipeline(private val engine: ProbeEngine) {
             events.send(PipelineEvent.PhaseStarted(Phase.PROBE, sources.size))
             var mark = TimeSource.Monotonic.markNow()
             val probeResults: Map<Int, ProbeResult> = probeAll(sources, config, events)
-            val ok = probeResults.values.count { it.status == ProbeStatus.OK }
+            val ok = probeResults.values.count { it.ok }
             events.send(
                 PipelineEvent.PhaseFinished(
                     Phase.PROBE,
@@ -189,7 +189,7 @@ class Pipeline(private val engine: ProbeEngine) {
                     }
                 }
                 results[i] = result
-                if (result.status == ProbeStatus.OK) ok.incrementAndGet() else failed.incrementAndGet()
+                if (result.ok) ok.incrementAndGet() else failed.incrementAndGet()
                 val n = done.incrementAndGet()
                 if (n % config.progressEvery == 0 || n == sources.size) {
                     events.send(PipelineEvent.Progress(Phase.PROBE, n, sources.size, ok.get(), failed.get()))
