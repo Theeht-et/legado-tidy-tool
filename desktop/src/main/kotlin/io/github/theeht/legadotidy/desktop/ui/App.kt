@@ -2488,6 +2488,14 @@ private fun coreProbeStageSummary(probe: ProbeResult?): String {
     }
 }
 
+private fun coreProbeStageTimingSummary(probe: ProbeResult?): String? {
+    val timings = probe?.stageResults.orEmpty()
+        .filter { it.status != ProbeStageStatus.NOT_RUN && it.elapsedMs > 0 }
+        .groupBy { it.stage }
+        .map { (stage, results) -> stage.label + " " + results.sumOf { it.elapsedMs } + "ms" }
+    return timings.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+}
+
 private fun coreProbeFailureSummary(probe: ProbeResult?): String? {
     val failures = probe?.stageResults.orEmpty().filter {
         it.status == ProbeStageStatus.FAILED || it.status == ProbeStageStatus.EMPTY
@@ -2605,12 +2613,21 @@ private fun CompareGroupDialog(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
-                                    source.probe?.let { "响应 " + it.elapsedMs + "ms · " + it.status.label } ?: "暂无校验结果",
+                                    source.probe?.let { "总耗时 " + it.elapsedMs + "ms · " + it.status.label } ?: "暂无校验结果",
                                     fontSize = UiTypography.caption,
                                     color = Muted,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
+                                coreProbeStageTimingSummary(source.probe)?.let {
+                                    Text(
+                                        "阶段耗时：" + it,
+                                        fontSize = UiTypography.caption,
+                                        color = Muted,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                                 coreProbeFailureSummary(source.probe)?.let {
                                     Text(it, fontSize = UiTypography.caption, color = Warn, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }

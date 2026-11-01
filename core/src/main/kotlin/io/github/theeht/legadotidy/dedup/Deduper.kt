@@ -305,9 +305,6 @@ object Deduper {
         if (winner.topLevelFieldCount != runnerUp.topLevelFieldCount) {
             return "前述因素相同，JSON 顶层业务字段数量更多（最后兜底因素）。"
         }
-        if (winnerProbe?.status != runnerUpProbe?.status) {
-            return "阶段结果相同，整体校验结论更好。"
-        }
         return "各项质量因素相同，按原始导入顺序稳定保留。"
     }
 
