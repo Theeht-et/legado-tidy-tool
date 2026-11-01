@@ -89,6 +89,37 @@ data class ProbeResult(
 }
 
 /** 引擎实现方在 core 侧的唯一接口，方便用假引擎写单测。 */
+/**
+ * Ordered stages expected for one validation run. Discovery has a category parsing
+ * prerequisite in addition to its paging stage.
+ */
+fun expectedProbeStages(entry: ProbeEntry, depth: ProbeDepth): List<ProbeStage> = buildList {
+    if (entry == ProbeEntry.EXPLORE) {
+        add(ProbeStage.EXPLORE_CATEGORIES)
+        add(ProbeStage.EXPLORE)
+    } else {
+        add(ProbeStage.SEARCH)
+    }
+    if (depth != ProbeDepth.SEARCH) {
+        add(ProbeStage.BOOK_INFO)
+        add(ProbeStage.TOC)
+    }
+    if (depth == ProbeDepth.FULL_CHAIN) add(ProbeStage.CONTENT)
+}
+
+/** Explicitly records prerequisite-dependent stages that were not reached. */
+fun notRunProbeStages(
+    entry: ProbeEntry,
+    depth: ProbeDepth,
+    reason: String,
+    alreadyRecorded: Set<ProbeStage> = emptySet(),
+): List<ProbeStageResult> =
+    expectedProbeStages(entry, depth)
+        .filterNot { it in alreadyRecorded }
+        .map { stage ->
+            ProbeStageResult(stage, ProbeStageStatus.NOT_RUN, detail = reason)
+        }
+
 interface ProbeEngine {
     suspend fun probe(index: Int, source: BookSourceDoc, options: ProbeOptions): ProbeResult
 }

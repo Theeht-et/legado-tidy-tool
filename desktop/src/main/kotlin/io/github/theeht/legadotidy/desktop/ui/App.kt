@@ -93,6 +93,7 @@ import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStage
 import io.github.theeht.legadotidy.probe.ProbeStageResult
 import io.github.theeht.legadotidy.probe.ProbeStageStatus
+import io.github.theeht.legadotidy.probe.notRunProbeStages
 import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -480,6 +481,11 @@ fun TidyApp() {
                                                 detail = detail,
                                                 failureStatus = ProbeStatus.ERROR,
                                             ),
+                                        ) + notRunProbeStages(
+                                            entry,
+                                            depth,
+                                            detail,
+                                            alreadyRecorded = setOf(ProbeStage.SEARCH),
                                         ),
                                         entry = entry,
                                         depth = depth,
@@ -501,6 +507,11 @@ fun TidyApp() {
                                                 detail = detail,
                                                 failureStatus = ProbeStatus.NO_SEARCH_URL,
                                             ),
+                                        ) + notRunProbeStages(
+                                            entry,
+                                            depth,
+                                            detail,
+                                            alreadyRecorded = setOf(ProbeStage.SEARCH),
                                         ),
                                         entry = entry,
                                         depth = depth,

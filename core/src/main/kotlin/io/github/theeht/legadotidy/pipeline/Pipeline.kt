@@ -16,6 +16,7 @@ import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStage
 import io.github.theeht.legadotidy.probe.ProbeStageResult
 import io.github.theeht.legadotidy.probe.ProbeStageStatus
+import io.github.theeht.legadotidy.probe.notRunProbeStages
 import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -199,6 +200,11 @@ class Pipeline(private val engine: ProbeEngine) {
                                 detail = detail,
                                 failureStatus = status,
                             ),
+                        ) + notRunProbeStages(
+                            config.probe.entry,
+                            config.probe.depth,
+                            detail,
+                            alreadyRecorded = setOf(entryStage),
                         ),
                         entry = config.probe.entry,
                         depth = config.probe.depth,

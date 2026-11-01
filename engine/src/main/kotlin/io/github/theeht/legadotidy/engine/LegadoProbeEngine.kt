@@ -11,6 +11,7 @@ import io.github.theeht.legadotidy.probe.ProbeStage
 import io.github.theeht.legadotidy.probe.ProbeStageResult
 import io.github.theeht.legadotidy.probe.ProbeStageStatus
 import io.github.theeht.legadotidy.probe.ProbeStatus
+import io.github.theeht.legadotidy.probe.notRunProbeStages
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.BookSource
@@ -79,6 +80,11 @@ class LegadoProbeEngine(
                         detail = verdict.detail,
                         failureStatus = verdict.status,
                     ),
+                ) + notRunProbeStages(
+                    options.entry,
+                    options.depth,
+                    verdict.detail,
+                    alreadyRecorded = setOf(stage),
                 ),
             )
         }
@@ -109,6 +115,11 @@ class LegadoProbeEngine(
                             detail = "代理配置无效，未发起网络请求",
                             failureStatus = ProbeStatus.ERROR,
                         ),
+                    ) + notRunProbeStages(
+                        options.entry,
+                        options.depth,
+                        "代理配置无效，未发起该阶段请求",
+                        alreadyRecorded = setOf(stage),
                     ),
                 )
             }
@@ -177,10 +188,22 @@ class LegadoProbeEngine(
         }
 
         fun addNotRun(stage: ProbeStage, reason: String) {
-            stageResults += ProbeStageResult(
-                stage = stage,
-                status = ProbeStageStatus.NOT_RUN,
-                detail = reason,
+            if (stageResults.none { it.stage == stage }) {
+                stageResults += ProbeStageResult(
+                    stage = stage,
+                    status = ProbeStageStatus.NOT_RUN,
+                    detail = reason,
+                )
+            }
+        }
+
+        fun addRemainingStagesNotRun(reason: String) {
+            val recorded = stageResults.mapTo(mutableSetOf()) { it.stage }
+            stageResults += notRunProbeStages(
+                options.entry,
+                options.depth,
+                reason,
+                alreadyRecorded = recorded,
             )
         }
 
@@ -206,7 +229,10 @@ class LegadoProbeEngine(
             withContext(ProbeProxyContext(proxy)) {
                 withTimeout(chainTimeoutMs) {
                     val bookSource = gson.fromJson(source.raw, BookSource::class.java)
-                        ?: return@withTimeout result(ProbeStatus.ERROR, "书源反序列化失败")
+                        ?: run {
+                            addRemainingStagesNotRun("书源反序列化失败，后续阶段未执行")
+                            return@withTimeout result(ProbeStatus.ERROR, "书源反序列化失败")
+                        }
 
                     when (options.entry) {
                         ProbeEntry.SEARCH -> {
@@ -226,12 +252,14 @@ class LegadoProbeEngine(
 
                             when (search.status) {
                                 ProbeStageStatus.FAILED -> {
+                                    addRemainingStagesNotRun("搜索阶段失败，后续阶段未执行")
                                     return@withTimeout result(
                                         search.failureStatus ?: ProbeStatus.ERROR,
                                         search.detail,
                                     )
                                 }
                                 ProbeStageStatus.EMPTY -> {
+                                    addRemainingStagesNotRun("搜索没有解析出书籍，后续阶段未执行")
                                     return@withTimeout result(
                                         ProbeStatus.PARSE_EMPTY,
                                         "搜索页已请求，但上游未解析出书籍结果",
@@ -263,6 +291,7 @@ class LegadoProbeEngine(
                             }
                             if (categoryStage.status == ProbeStageStatus.FAILED) {
                                 stageResults += categoryStage
+                                addRemainingStagesNotRun("发现分类解析失败，发现分页及阅读阶段未执行")
                                 return@withTimeout result(
                                     categoryStage.failureStatus ?: ProbeStatus.ERROR,
                                     categoryStage.detail,
@@ -282,6 +311,7 @@ class LegadoProbeEngine(
                                     categoryStage
                                 }
                                 stageResults += failedCategoryStage
+                                addRemainingStagesNotRun("没有可用发现分类，发现分页及阅读阶段未执行")
                                 return@withTimeout result(
                                     if (parseError != null) ProbeStatus.ERROR else ProbeStatus.NO_EXPLORE_CATEGORY,
                                     failedCategoryStage.detail
@@ -318,6 +348,7 @@ class LegadoProbeEngine(
                                         detail = "分类「${category.title}」第 ${page} 页：${pageStage.detail.orEmpty()}",
                                     )
                                     if (uniqueBooks.isEmpty()) {
+                                        addRemainingStagesNotRun("发现第一页请求失败且没有可用书籍，阅读阶段未执行")
                                         return@withTimeout result(
                                             pageStage.failureStatus ?: ProbeStatus.ERROR,
                                             pageStage.detail,
@@ -335,6 +366,7 @@ class LegadoProbeEngine(
                                         stageResults += pageStage.copy(
                                             detail = "分类「${category.title}」第一页没有解析出书籍",
                                         )
+                                        addRemainingStagesNotRun("发现第一页没有解析出书籍，阅读阶段未执行")
                                         return@withTimeout result(
                                             ProbeStatus.PARSE_EMPTY,
                                             "发现分类「${category.title}」第一页没有解析出书籍",
@@ -485,6 +517,7 @@ class LegadoProbeEngine(
                 (it.stage == ProbeStage.SEARCH || it.stage == ProbeStage.EXPLORE) &&
                     it.status == ProbeStageStatus.SUCCESS
             }
+            addRemainingStagesNotRun("前序阶段未完成，后续阶段未执行")
             result(
                 status = if (entryPassed) ProbeStatus.PARTIAL else ProbeStatus.TIMEOUT,
                 detail = summarizeStages(stageResults, options.depth)
@@ -510,6 +543,7 @@ class LegadoProbeEngine(
                 (it.stage == ProbeStage.SEARCH || it.stage == ProbeStage.EXPLORE) &&
                     it.status == ProbeStageStatus.SUCCESS
             }
+            addRemainingStagesNotRun("前序阶段失败，后续阶段未执行")
             result(
                 status = if (entryPassed) ProbeStatus.PARTIAL else failureStatus,
                 detail = summarizeStages(stageResults, options.depth) ?: shortReason(e),
