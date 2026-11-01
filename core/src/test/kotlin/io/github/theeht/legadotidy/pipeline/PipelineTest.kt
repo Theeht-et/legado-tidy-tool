@@ -73,7 +73,7 @@ class PipelineTest {
             ): ProbeResult {
                 receivedSource = source
                 receivedOptions = options
-                return ProbeResult(index, ProbeStatus.OK, options = options)
+                return ProbeResult(index, ProbeStatus.OK, proxy = options.proxy, options = options)
             }
         }
         val options = ProbeOptions(
