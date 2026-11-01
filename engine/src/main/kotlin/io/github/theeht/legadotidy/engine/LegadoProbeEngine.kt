@@ -552,14 +552,24 @@ class LegadoProbeEngine(
         }.getOrDefault(false)
 
     private fun classify(error: Throwable): Pair<ProbeStatus, Int?> {
-        if (error is TimeoutCancellationException || error is SocketTimeoutException) {
-            return ProbeStatus.TIMEOUT to null
-        }
-        if (error is UnknownHostException || error is IOException) {
-            return ProbeStatus.NETWORK to null
+        val message = error.message.orEmpty()
+        when {
+            error is TimeoutCancellationException || error is SocketTimeoutException ->
+                return ProbeStatus.TIMEOUT to null
+            error is TocEmptyException || error is ContentEmptyException ->
+                return ProbeStatus.PARSE_EMPTY to null
+            message.contains("源地址不可访问") ->
+                return ProbeStatus.NETWORK to null
+            message.contains("搜索链接规则为空") ->
+                return ProbeStatus.NO_SEARCH_URL to null
+            message.contains("发现规则为空") ->
+                return ProbeStatus.NO_EXPLORE_CATEGORY to null
         }
         val code = httpStatus(error)
         if (code != null) return ProbeStatus.HTTP_ERROR to code
+        if (error is UnknownHostException || error is IOException) {
+            return ProbeStatus.NETWORK to null
+        }
         return ProbeStatus.ERROR to null
     }
 
