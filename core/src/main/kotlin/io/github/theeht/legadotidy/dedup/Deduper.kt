@@ -16,10 +16,7 @@ enum class DedupKind(val label: String) {
     SIMILAR("è§„åˆ™é«˜åº¦ç›¸ä¼¼"),
 }
 
-/**
- * ä¿ç•™æµæ°´çº¿æ—§é…ç½®å…¥å£çš„å…¼å®¹ç±»å‹ã€‚
- * URL-only å»é‡ä¸ HTML åŸå‹ä¸€è‡´ï¼Œä¸å†ä½¿ç”¨ç›¸ä¼¼åº¦é˜ˆå€¼æˆ– shingle å€™é€‰å‚æ•°ã€‚
- */
+/** ä¿ç•™æµæ°´çº¿æ—§é…ç½®å…¥å£çš„å…¼å®¹ç±»å‹ã€‚ */
 data class DedupConfig(
     @Deprecated("å»é‡ç°åœ¨åªæŒ‰è§„èŒƒåŒ– URL åˆ†ç»„") val similarityThreshold: Double = 0.92,
     @Deprecated("å»é‡ç°åœ¨åªæŒ‰è§„èŒƒåŒ– URL åˆ†ç»„") val minSharedShingles: Int = 3,
@@ -32,7 +29,6 @@ data class DedupGroup(
     val members: List<Int>,
     val keep: Int,
     val similarity: Double,
-    /** å¯¹æœ¬ç»„æ¨èä¿ç•™é¡¹çš„å¯è¯»è§£é‡Šã€‚ */
     val recommendationReason: String = "",
 ) {
     val size: Int get() = members.size
@@ -42,7 +38,6 @@ data class DedupReport(
     val groups: List<DedupGroup>,
     val total: Int,
 ) {
-    /** æ¯ç»“å»ºè®®ä¿ç•™ä¸€é¡¹ï¼Œå…¶ä½™å‡ä¸ºå€™é€‰åˆ é™¤é¡¹ã€‚ */
     val keepCount: Int = total - groups.sumOf { it.size - 1 }
     val exactGroups: Int get() = groups.count { it.kind == DedupKind.EXACT }
     val fingerprintGroups: Int get() = 0
@@ -61,15 +56,14 @@ private data class CandidateQuality(
 )
 
 /**
- * å»é‡è§„åˆ™ï¼š
- * 1. ä»…æŒ‰è§„èŒƒåŒ–åçš„ bookSourceUrl åˆ†ç»„ï¼›
- * 2. å…ˆæ¯”è¾ƒæ ¸å¿ƒé˜¶æ®µå®é™…ç»“æœï¼šæœç´¢ã€ä¹¦ç±ä¿¡æ¯ã€ç›®å½•ã€æ­£æ–‡ï¼›
- * 3. å†æ¯”è¾ƒé”™è¯¯æƒ…å†µä¸æˆåŠŸé˜¶æ®µå¹³å‡è€—æ—¶ï¼›
- * 4. å†æ¯”è¾ƒæ ¸å¿ƒ/è¾…åŠ©èƒ½åŠ›é…ç½®å’Œè§„åˆ™å®Œæ•´åº¦ï¼›
- * 5. JSON é¡¶å±‚ä¸šåŠ¡å­—æ®µæ•°é‡åªä½œä¸ºæœ€åä¸€ä¸ªè´¨é‡å› ç´ ï¼›
- * 6. æ‰€æœ‰è´¨é‡å› ç´ å®Œå…¨ç›¸åŒæ—¶ï¼Œç¨³å®šä¿ç•™è¾“å…¥é¡ºåºé å‰çš„å€™é€‰ã€‚
+ * æ’åºä¼˜å…ˆçº§ï¼š
+ * 1. æœç´¢ã€ä¹¦ç±ä¿¡æ¯ã€ç›®å½•ã€æ­£æ–‡çš„å®é™…æ ¡éªŒç»“æœï¼›
+ * 2. æ ¡éªŒé”™è¯¯æƒ…å†µä¸æˆåŠŸé˜¶æ®µå¹³å‡å“åº”æ—¶é—´ï¼›
+ * 3. æ ¸å¿ƒ/è¾…åŠ©åŠŸèƒ½é…ç½®å’Œè§„åˆ™å®Œæ•´åº¦ï¼›
+ * 4. JSON é¡¶å±‚ä¸šåŠ¡å­—æ®µæ•°é‡ï¼›
+ * 5. æ‰€æœ‰è´¨é‡å› ç´ å®Œå…¨ç›¸åŒæ—¶ï¼Œç¨³å®šä¿ç•™è¾“å…¥é¡ºåºé å‰çš„å€™é€‰ã€‚
  *
- * æ¯ç»„å§‹ç»ˆäº§ç”Ÿä¸€ä¸ªç¡®å®šçš„æ¨èé¡¹ï¼›æœ¬é˜¶æ®µåªç”Ÿæˆå»ºè®®ï¼Œä¸ä¿®æ”¹åŸå§‹ä¹¦æºã€‚
+ * æ¯ç»„å§‹ç»ˆäº§ç”Ÿä¸€ä¸ªç¡®å®šæ¨èé¡¹ï¼›è¿™é‡Œåªç”Ÿæˆå»ºè®®ï¼Œä¸ä¿®æ”¹åŸå§‹ä¹¦æºã€‚
  */
 object Deduper {
 
@@ -125,14 +119,16 @@ object Deduper {
                     members = members.toList(),
                     keep = keep,
                     similarity = 1.0,
-                    recommendationReason = runnerUp?.let {
+                    recommendationReason = if (runnerUp == null) {
+                        "é‡å¤ç»„åªæœ‰ä¸€ä¸ªå€™é€‰ï¼Œæ— éœ€æ¯”è¾ƒã€‚"
+                    } else {
                         explainRecommendation(
-                            winner = qualities.getValue(keep),
-                            runnerUp = qualities.getValue(it),
-                            winnerProbe = probeResults[keep],
-                            runnerUpProbe = probeResults[it],
+                            qualities.getValue(keep),
+                            qualities.getValue(runnerUp),
+                            probeResults[keep],
+                            probeResults[runnerUp],
                         )
-                    } ?: "é‡å¤ç»„åªæœ‰ä¸€ä¸ªå€™é€‰ï¼Œæ— éœ€æ¯”è¾ƒã€‚",
+                    },
                 )
             }
             .toList()
@@ -153,8 +149,8 @@ object Deduper {
         val entryStage = if (probe?.entry == ProbeEntry.EXPLORE) ProbeStage.EXPLORE else ProbeStage.SEARCH
         val expectedStages = when (probe?.depth ?: ProbeDepth.FULL_CHAIN) {
             ProbeDepth.SEARCH -> listOf(entryStage)
-            ProbeDepth.WITH_TOC -> listOf(entryStage, ProbeStage.BOOK_INFO ProbeStage.TOC)
-            ProbeDepth.FULL_CHAIN -> listOf(entryStage, ProbeStage.BOOK_INFO ProbeStage.TOC ProbeStage.CONTENT)
+            ProbeDepth.WITH_TOC -> listOf(entryStage, ProbeStage.BOOK_INFO, ProbeStage.TOC)
+            ProbeDepth.FULL_CHAIN -> listOf(entryStage, ProbeStage.BOOK_INFO, ProbeStage.TOC, ProbeStage.CONTENT)
         }
         val actualStages = probe?.stageResults.orEmpty().associateBy { it.stage }
 
@@ -178,14 +174,10 @@ object Deduper {
         }
 
         val stageRanks = expectedStages.map(::rank)
-        val successfulCount = if (probe == null) {
-            0
-        } else if (probe.stageResults.isEmpty() && probe.status == ProbeStatus.OK) {
-            expectedStages.size
-        } else if (probe.stageResults.isEmpty() && probe.status == ProbeStatus.PARTIAL) {
-            1
-        } else {
-            expectedStages.count { actualStages[it]?.status == ProbeStageStatus.SUCCESS }
+        val successfulCount = when {
+            probe == null -> 0
+            probe.stageResults.isEmpty() && probe.status == ProbeStatus.OK -> expectedStages.size
+            else -> expectedStages.count { actualStages[it]?.status == ProbeStageStatus.SUCCESS }
         }
 
         val relevantResults = probe?.stageResults.orEmpty().filter { it.stage in expectedStages }
@@ -254,4 +246,76 @@ object Deduper {
         }
         left.failurePenalty.compareTo(right.failurePenalty).takeIf { it != 0 }?.let { return it }
         left.averageSuccessfulStageMs.compareTo(right.averageSuccessfulStageMs).takeIf { it != 0 }?.let { return it }
-        descendini¨¡±•™Ğ¹½É•…Á…‰¥±¥Ñå½Õ¹Ğ°É¥¡Ğ¹½É•…Á…‰¥±¥Ñå½Õ¹Ğ¤¹Ñ…­•%˜ì¥Ğ€„ô€Àôü¹±•ĞìÉ•ÑÕÉ¸¥Ğô(€€€€€€€‘•Í•¹‘¥¹œ¡±•™Ğ¹…Õá¥±¥…Éå…Á…‰¥±¥Ñå½Õ¹Ğ°É¥¡Ğ¹…Õá¥±¥…Éå…Á…‰¥±¥Ñå½Õ¹Ğ¤¹Ñ…­•%˜ì¥Ğ€„ô€Àôü¹±•ĞìÉ•ÑÕÉ¸¥Ğô(€€€€€€€‘•Í•¹‘¥¹œ¡±•™Ğ¹ÉÕ±•½µÁ±•Ñ•¹•ÍÌ°É¥¡Ğ¹ÉÕ±•½µÁ±•Ñ•¹•ÍÌ¤¹Ñ…­•%˜ì¥Ğ€„ô€Àôü¹±•ĞìÉ•ÑÕÉ¸¥Ğô(€€€€€€€‘•Í•¹‘¥¹œ¡±•™Ğ¹Ñ½Á1•Ù•±¥•±‘½Õ¹Ğ°É¥¡Ğ¹Ñ½Á1•Ù•±¥•±‘½Õ¹Ğ¤¹Ñ…­•%˜ì¥Ğ€„ô€Àôü¹±•ĞìÉ•ÑÕÉ¸¥Ğô(€€€€€€€É•ÑÕÉ¸€À(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¸•áÁ±…¥¹I•½µµ•¹‘…Ñ¥½¸ (€€€€€€€İ¥¹¹•Èè…¹‘¥‘…Ñ•EÕ…±¥Ñä°(€€€€€€€ÉÕ¹¹•ÉUÀè…¹‘¥‘…Ñ•EÕ…±¥Ñä°(€€€€€€€İ¥¹¹•ÉAÉ½‰”èAÉ½‰•I•ÍÕ±Ğü°(€€€€€€€ÉÕ¹¹•ÉUÁAÉ½‰”èAÉ½‰•I•ÍÕ±Ğü°(€€€€¤èMÑÉ¥¹œì(€€€€€€€¥˜€¡İ¥¹¹•È¹ÍÕ•ÍÍ™Õ±½É•MÑ…•Ì€„ôÉÕ¹¹•ÉUÀ¹ÍÕ•ÍÍ™Õ±½É•MÑ…•Ì¤ì(€€€€€€€€€€€É•ÑÕÉ¸€‹š‚ã–ş–*¢÷š"C–*¦bÛšº×šnÓ–’k¾ò ‘íİ¥¹¹•È¹ÍÕ•ÍÍ™Õ±½É•MÑ…•Íô¼Ó¾ò3–¾çš¾P€‘íÉÕ¹¹•ÉUÀ¹ÍÕ•ÍÍ™Õ±½É•MÑ…•Íô¼Ó¾ò'ˆ(€€€€€€€ô(€€€€€€€™½È€¡¥¹‘•à¥¸€ÀÕ¹Ñ¥°µ¥¹=˜¡İ¥¹¹•È¹½É•MÑ…•I…¹­Ì¹Í¥é”°ÉÕ¹¹•ÉUÀ¹½É•MÑ…•I…¹­Ì¹Í¥é”¤¤ì(€€€€€€€€€€€¥˜€¡İ¥¹¹•È¹½É•MÑ…•I…¹­Ím¥¹‘•át€„ôÉÕ¹¹•ÉUÀ¹½É•MÑ…•I…¹­Ím¥¹‘•át¤ì(€€€€€€€€€€€€€€€Ù…°±…‰•°€ô¥˜€¡İ¥¹¹•ÉAÉ½‰”ü¹•¹ÑÉä€ôôAÉ½‰•¹ÑÉä¹aA1=I€˜˜¥¹‘•à€ôô€À¤ì(€€€€€€€€€€€€€€€€€€€€‹–>G:Àˆ(€€€€€€€€€€€€€€€ô•±Í”ì(€€€€€€€€€€€€€€€€€€€=I}MQ}1	1L¹•Ñ=É±Í”¡¥¹‘•à¤ì€‹š‚ã–ş–*¢ôˆô(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€É•ÑÕÉ¸€ˆ‘±…‰•³¦bÛšº×j–º{¦fš‚‡¦ª3îOšzsšnÓ––÷ˆ(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€¥˜€¡İ¥¹¹•È¹™…¥±ÕÉ•A•¹…±Ñä€„ôÉÕ¹¹•ÉUÀ¹™…¥±ÕÉ•A•¹…±Ñä¤ì(€€€€€€€€€€€É•ÑÕÉ¸€‹šr³š²‡š‚‡¦ª3’â·j¦Rg¢¾¿–J3–’Ç¢Ò—š–×¢ú¢öïˆ(€€€€€€€ô(€€€€€€€¥˜€¡İ¥¹¹•È¹…Ù•É…•MÕ•ÍÍ™Õ±MÑ…•5Ì€„ôÉÕ¹¹•ÉUÀ¹…Ù•É…•MÕ•ÍÍ™Õ±MÑ…•5Ì¤ì(€€€€€€€€€€€É•ÑÕÉ¸€‹š‚ã–ş¦bÛšº×–æÏ–v–N7–êSšnÓ–ş¯¾ò ‘í±…Ñ•¹å1…‰•°¡İ¥¹¹•È¹…Ù•É…•MÕ•ÍÍ™Õ±MÑ…•5Ì¥÷¾ò3–¾çš¾P€‘í±…Ñ•¹å1…‰•°¡ÉÕ¹¹•ÉUÀ¹…Ù•É…•MÕ•ÍÍ™Õ±MÑ…•5Ì¥÷¾ò'ˆ(€€€€€€€ô(€€€€€€€¥˜€¡İ¥¹¹•È¹½É•…Á…‰¥±¥Ñå½Õ¹Ğ€„ôÉÕ¹¹•ÉUÀ¹½É•…Á…‰¥±¥Ñå½Õ¹Ğ¤ì(€€€€€€€€€€€É•ÑÕÉ¸€‹š‚ã–ş–*¢÷¦7ö»šnÓ–º3šVÓˆ(€€€€€€€ô(€€€€€€€¥˜€¡İ¥¹¹•È¹…Õá¥±¥…Éå…Á…‰¥±¥Ñå½Õ¹Ğ€„ôÉÕ¹¹•ÉUÀ¹…Õá¥±¥…Éå…Á…‰¥±¥Ñå½Õ¹Ğ¤ì(€€€€€€€€€€€É•ÑÕÉ¸€‹–>G:Ãšº×¢¾¶'¢ú–*§¢÷–*o¦7ö»šnÓ–º3šVÓˆ(€€€€€€€ô(€€€€€€€¥˜€¡İ¥¹¹•È¹ÉÕ±•½µÁ±•Ñ•¹•ÍÌ€„ôÉÕ¹¹•ÉUÀ¹ÉÕ±•½µÁ±•Ñ•¹•ÍÌ¤ì(€€€€€€€€€€€É•ÑÕÉ¸€‹¦v{¦ë¢†3’âë¦7ö»¦†çšnÓ–’kˆ(€€€€€€€ô(€€€€€€€¥˜€¡İ¥¹¹•È¹Ñ½Á1•Ù•±¥•±‘½Õ¹Ğ€„ôÉÕ¹¹•ÉUÀ¹Ñ½Á1•Ù•±¥•±‘½Õ¹Ğ¤ì(€€€€€€€€€€€É•ÑÕÉ¸€‹–&7¢şÃ–nƒÒƒnã–B3¾ò1)M=8ƒ¦†Û–Æ’âk–*‡–¶_šº×šVÃ¦?šnÓ–’k¾ò#šr–B;–s–êW–nƒÒƒ¾ò'ˆ(€€€€€€€ô(€€€€€€€¥˜€¡İ¥¹¹•ÉAÉ½‰”ü¹ÍÑ…ÑÕÌ€„ôÉÕ¹¹•ÉUÁAÉ½‰”ü¹ÍÑ…ÑÕÌ¤ì(€€€€€€€€€€€É•ÑÕÉ¸€‹¦bÛšº×îOšzsnã–B3¾ò3šVÓ’öOš‚‡¦ª3îO¢ºëšnÓ––÷ˆ(€€€€€€€ô(€€€€€€€É•ÑÕÉ¸€‹–B¦†ç¢Ò£¦?–nƒÒƒnã–B3¾ò3š2'–:–/–¾ó–—¦†ë–ê?¢Ï–ºk’şwVgˆ(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¸±…Ñ•¹å1…‰•°¡Ù…±Õ”è1½¹œ¤èMÑÉ¥¹œ€ô(€€€€€€€¥˜€¡Ù…±Õ”€ôô1½¹œ¹5a}Y1U¤€‹š^ƒ–>¿š¾S¢ú¢_š^Øˆ•±Í”€ˆ‘íÙ…±Õ•õµÌˆ((€€€ÁÉ¥Ù…Ñ”™Õ¸½É•…Á…‰¥±¥Ñå½Õ¹Ğ¡Í½ÕÉ”è	½½­M½ÕÉ•½Œ¤è%¹Ğ€ô±¥ÍÑ=˜ (€€€€€€€Í½ÕÉ”¹…¹M•…É °(€€€€€€€€…Í½ÕÉ”¹ÉÕ±•	½½­%¹™¼¹¥ÍµÁÑä ¤°(€€€€€€€€…Í½ÕÉ”¹ÉÕ±•Q½Œ¹¥ÍµÁÑä ¤°(€€€€€€€€…Í½ÕÉ”¹ÉÕ±•½¹Ñ•¹Ğ¹¥ÍµÁÑä ¤°(€€€€¤¹½Õ¹Ğì¥Ğô((€€€ÁÉ¥Ù…Ñ”™Õ¸…Õá¥±¥…Éå…Á…‰¥±¥Ñå½Õ¹Ğ¡Í½ÕÉ”è	½½­M½ÕÉ•½Œ¤è%¹Ğ€ô±¥ÍÑ=˜ (€€€€€€€Í½ÕÉ”¹•áÁ±½É•UÉ°¹¥Í9½Ñ	±…¹¬ ¤ñğ€…Í½ÕÉ”¹ÉÕ±•áÁ±½É”¹¥ÍµÁÑä ¤°(€€€€€€€€…Í½ÕÉ”¹ÉÕ±•I•Ù¥•Ü¹¥ÍµÁÑä ¤°(€€€€¤¹½Õ¹Ğì¥Ğô((€€€€¼¨¨ƒR£š"ß–?––÷–Ë’ë–šVÃš6»–J3î¢º‡–¶_šº×’â7–>’â;šr–B;j)M=8ƒ–¶_šº×šVÃ¦?š¾S¢ú€¨¼(€€€ÁÉ¥Ù…Ñ”™Õ¸ÅÕ…±¥ÑåQ½Á1•Ù•±¥•±‘½Õ¹Ğ¡Í½ÕÉ”è	½½­M½ÕÉ•½Œ¤è%¹Ğ€ô(€€€€€€€Í½ÕÉ”¹É…Ü¹•¹ÑÉåM•Ğ ¤¹½Õ¹Ğì€¡­•ä°Ù…±Õ”¤€´ø(€€€€€€€€€€€­•ä€…¥¸9=9}EU1%Qe}Q=A}1Y1}%1L€˜˜€…Ù…±Õ”¹¥Í)Í½¹9Õ±°(€€€€€€€ô)ô(
+        descending(left.coreCapabilityCount, right.coreCapabilityCount).takeIf { it != 0 }?.let { return it }
+        descending(left.auxiliaryCapabilityCount, right.auxiliaryCapabilityCount).takeIf { it != 0 }?.let { return it }
+        descending(left.ruleCompleteness, right.ruleCompleteness).takeIf { it != 0 }?.let { return it }
+        descending(left.topLevelFieldCount, right.topLevelFieldCount).takeIf { it != 0 }?.let { return it }
+        return 0
+    }
+
+    private fun explainRecommendation(
+        winner: CandidateQuality,
+        runnerUp: CandidateQuality,
+        winnerProbe: ProbeResult?,
+        runnerUpProbe: ProbeResult?,
+    ): String {
+        if (winner.successfulCoreStages != runnerUp.successfulCoreStages) {
+            return "æ ¸å¿ƒåŠŸèƒ½æˆåŠŸé˜¶æ®µæ›´å¤šï¼ˆ" + winner.successfulCoreStages + "/4ï¼Œå¯¹æ¯” " +
+                runnerUp.successfulCoreStages + "/4ï¼‰ã€‚"
+        }
+        for (index in 0 until minOf(winner.coreStageRanks.size, runnerUp.coreStageRanks.size)) {
+            if (winner.coreStageRanks[index] != runnerUp.coreStageRanks[index]) {
+                val label = if (winnerProbe?.entry == ProbeEntry.EXPLORE && index == 0) {
+                    "å‘ç°"
+                } else {
+                    CORE_STAGE_LABELS.getOrElse(index) { "æ ¸å¿ƒåŠŸèƒ½" }
+                }
+                return label + "é˜¶æ®µçš„å®é™…æ ¡éªŒç»“æœæ›´å¥½ã€‚"
+            }
+        }
+        if (winner.failurePenalty != runnerUp.failurePenalty) {
+            return "æœ¬æ¬¡æ ¡éªŒä¸­çš„é”™è¯¯å’Œå¤±è´¥æƒ…å†µè¾ƒè½»ã€‚"
+        }
+        if (winner.averageSuccessfulStageMs != runnerUp.averageSuccessfulStageMs) {
+            return "æ ¸å¿ƒé˜¶æ®µå¹³å‡å“åº”æ›´å¿«ï¼ˆ" + latencyLabel(winner.averageSuccessfulStageMs) +
+                "ï¼Œå¯¹æ¯” " + latencyLabel(runnerUp.averageSuccessfulStageMs) + "ï¼‰ã€‚"
+        }
+        if (winner.coreCapabilityCount != runnerUp.coreCapabilityCount) {
+            return "æ ¸å¿ƒåŠŸèƒ½é…ç½®æ›´å®Œæ•´ã€‚"
+        }
+        if (winner.auxiliaryCapabilityCount != runnerUp.auxiliaryCapabilityCount) {
+            return "å‘ç°ã€æ®µè¯„ç­‰è¾…åŠ©èƒ½åŠ›é…ç½®æ›´å®Œæ•´ã€‚"
+        }
+        if (winner.ruleCompleteness != runnerUp.ruleCompleteness) {
+            return "éç©ºè¡Œä¸ºé…ç½®é¡¹æ›´å¤šã€‚"
+        }
+        if (winner.topLevelFieldCount != runnerUp.topLevelFieldCount) {
+            return "å‰è¿°å› ç´ ç›¸åŒï¼ŒJSON é¡¶å±‚ä¸šåŠ¡å­—æ®µæ•°é‡æ›´å¤šï¼ˆæœ€åå…œåº•å› ç´ ï¼‰ã€‚"
+        }
+        if (winnerProbe?.status != runnerUpProbe?.status) {
+            return "é˜¶æ®µç»“æœç›¸åŒï¼Œæ•´ä½“æ ¡éªŒç»“è®ºæ›´å¥½ã€‚"
+        }
+        return "å„é¡¹è´¨é‡å› ç´ ç›¸åŒï¼ŒæŒ‰åŸå§‹å¯¼å…¥é¡ºåºç¨³å®šä¿ç•™ã€‚"
+    }
+
+    private fun latencyLabel(value: Long): String =
+        if (value == Long.MAX_VALUE) "æ— å¯æ¯”è¾ƒè€—æ—¶" else value.toString() + "ms"
+
+    private fun coreCapabilityCount(source: BookSourceDoc): Int = listOf(
+        source.canSearch,
+        !source.ruleBookInfo.isEmpty(),
+        !source.ruleToc.isEmpty(),
+        !source.ruleContent.isEmpty(),
+    ).count { it }
+
+    private fun auxiliaryCapabilityCount(source: BookSourceDoc): Int = listOf(
+        source.exploreUrl.isNotBlank() || !source.ruleExplore.isEmpty(),
+        !source.ruleReview.isEmpty(),
+    ).count { it }
+
+    /** ç”¨æˆ·åå¥½ã€å±•ç¤ºå…ƒæ•°æ®å’Œç»Ÿè®¡å­—æ®µä¸å‚ä¸æœ€åçš„ JSON å­—æ®µæ•°é‡æ¯”è¾ƒã€‚ */
+    private fun qualityTopLevelFieldCount(source: BookSourceDoc): Int =
+        source.raw.entrySet().count { (key, value) ->
+            key !in NON_QUALITY_TOP_LEVEL_FIELDS && !value.isJsonNull
+        }
+}
