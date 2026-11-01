@@ -412,8 +412,10 @@ class LegadoProbeEngine(
             // 不吞掉用户取消/上层取消；只把本书源的超时或业务异常转换为结果。
             currentCoroutineContext().ensureActive()
             failure = error
-            if (error is TimeoutCancellationException) {
-                bookSource.addGroup("校验超时")
+            when (error) {
+                is TimeoutCancellationException -> bookSource.addGroup("校验超时")
+                is ScriptException, is WrappedException -> bookSource.addGroup("js失效")
+                !is NoStackTraceException -> bookSource.addGroup("网站失效")
             }
             if (options.writeErrorComment) {
                 bookSource.addErrorComment(error)
@@ -486,10 +488,26 @@ class LegadoProbeEngine(
             bookCount = bookCount,
             elapsedMs = respondTime,
             actualElapsedMs = actualElapsedMs,
-            detail = when {
-                failure != null -> shortReason(failure!!)
-                domainUnchecked -> "无法校验：源地址不是 HTTP(S) 链接；其余已启用项目已按上游流程执行"
-                else -> null
+            detail = if (failure == null && !domainUnchecked) {
+                null
+            } else {
+                val outcomeMessage = if (failure != null) {
+                    "校验失败:" + failure!!.localizedMessage
+                } else {
+                    "无法校验:源地址不是http链接"
+                }
+                val errorComment = if (options.writeErrorComment) {
+                    bookSource.bookSourceComment
+                        ?.lineSequence()
+                        ?.firstOrNull { it.startsWith("// Error: ") }
+                        .orEmpty()
+                } else {
+                    ""
+                }
+                listOf(bookSource.getInvalidGroupNames(), outcomeMessage, errorComment)
+                    .filter { it.isNotEmpty() }
+                    .distinct()
+                    .joinToString(" | ")
             },
             stageResults = stageResults.toList(),
             keyword = options.keyword,
