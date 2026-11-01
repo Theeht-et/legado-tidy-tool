@@ -25,25 +25,39 @@ internal fun <T> planMarkedDeletions(
 ): DeletionPlan<T> {
     val markedCount = items.count(isMarked)
     val allMarked = items.isNotEmpty() && markedCount == items.size
-    if (allMarked) {
-        return DeletionPlan(
-            canAdvance = false,
-            retained = items,
-            removedCount = 0,
-            allItemsMarked = true,
-        )
-    }
     return DeletionPlan(
-        canAdvance = items.isNotEmpty(),
+        // An empty retained set is a valid outcome: never rescue a marked source merely
+        // to keep one item in a duplicate group or to make the export non-empty.
+        canAdvance = true,
         retained = items.filterNot(isMarked),
         removedCount = markedCount,
-        allItemsMarked = false,
+        allItemsMarked = allMarked,
     )
 }
 
+/**
+ * Validation deletion marks are mandatory. Duplicate suggestions may add new marks,
+ * but cannot cancel a failed validation result. Only an explicit user decision can
+ * override the combined automatic recommendation.
+ */
+internal fun resolveDuplicateDeleteMark(
+    validationMarked: Boolean,
+    duplicateSuggestedDelete: Boolean,
+    currentMarked: Boolean,
+    hasUserDecision: Boolean,
+): Boolean = if (hasUserDecision) currentMarked else validationMarked || duplicateSuggestedDelete
+
+/** Marked sources can never be selected as duplicate keepers or revived by the compare dialog. */
+internal fun canBeSelectedAsDuplicateKeeper(deleteMarked: Boolean): Boolean = !deleteMarked
+
+internal fun preserveDeleteMarkAfterDuplicateChoice(
+    currentlyMarked: Boolean,
+    requestedKeep: Boolean,
+): Boolean = currentlyMarked || !requestedKeep
+
 /** Probe outcomes that should enter the pending-delete bucket by default. */
 internal fun shouldMarkForDeletionByDefault(status: ProbeStatus): Boolean =
-    status != ProbeStatus.OK
+    status != ProbeStatus.OK && status != ProbeStatus.UNCHECKABLE
 
 /** A manual decision must survive recalculating duplicate groups and other automatic suggestions. */
 internal fun resolveDeleteMark(
@@ -58,7 +72,7 @@ internal fun resolveDeleteMark(
  */
 internal fun shouldShowInExceptionReview(status: ProbeStatus?, deleteMarked: Boolean): Boolean =
     !deleteMarked && status != null &&
-        status != ProbeStatus.OK && status != ProbeStatus.SKIPPED
+        status != ProbeStatus.OK && status != ProbeStatus.UNCHECKABLE && status != ProbeStatus.SKIPPED
 
 /**
  * Single source of truth for the category filters shown above the source list.
@@ -74,7 +88,7 @@ internal fun isSourceIncludedInFilter(
     "全部" -> true
     "重复候选" -> hasDuplicateGroup
     "待校验" -> needsProbe
-    "校验通过" -> probeStatus == ProbeStatus.OK
+    "校验通过" -> probeStatus == ProbeStatus.OK || probeStatus == ProbeStatus.UNCHECKABLE
     "异常 / 复核" -> shouldShowInExceptionReview(probeStatus, deleteMarked)
     "待删除" -> deleteMarked
     else -> true

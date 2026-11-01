@@ -41,7 +41,7 @@ class WorkflowDecisionsTest {
     }
 
     @Test
-    fun `不允许把全部书源一次性标记删除`() {
+    fun `全部标记删除时允许清空工作池而不强制保留一项`() {
         val original = listOf(
             Row(id = 7, markedForDeletion = true),
             Row(id = 8, markedForDeletion = true),
@@ -49,10 +49,10 @@ class WorkflowDecisionsTest {
 
         val plan = planMarkedDeletions(original) { it.markedForDeletion }
 
-        assertFalse(plan.canAdvance)
+        assertTrue(plan.canAdvance)
         assertTrue(plan.allItemsMarked)
-        assertEquals(0, plan.removedCount)
-        assertEquals(listOf(7, 8), plan.retained.map { it.id })
+        assertEquals(2, plan.removedCount)
+        assertTrue(plan.retained.isEmpty())
     }
 
     @Test
@@ -136,11 +136,57 @@ class WorkflowDecisionsTest {
     @Test
     fun `任一校验未通过都默认标记待删除`() {
         assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.OK))
-        ProbeStatus.values().filter { it != ProbeStatus.OK }.forEach { status ->
-            assertTrue(shouldMarkForDeletionByDefault(status), status.name)
-        }
+        ProbeStatus.values()
+            .filter { it != ProbeStatus.OK && it != ProbeStatus.UNCHECKABLE }
+            .forEach { status ->
+                assertTrue(shouldMarkForDeletionByDefault(status), status.name)
+            }
+        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.UNCHECKABLE))
+        assertFalse(shouldShowInExceptionReview(ProbeStatus.UNCHECKABLE, deleteMarked = false))
         assertTrue(shouldShowInExceptionReview(ProbeStatus.PARTIAL, deleteMarked = false))
         assertFalse(shouldShowInExceptionReview(ProbeStatus.PARTIAL, deleteMarked = true))
+    }
+
+    @Test
+    fun `去重建议不能撤销校验阶段已经标记的删除项`() {
+        assertTrue(
+            resolveDuplicateDeleteMark(
+                validationMarked = true,
+                duplicateSuggestedDelete = false,
+                currentMarked = true,
+                hasUserDecision = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `重复组对比不能把已标记删除项重新设为保留`() {
+        assertFalse(canBeSelectedAsDuplicateKeeper(deleteMarked = true))
+        assertTrue(canBeSelectedAsDuplicateKeeper(deleteMarked = false))
+        assertTrue(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = true, requestedKeep = true))
+        assertTrue(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = true, requestedKeep = false))
+        assertFalse(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = false, requestedKeep = false))
+        assertFalse(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = false, requestedKeep = true))
+    }
+
+    @Test
+    fun `去重建议可以新增删除标记但不能覆盖用户明确决定`() {
+        assertTrue(
+            resolveDuplicateDeleteMark(
+                validationMarked = false,
+                duplicateSuggestedDelete = true,
+                currentMarked = false,
+                hasUserDecision = false,
+            ),
+        )
+        assertFalse(
+            resolveDuplicateDeleteMark(
+                validationMarked = true,
+                duplicateSuggestedDelete = true,
+                currentMarked = false,
+                hasUserDecision = true,
+            ),
+        )
     }
 
     @Test
@@ -167,6 +213,7 @@ class WorkflowDecisionsTest {
         assertTrue(matches("待校验", pending = true))
         assertFalse(matches("待校验", status = ProbeStatus.OK))
         assertTrue(matches("校验通过", status = ProbeStatus.OK))
+        assertTrue(matches("校验通过", status = ProbeStatus.UNCHECKABLE))
         assertFalse(matches("校验通过", status = ProbeStatus.NETWORK))
         assertFalse(matches("校验通过", status = ProbeStatus.PARTIAL))
         assertTrue(matches("异常 / 复核", status = ProbeStatus.NETWORK))
