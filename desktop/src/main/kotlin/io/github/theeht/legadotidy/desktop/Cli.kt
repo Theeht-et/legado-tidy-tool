@@ -20,8 +20,8 @@ import java.nio.file.Path
  * 批量跑几千个源时也应该用它——比界面里盯着进度条靠谱，而且 `--verbose` 能逐条看清是哪个源、因为什么失败。
  *
  * ```
- * legado-tidy --in sources.json [--out 输出目录] [--keyword 剑来]
- *             [--limit N] [--concurrency 100] [--timeout 20] [--verbose]
+ * legado-tidy --in sources.json [--out 输出目录] [--keyword 我的]
+ *             [--limit N] [--concurrency 100] [--timeout 180] [--verbose]
  * ```
  */
 fun runCli(args: Array<String>): Int {
