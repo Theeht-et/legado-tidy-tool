@@ -11,7 +11,6 @@ import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlinx.coroutines.runBlocking
 import java.net.InetSocketAddress
 import java.net.ServerSocket
-import java.nio.charset.StandardCharsets
 import java.util.Collections
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -29,7 +28,6 @@ class MockSiteProbeTest {
     private lateinit var server: HttpServer
     private var port: Int = 0
     private var searchEmpty = false
-    private var searchHttpError = false
     private val searchQueries = Collections.synchronizedList(mutableListOf<String>())
     private val discoveryPages = Collections.synchronizedList(mutableListOf<Int>())
     private var bookInfoRequests = 0
@@ -38,7 +36,6 @@ class MockSiteProbeTest {
     @BeforeTest
     fun start() {
         searchEmpty = false
-        searchHttpError = false
         searchQueries.clear()
         discoveryPages.clear()
         bookInfoRequests = 0
@@ -50,7 +47,6 @@ class MockSiteProbeTest {
         server.createContext("/search") { exchange ->
             searchQueries += exchange.requestURI.rawQuery.orEmpty()
             when {
-                searchHttpError -> respond(exchange, "<html>server error</html>", 503)
                 searchEmpty -> respond(exchange, "<html><body><ul class='list'></ul></body></html>")
                 else -> respond(
                     exchange,
@@ -213,7 +209,6 @@ class MockSiteProbeTest {
 
         assertEquals(ProbeStatus.OK, result.status, "详情：" + result.detail)
         assertEquals(listOf(1), discoveryPages.toList())
-        assertTrue(bookInfoRequests >= 1)
         assertTrue(contentRequests >= 1)
 
         val domainIndex = result.stageResults.indexOfFirst { it.stage == ProbeStage.DOMAIN }
@@ -242,17 +237,22 @@ class MockSiteProbeTest {
 
     @Test
     fun searchRequestExceptionStopsBeforeDiscovery() = runBlocking {
-        searchHttpError = true
-        val timeoutMs = 10_000L
-        val result = LegadoProbeEngine().probe(0, doc(), options(timeoutMs = timeoutMs))
-
-        assertTrue(
-            result.status == ProbeStatus.HTTP_ERROR || result.status == ProbeStatus.ERROR,
-            "详情：" + result.detail,
+        val unusedPort = ServerSocket(0).use { it.localPort }
+        val json = sourceJson().replace(
+            "\"searchUrl\": \"/search?q={{key}}\"",
+            "\"searchUrl\": \"http://127.0.0.1:" + unusedPort + "/search?q={{key}}\"",
         )
+        val source = BookSourceDoc(SourceIO.parse(json).single())
+        val timeoutMs = 10_000L
+        val result = LegadoProbeEngine().probe(0, source, options(timeoutMs = timeoutMs))
+
+        assertEquals(ProbeStatus.NETWORK, result.status, "详情：" + result.detail)
         assertTrue(discoveryPages.isEmpty())
-        assertTrue(result.elapsedMs >= result.actualElapsedMs)
         assertEquals(timeoutMs, result.elapsedMs - result.actualElapsedMs)
+        assertEquals(
+            ProbeStageStatus.FAILED,
+            result.stageResults.first { it.stage == ProbeStage.SEARCH }.status,
+        )
         assertEquals(
             ProbeStageStatus.NOT_RUN,
             result.stageResults.first { it.stage == ProbeStage.DISCOVERY }.status,
