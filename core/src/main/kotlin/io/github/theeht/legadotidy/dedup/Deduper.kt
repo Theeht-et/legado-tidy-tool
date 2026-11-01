@@ -165,7 +165,7 @@ object Deduper {
         }
 
         fun rank(stage: ProbeStage): Int {
-            if (probe == null) return -2
+            if (probe == null) return -1
             val actual = actualStages[stage]
             if (actual != null) return stageRank(actual)
             if (probe.stageResults.isEmpty() && stage == entryStage) return fallbackEntryRank()
