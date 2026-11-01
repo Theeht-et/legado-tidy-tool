@@ -2414,7 +2414,7 @@ private fun CompareGroupDialog(
 ) {
     val candidates = group.sourceIds.mapNotNull { id -> state.sources.firstOrNull { it.id == id } }
     var keepId by remember(group.number) {
-        mutableStateOf(candidates.firstOrNull { !it.deleteMarked }?.id ?: group.suggestedKeepId)
+        mutableStateOf(candidates.firstOrNull { !it.deleteMarked }?.id)
     }
     var keepAll by remember(group.number) {
         mutableStateOf(candidates.isNotEmpty() && candidates.all { !it.deleteMarked })
@@ -2437,7 +2437,7 @@ private fun CompareGroupDialog(
                 ) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text("重复组 ${group.number}", fontSize = UiTypography.emphasis, fontWeight = FontWeight.Bold, color = Ink)
-                        Text("选择保留的书源；其他候选将标记为待删除", fontSize = UiTypography.caption, color = Muted)
+                        Text("只可保留未标记项；已标记删除的书源不能在此恢复。", fontSize = UiTypography.caption, color = Muted)
                     }
                     TextButton(onClick = onDismiss, contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)) {
                         Text("×", fontSize = UiTypography.pageTitle, color = Muted)
@@ -2459,13 +2459,13 @@ private fun CompareGroupDialog(
                 ) {
                     candidates.forEachIndexed { index, source ->
                         val recommended = source.id == group.suggestedKeepId
-                        val selectedKeep = !keepAll && source.id == keepId
+                        val selectedKeep = !source.deleteMarked && !keepAll && source.id == keepId
                         val proposedKeep = keepAll || selectedKeep
                         val differences = ruleDifferenceSummary(differingRuleKeys, source)
                         Row(
                             Modifier.fillMaxWidth()
                                 .background(if (selectedKeep) SoftBlue else Color.White)
-                                .clickable(enabled = !state.busy && !keepAll) { keepId = source.id }
+                                .clickable(enabled = !state.busy && !keepAll && !source.deleteMarked) { keepId = source.id }
                                 .padding(horizontal = 14.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -2473,7 +2473,7 @@ private fun CompareGroupDialog(
                                 RadioButton(
                                     selected = selectedKeep,
                                     onClick = { keepId = source.id },
-                                    enabled = !state.busy && !keepAll,
+                                    enabled = !state.busy && !keepAll && !source.deleteMarked,
                                     modifier = Modifier.size(28.dp),
                                 )
                             }
@@ -2513,7 +2513,8 @@ private fun CompareGroupDialog(
                             Box(Modifier.width(88.dp), contentAlignment = Alignment.CenterStart) {
                                 Text(
                                     when {
-                                        keepAll -> "全部保留"
+                                        source.deleteMarked -> "已标记删除"
+                                        keepAll -> "保留"
                                         selectedKeep -> "保留"
                                         else -> "标记删除"
                                     },
@@ -2538,24 +2539,29 @@ private fun CompareGroupDialog(
                         Checkbox(
                             checked = keepAll,
                             onCheckedChange = { keepAll = it },
-                            enabled = !state.busy,
+                            enabled = !state.busy && candidates.any { !it.deleteMarked },
                             modifier = Modifier.size(30.dp),
                         )
-                        Text("本组全部保留", fontSize = UiTypography.label, color = BodyText)
+                        Text("保留本组全部未标记项", fontSize = UiTypography.label, color = BodyText)
                     }
                     TextButton(onClick = onDismiss) { Text("取消", color = Muted) }
                     Spacer(Modifier.width(5.dp))
                     Button(
                         onClick = {
                             candidates.forEach { candidate ->
-                                val keep = keepAll || candidate.id == keepId
+                                val keep = !candidate.deleteMarked && (keepAll || candidate.id == keepId)
                                 val index = state.sources.indexOfFirst { it.id == candidate.id }
                                 if (index >= 0) state.sources[index] = state.sources[index].copy(
-                                    deleteMarked = !keep,
+                                    // A marked source stays marked. This dialog can select
+                                    // among unmarked candidates, but cannot revive a delete mark.
+                                    deleteMarked = candidate.deleteMarked || !keep,
                                     userDecision = true,
-                                    suggestion = if (keep) {
-                                        if (keepAll) "用户确认：本组全部保留" else "用户指定保留"
-                                    } else "用户确认：同组其他候选删除",
+                                    suggestion = when {
+                                        candidate.deleteMarked -> "已标记删除"
+                                        keep && keepAll -> "用户确认：本组未标记项全部保留"
+                                        keep -> "用户指定保留"
+                                        else -> "用户确认：同组其他候选删除"
+                                    },
                                 )
                             }
                             onDismiss()
