@@ -35,26 +35,6 @@ internal fun <T> planMarkedDeletions(
     )
 }
 
-/**
- * Validation deletion marks are mandatory. Duplicate suggestions may add new marks,
- * but cannot cancel a failed validation result. Only an explicit user decision can
- * override the combined automatic recommendation.
- */
-internal fun resolveDuplicateDeleteMark(
-    validationMarked: Boolean,
-    duplicateSuggestedDelete: Boolean,
-    currentMarked: Boolean,
-    hasUserDecision: Boolean,
-): Boolean = if (hasUserDecision) currentMarked else validationMarked || duplicateSuggestedDelete
-
-/** Marked sources can never be selected as duplicate keepers or revived by the compare dialog. */
-internal fun canBeSelectedAsDuplicateKeeper(deleteMarked: Boolean): Boolean = !deleteMarked
-
-internal fun preserveDeleteMarkAfterDuplicateChoice(
-    currentlyMarked: Boolean,
-    requestedKeep: Boolean,
-): Boolean = currentlyMarked || !requestedKeep
-
 /** Probe outcomes that should enter the pending-delete bucket by default. */
 internal fun shouldMarkForDeletionByDefault(status: ProbeStatus): Boolean =
     status != ProbeStatus.OK && status != ProbeStatus.UNCHECKABLE
