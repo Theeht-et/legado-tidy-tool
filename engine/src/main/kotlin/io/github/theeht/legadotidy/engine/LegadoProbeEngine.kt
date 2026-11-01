@@ -53,7 +53,7 @@ class LegadoProbeEngine(
     private val gson: Gson = GSON,
 ) : ProbeEngine {
 
-    private data class ChapterSelection(
+    internal data class ChapterSelection(
         val chapter: BookChapter,
         val nextChapterUrl: String,
         val chapterCount: Int,
@@ -518,7 +518,7 @@ class LegadoProbeEngine(
      * 与上游 CheckSourceChapterSelection.selectCheckSourceChapter 完全相同：
      * 排除 isVolume 且 url 以 title 开头的卷标题，取前两个可读章节。
      */
-    private fun selectCheckSourceChapter(chapters: List<BookChapter>): ChapterSelection {
+    internal fun selectCheckSourceChapter(chapters: List<BookChapter>): ChapterSelection {
         val readableChapters = chapters.asSequence()
             .filterNot { it.isVolume && it.url.startsWith(it.title) }
             .take(2)
