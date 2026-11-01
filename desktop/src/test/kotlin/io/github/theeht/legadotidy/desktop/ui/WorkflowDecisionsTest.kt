@@ -4,6 +4,10 @@ import com.google.gson.JsonParser
 import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.organize.OrganizeRule
 import io.github.theeht.legadotidy.probe.ProbeStatus
+import io.github.theeht.legadotidy.probe.ProbeResult
+import io.github.theeht.legadotidy.probe.ProbeStage
+import io.github.theeht.legadotidy.probe.ProbeStageResult
+import io.github.theeht.legadotidy.probe.ProbeStageStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -131,6 +135,29 @@ class WorkflowDecisionsTest {
 
         assertFalse(raw.get("enabled").asBoolean)
         assertFalse(isDocumentEnabled(BookSourceDoc(raw)))
+    }
+
+    @Test
+    fun `网络超时和HTTP异常可由用户触发重新校验`() {
+        assertTrue(ProbeResult(0, ProbeStatus.NETWORK).isRetryableProbeFailure())
+        assertTrue(ProbeResult(0, ProbeStatus.TIMEOUT).isRetryableProbeFailure())
+        assertTrue(ProbeResult(0, ProbeStatus.HTTP_ERROR).isRetryableProbeFailure())
+        assertTrue(
+            ProbeResult(
+                0,
+                ProbeStatus.PARTIAL,
+                stageResults = listOf(
+                    ProbeStageResult(
+                        ProbeStage.CONTENT,
+                        ProbeStageStatus.FAILED,
+                        failureStatus = ProbeStatus.TIMEOUT,
+                    ),
+                ),
+            ).isRetryableProbeFailure(),
+        )
+        assertFalse(ProbeResult(0, ProbeStatus.UNSUPPORTED).isRetryableProbeFailure())
+        assertFalse(ProbeResult(0, ProbeStatus.PARSE_EMPTY).isRetryableProbeFailure())
+        assertFalse(ProbeResult(0, ProbeStatus.OK).isRetryableProbeFailure())
     }
 
     @Test

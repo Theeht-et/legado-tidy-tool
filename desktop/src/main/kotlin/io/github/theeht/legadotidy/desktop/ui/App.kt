@@ -426,7 +426,7 @@ fun TidyApp() {
         }
     }
 
-    fun runValidation() {
+    fun runValidation(retryFailures: Boolean = false) {
         if (state.busy || state.sources.isEmpty()) return
         state.busy = true
         state.error = null
@@ -446,10 +446,15 @@ fun TidyApp() {
                 previous.keyword != keyword ||
                 previous.timeoutMs != timeoutMs ||
                 previous.proxy != proxy ||
-                previous.status == ProbeStatus.SKIPPED
+                previous.status == ProbeStatus.SKIPPED ||
+                (retryFailures && previous.isRetryableProbeFailure())
         }
         state.completed = snapshot.size - pending.size
-        state.notice = "正在使用 Legado 搜索入口执行完整校验链：搜索、详情、目录和正文。"
+        state.notice = if (retryFailures) {
+            "正在重新校验 ${pending.size} 个网络、超时或 HTTP 异常书源。"
+        } else {
+            "正在使用 Legado 搜索入口执行完整校验链：搜索、详情、目录和正文。"
+        }
         val options = ProbeOptions(
             depth = depth,
             timeoutMs = timeoutMs,
@@ -844,7 +849,8 @@ fun TidyApp() {
                         onStartValidation = ::startValidation,
                         onConfirmDedup = ::confirmDedup,
                         onStop = { activeJob?.cancel() },
-                        onContinueValidation = ::runValidation,
+                        onContinueValidation = { runValidation() },
+                        onRetryValidation = { runValidation(retryFailures = true) },
                         onConfirmValidation = ::confirmValidation,
                         onGeneratePreview = ::generateOrganizePreview,
                         onConfirmOrganize = ::confirmOrganize,
@@ -2121,6 +2127,7 @@ private fun WorkflowNavigationBar(
     onConfirmDedup: () -> Unit,
     onStop: () -> Unit,
     onContinueValidation: () -> Unit,
+    onRetryValidation: () -> Unit,
     onConfirmValidation: () -> Unit,
     onGeneratePreview: () -> Unit,
     onConfirmOrganize: () -> Unit,
@@ -2214,6 +2221,13 @@ private fun WorkflowNavigationBar(
                             colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
                         ) { Text("继续校验", fontSize = UiTypography.label) }
                     } else {
+                        if (state.sources.any { it.probe?.isRetryableProbeFailure() == true }) {
+                            OutlinedButton(
+                                onClick = onRetryValidation,
+                                enabled = !state.busy,
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                            ) { Text("重试异常项", fontSize = UiTypography.label) }
+                        }
                         Button(
                             onClick = onConfirmValidation,
                             enabled = state.sources.isNotEmpty(),

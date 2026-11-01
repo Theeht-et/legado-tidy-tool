@@ -5,6 +5,8 @@ import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.model.SourceField
 import io.github.theeht.legadotidy.organize.OrganizeRule
 import io.github.theeht.legadotidy.probe.ProbeStatus
+import io.github.theeht.legadotidy.probe.ProbeResult
+import io.github.theeht.legadotidy.probe.ProbeStageStatus
 import java.io.File
 import java.nio.file.Path
 
@@ -39,6 +41,14 @@ internal fun <T> planMarkedDeletions(
         removedCount = markedCount,
         allItemsMarked = false,
     )
+}
+
+/** Transient request failures can be rerun without changing probe settings. */
+internal fun ProbeResult.isRetryableProbeFailure(): Boolean {
+    val transientFailures = setOf(ProbeStatus.NETWORK, ProbeStatus.TIMEOUT, ProbeStatus.HTTP_ERROR)
+    return status in transientFailures || stageResults.any { stage ->
+        stage.status == ProbeStageStatus.FAILED && stage.failureStatus in transientFailures
+    }
 }
 
 /** Probe outcomes that should enter the pending-delete bucket by default. */

@@ -169,6 +169,10 @@ object Deduper {
             val actual = actualStages[stage]
             if (actual != null) return stageRank(actual)
             if (probe.stageResults.isEmpty() && stage == entryStage) return fallbackEntryRank()
+            if (probe.stageResults.isEmpty() && probe.status in setOf(
+                    ProbeStatus.SKIPPED, ProbeStatus.UNSUPPORTED, ProbeStatus.NEED_JS,
+                )
+            ) return -1
             if (probe.stageResults.isEmpty() && probe.status == ProbeStatus.OK && stage in expectedStages) return 4
             return -2
         }
