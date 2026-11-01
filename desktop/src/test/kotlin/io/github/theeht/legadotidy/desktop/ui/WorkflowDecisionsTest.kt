@@ -7,6 +7,7 @@ import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -171,6 +172,46 @@ class WorkflowDecisionsTest {
         val organizePool = afterDedup.map { it.copy(markedForDeletion = true) }
         val afterOrganize = planMarkedDeletions(organizePool) { it.markedForDeletion }.retained
         assertTrue(afterOrganize.isEmpty())
+    }
+
+    @Test
+    fun `退回校验审核时清空后续阶段标记且不复活旧校验失败项`() {
+        val statuses = listOf(
+            ProbeStatus.NETWORK,
+            ProbeStatus.OK,
+            ProbeStatus.UNCHECKABLE,
+            ProbeStatus.SKIPPED,
+            null,
+        )
+
+        val reset = statuses.map(::validationReviewReset)
+
+        assertTrue(reset.all { !it.deleteMarked && !it.userDecision })
+        assertEquals(
+            listOf("建议复核", "建议保留", "建议保留", "跳过校验", "待重新校验"),
+            reset.map { it.suggestion },
+        )
+    }
+
+    @Test
+    fun `重复组初始化只指向尚未标记删除的候选且全标记时不自动保留`() {
+        assertEquals(
+            202,
+            initialDuplicateKeepId(listOf(101 to true, 202 to false, 303 to false), 101),
+        )
+        assertEquals(101, initialDuplicateKeepId(listOf(101 to false, 202 to true), 101))
+        assertNull(initialDuplicateKeepId(listOf(101 to true, 202 to true), 101))
+    }
+
+    @Test
+    fun `重复组弹窗只有明确选择保留项或勾选全部才允许保存`() {
+        val candidateIds = listOf(101, 202)
+        val suggestedDefault = initialDuplicateKeepId(listOf(101 to true, 202 to false), 101)
+
+        assertFalse(canSaveDuplicateChoice(false, false, suggestedDefault, candidateIds))
+        assertFalse(canSaveDuplicateChoice(false, false, null, candidateIds))
+        assertTrue(canSaveDuplicateChoice(true, false, 202, candidateIds))
+        assertTrue(canSaveDuplicateChoice(false, true, null, candidateIds))
     }
 
     @Test

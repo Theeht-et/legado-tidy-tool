@@ -421,12 +421,18 @@ fun TidyApp() {
 
     fun runValidation() {
         if (state.busy || state.sources.isEmpty()) return
+        val proxy = state.proxy.trim().takeIf { it.isNotEmpty() }
+        val proxyError = LegadoProbeEngine.validateProxyConfiguration(proxy)
+        if (proxyError != null) {
+            state.error = proxyError
+            state.notice = "代理配置无效，本轮校验尚未开始；书源结果和删除标记均未更改。"
+            return
+        }
         state.busy = true
         state.error = null
         state.total = state.sources.size
         val keyword = state.keyword
         val timeoutMs = state.timeoutSeconds.coerceAtLeast(1) * 1000L
-        val proxy = state.proxy.trim().takeIf { it.isNotEmpty() }
         val concurrency = state.concurrency.coerceIn(1, 2000)
         val options = ProbeOptions(
             timeoutMs = timeoutMs,
@@ -514,6 +520,26 @@ fun TidyApp() {
         state.stage = WorkflowStage.PROBE_REVIEW
         state.sourceFilter = "全部"
         runValidation()
+    }
+
+    fun resetLaterStageDecisionsForValidationReview(editedSourceId: Int) {
+        state.sources.indices.forEach { index ->
+            val current = state.sources[index]
+            val probe = if (current.id == editedSourceId) null else current.probe
+            val reset = validationReviewReset(probe?.status)
+            state.sources[index] = current.copy(
+                duplicateGroup = null,
+                probe = probe,
+                deleteMarked = reset.deleteMarked,
+                userDecision = reset.userDecision,
+                suggestion = reset.suggestion,
+            )
+        }
+        state.duplicateGroups = emptyList()
+        state.duplicateReport = null
+        state.preview = null
+        state.previewOrder = emptyList()
+        state.sourceFilter = "全部"
     }
 
     fun confirmDedup() {
@@ -952,44 +978,14 @@ fun TidyApp() {
                             }
                         }
                         if (state.stage == WorkflowStage.DEDUP_REVIEW && editedProbeInputsChanged) {
-                            // URL/type edits invalidate this source's probe and all URL-based duplicate groups.
-                            // Keep other sources' probe results; restore their pre-dedup validation marks.
+                            // Validation marks were committed on entry to dedup. Clear every
+                            // later-stage decision rather than recreating old validation marks
+                            // from the status of sources that the user chose to keep.
                             state.stage = WorkflowStage.PROBE_REVIEW
-                            state.sourceFilter = "全部"
-                            state.duplicateGroups = emptyList()
-                            state.duplicateReport = null
-                            state.sources.indices.forEach { index ->
-                                val current = state.sources[index]
-                                val isEditedSource = current.id == id
-                                val hasUserDecision = current.userDecision
-                                val probe = if (isEditedSource) null else current.probe
-                                val deleteMarked = when {
-                                    isEditedSource -> false
-                                    probe == null -> current.deleteMarked
-                                    else -> resolveDeleteMark(
-                                        defaultMarked = shouldMarkForDeletionByDefault(probe.status),
-                                        currentMarked = current.deleteMarked,
-                                        hasUserDecision = hasUserDecision,
-                                    )
-                                }
-                                state.sources[index] = current.copy(
-                                    duplicateGroup = null,
-                                    probe = probe,
-                                    deleteMarked = deleteMarked,
-                                    suggestion = when {
-                                        isEditedSource -> "待重新校验"
-                                        hasUserDecision -> current.suggestion
-                                        deleteMarked -> "建议删除"
-                                        probe?.ok == true -> "建议保留"
-                                        probe?.status == ProbeStatus.SKIPPED -> "跳过校验"
-                                        probe != null -> "建议复核"
-                                        else -> "待重新校验"
-                                    },
-                                )
-                            }
+                            resetLaterStageDecisionsForValidationReview(id)
                             state.completed = state.sources.count { it.probe != null }
                             state.total = state.sources.size
-                            state.notice = "书源地址或类型已修改，相关校验结果已失效；其他书源结果已保留。请重新校验后再去重。"
+                            state.notice = "书源地址或类型已修改；去重阶段的删除标记和手动选择已清空，其他校验结果保留。请重新校验后再去重。"
                         } else if (
                             (state.stage == WorkflowStage.PROBE_REVIEW ||
                                 state.stage == WorkflowStage.ORGANIZE_REVIEW) && editedProbeInputsChanged
@@ -998,11 +994,9 @@ fun TidyApp() {
                             state.total = state.sources.size
                             if (state.stage == WorkflowStage.ORGANIZE_REVIEW) {
                                 state.stage = WorkflowStage.PROBE_REVIEW
-                                state.sourceFilter = "全部"
-                                state.preview = null
-                                state.previewOrder = emptyList()
+                                resetLaterStageDecisionsForValidationReview(id)
                             }
-                            state.notice = "书源地址或类型已修改，该书源需要重新校验；已返回校验审核阶段。"
+                            state.notice = "书源地址或类型已修改；整理阶段的删除标记和手动选择已清空，该书源需要重新校验。"
                         }
                     }
                     editingId = null
@@ -2430,15 +2424,16 @@ private fun CompareGroupDialog(
     onDismiss: () -> Unit,
 ) {
     val candidates = group.sourceIds.mapNotNull { id -> state.sources.firstOrNull { it.id == id } }
-    var keepId by remember(group.number) {
+    var keepId by remember(group.number, candidates.map { it.id to it.deleteMarked }) {
         mutableStateOf(
-            candidates.firstOrNull { it.id == group.suggestedKeepId }?.id
-                ?: candidates.firstOrNull()?.id
+            initialDuplicateKeepId(
+                candidates.map { it.id to it.deleteMarked },
+                group.suggestedKeepId,
+            )
         )
     }
-    var keepAll by remember(group.number) {
-        mutableStateOf(candidates.isNotEmpty() && candidates.all { !it.deleteMarked })
-    }
+    var keepSelectionMade by remember(group.number) { mutableStateOf(false) }
+    var keepAll by remember(group.number) { mutableStateOf(false) }
     val differingRuleKeys = ruleDifferenceKeys(candidates)
     Dialog(
         onDismissRequest = onDismiss,
@@ -2479,20 +2474,30 @@ private fun CompareGroupDialog(
                 ) {
                     candidates.forEachIndexed { index, source ->
                         val recommended = source.id == group.suggestedKeepId
-                        val selectedKeep = !keepAll && source.id == keepId
-                        val proposedKeep = keepAll || selectedKeep
+                        val selectedKeep = !keepAll && keepSelectionMade && source.id == keepId
+                        val proposedKeep = when {
+                            keepAll -> true
+                            keepSelectionMade -> selectedKeep
+                            else -> !source.deleteMarked
+                        }
                         val differences = ruleDifferenceSummary(differingRuleKeys, source)
                         Row(
                             Modifier.fillMaxWidth()
                                 .background(if (selectedKeep) SoftBlue else Color.White)
-                                .clickable(enabled = !state.busy && !keepAll) { keepId = source.id }
+                                .clickable(enabled = !state.busy && !keepAll) {
+                                    keepId = source.id
+                                    keepSelectionMade = true
+                                }
                                 .padding(horizontal = 14.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(Modifier.width(42.dp), contentAlignment = Alignment.CenterStart) {
                                 RadioButton(
                                     selected = selectedKeep,
-                                    onClick = { keepId = source.id },
+                                    onClick = {
+                                        keepId = source.id
+                                        keepSelectionMade = true
+                                    },
                                     enabled = !state.busy && !keepAll,
                                     modifier = Modifier.size(28.dp),
                                 )
@@ -2557,7 +2562,10 @@ private fun CompareGroupDialog(
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
                             checked = keepAll,
-                            onCheckedChange = { keepAll = it },
+                            onCheckedChange = {
+                                keepAll = it
+                                keepSelectionMade = false
+                            },
                             enabled = !state.busy && candidates.isNotEmpty(),
                             modifier = Modifier.size(30.dp),
                         )
@@ -2568,7 +2576,7 @@ private fun CompareGroupDialog(
                     Button(
                         onClick = {
                             candidates.forEach { candidate ->
-                                val keep = keepAll || candidate.id == keepId
+                                val keep = keepAll || (keepSelectionMade && candidate.id == keepId)
                                 val index = state.sources.indexOfFirst { it.id == candidate.id }
                                 if (index >= 0) state.sources[index] = state.sources[index].copy(
                                     // Duplicate-stage marks are reviewable and may be changed
@@ -2584,7 +2592,12 @@ private fun CompareGroupDialog(
                             }
                             onDismiss()
                         },
-                        enabled = !state.busy && candidates.isNotEmpty(),
+                        enabled = !state.busy && canSaveDuplicateChoice(
+                            selectionMade = keepSelectionMade,
+                            keepAll = keepAll,
+                            keepId = keepId,
+                            candidateIds = candidates.map { it.id },
+                        ),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 5.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
                     ) { Text("保存选择", fontSize = UiTypography.label) }

@@ -35,9 +35,51 @@ internal fun <T> planMarkedDeletions(
     )
 }
 
+/**
+ * A later-stage back-navigation must not leak deduplication/organization marks into
+ * validation. Previously committed validation removals are already absent from the pool,
+ * so even an old failed probe must not silently recreate a validation delete mark.
+ */
+internal data class ValidationReviewReset(
+    val deleteMarked: Boolean,
+    val userDecision: Boolean,
+    val suggestion: String,
+)
+
+internal fun validationReviewReset(status: ProbeStatus?): ValidationReviewReset =
+    ValidationReviewReset(
+        deleteMarked = false,
+        userDecision = false,
+        suggestion = when (status) {
+            null -> "待重新校验"
+            ProbeStatus.OK, ProbeStatus.UNCHECKABLE -> "建议保留"
+            ProbeStatus.SKIPPED -> "跳过校验"
+            else -> "建议复核"
+        },
+    )
+
 /** Probe outcomes that should enter the pending-delete bucket by default. */
 internal fun shouldMarkForDeletionByDefault(status: ProbeStatus): Boolean =
     status != ProbeStatus.OK && status != ProbeStatus.UNCHECKABLE
+
+/**
+ * The dialog may display a suggested candidate, but that suggestion is not a user
+ * decision. Never initialize the selection to a candidate already marked for deletion.
+ */
+internal fun initialDuplicateKeepId(
+    candidates: List<Pair<Int, Boolean>>,
+    suggestedKeepId: Int,
+): Int? =
+    candidates.firstOrNull { (id, marked) -> id == suggestedKeepId && !marked }?.first
+        ?: candidates.firstOrNull { (_, marked) -> !marked }?.first
+
+internal fun canSaveDuplicateChoice(
+    selectionMade: Boolean,
+    keepAll: Boolean,
+    keepId: Int?,
+    candidateIds: List<Int>,
+): Boolean =
+    keepAll || (selectionMade && keepId != null && keepId in candidateIds)
 
 /** A manual decision must survive recalculating duplicate groups and other automatic suggestions. */
 internal fun resolveDeleteMark(

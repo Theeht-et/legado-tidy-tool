@@ -55,6 +55,19 @@ class LegadoProbeEngine(
     private val gson: Gson = GSON,
 ) : ProbeEngine {
 
+    companion object {
+        /**
+         * Validate the shared proxy setting before starting a batch. A malformed global
+         * proxy is a tool configuration error, not evidence that every book source is bad.
+         */
+        fun validateProxyConfiguration(proxy: String?): String? {
+            val normalized = proxy?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            return runCatching { parseProxyConfig(normalized) }
+                .exceptionOrNull()
+                ?.let { "代理配置无效：请检查协议、主机、端口和认证信息。" }
+        }
+    }
+
     internal data class ChapterSelection(
         val chapter: BookChapter,
         val nextChapterUrl: String,
@@ -82,15 +95,8 @@ class LegadoProbeEngine(
             )
         }
 
-        if (proxy != null) {
-            val invalidProxy = runCatching { parseProxyConfig(proxy) }.exceptionOrNull()
-            if (invalidProxy != null) {
-                return preflightFailure(
-                    index,
-                    effectiveOptions,
-                    "代理配置无效：请检查协议、主机、端口和认证信息。",
-                )
-            }
+        validateProxyConfiguration(proxy)?.let { detail ->
+            return preflightFailure(index, effectiveOptions, detail)
         }
 
         val stageResults = ArrayList<ProbeStageResult>(12)

@@ -9,6 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertSame
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class LegadoProbeEngineTest {
@@ -32,6 +33,17 @@ class LegadoProbeEngineTest {
 
         assertEquals("我的", options.keyword)
         assertEquals(180_000L, options.timeoutMs)
+    }
+
+    @Test
+    fun invalidGlobalProxyIsRejectedBeforeAValidationBatchStarts() {
+        assertTrue(
+            LegadoProbeEngine.validateProxyConfiguration("not a proxy")
+                ?.startsWith("代理配置无效") == true,
+        )
+        assertNull(LegadoProbeEngine.validateProxyConfiguration(null))
+        assertNull(LegadoProbeEngine.validateProxyConfiguration("   "))
+        assertNull(LegadoProbeEngine.validateProxyConfiguration("http://127.0.0.1:7890"))
     }
 
     @Test
