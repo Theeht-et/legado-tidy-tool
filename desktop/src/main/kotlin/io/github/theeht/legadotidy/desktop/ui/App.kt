@@ -348,7 +348,7 @@ fun TidyApp() {
         }
     }
 
-    fun startDedup() {
+    fun startDedup(validationRemovedCount: Int = 0) {
         if (state.busy || state.sources.isEmpty()) return
         if (state.sources.any { it.probe == null }) {
             state.error = "还有书源没有校验结果，不能开始去重。"
@@ -356,7 +356,7 @@ fun TidyApp() {
         }
         state.busy = true
         state.error = null
-        state.notice = "正在结合全量校验结果分析重复候选。确认进入整理时，所有标记删除项都会直接移出工作池，不会为了每组留一项而保留失败书源。"
+        state.notice = "正在对校验阶段删除标记清理后的 ${state.sources.size} 个书源进行去重分析。"
         activeJob = scope.launch {
             try {
                 val snapshot = state.sources.toList()
@@ -384,9 +384,8 @@ fun TidyApp() {
                     val deleteMarked = if (group == null) {
                         source.deleteMarked
                     } else {
-                        resolveDuplicateDeleteMark(
-                            validationMarked = source.deleteMarked,
-                            duplicateSuggestedDelete = !keep,
+                        resolveDeleteMark(
+                            defaultMarked = !keep,
                             currentMarked = source.deleteMarked,
                             hasUserDecision = hasUserDecision,
                         )
@@ -396,7 +395,7 @@ fun TidyApp() {
                         deleteMarked = deleteMarked,
                         suggestion = when {
                             hasUserDecision -> source.suggestion
-                            deleteMarked -> "校验或去重标记删除"
+                            deleteMarked -> "去重阶段标记删除"
                             group == null -> "未发现重复"
                             keep -> "建议保留"
                             else -> "建议删除"
@@ -408,7 +407,7 @@ fun TidyApp() {
                 state.stage = WorkflowStage.DEDUP_REVIEW
                 state.sourceFilter = "全部"
                 state.selectedId = state.sources.firstOrNull()?.id
-                state.notice = "去重分析完成：发现 ${groups.size} 个重复组；系统保留建议已参考本次校验结果。"
+                state.notice = "校验阶段已删除 ${validationRemovedCount} 个标记书源；对剩余 ${state.sources.size} 个书源去重完成，发现 ${groups.size} 个重复组。系统建议已参考剩余书源的校验结果。"
             } catch (e: CancellationException) {
                 state.error = "去重分析已停止。"
             } catch (e: Throwable) {
@@ -518,8 +517,7 @@ fun TidyApp() {
     }
 
     fun confirmDedup() {
-        // Every checked delete mark is committed now. A duplicate group is not required
-        // to retain one member: if every member failed validation, remove the whole group.
+        // Commit only the delete marks made during duplicate review at this stage boundary.
         if (!commitMarkedDeletions(state)) return
         state.duplicateGroups = emptyList()
         state.duplicateReport = null
@@ -552,8 +550,27 @@ fun TidyApp() {
             return
         }
         state.error = null
-        state.notice = "校验结果已确认。现在根据所有书源的校验结果识别重复项并生成保留建议。"
-        startDedup()
+
+        // Validation and deduplication are separate stages. Remove validation-stage marks
+        // now so the deduper only sees the surviving sources. A user's manual unmarking
+        // of a validation result is accepted, but that decision must not block later
+        // duplicate-stage recommendations.
+        val validationRemovedCount = state.sources.count { it.deleteMarked }
+        commitMarkedDeletions(state, resetUserDecisions = true)
+        state.duplicateGroups = emptyList()
+        state.duplicateReport = null
+        state.preview = null
+        state.previewOrder = emptyList()
+
+        if (state.sources.isEmpty()) {
+            state.stage = WorkflowStage.EXPORT
+            state.selectedId = null
+            state.exported = null
+            state.notice = "校验阶段已删除全部 ${validationRemovedCount} 个待删除书源；没有剩余书源可以进入去重或导出。原始导入文件未修改。"
+            return
+        }
+
+        startDedup(validationRemovedCount)
     }
 
     fun generateOrganizePreview() {
@@ -2415,8 +2432,8 @@ private fun CompareGroupDialog(
     val candidates = group.sourceIds.mapNotNull { id -> state.sources.firstOrNull { it.id == id } }
     var keepId by remember(group.number) {
         mutableStateOf(
-            candidates.firstOrNull { it.id == group.suggestedKeepId && canBeSelectedAsDuplicateKeeper(it.deleteMarked) }?.id
-                ?: candidates.firstOrNull { canBeSelectedAsDuplicateKeeper(it.deleteMarked) }?.id
+            candidates.firstOrNull { it.id == group.suggestedKeepId }?.id
+                ?: candidates.firstOrNull()?.id
         )
     }
     var keepAll by remember(group.number) {
@@ -2440,7 +2457,7 @@ private fun CompareGroupDialog(
                 ) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text("重复组 ${group.number}", fontSize = UiTypography.emphasis, fontWeight = FontWeight.Bold, color = Ink)
-                        Text("只可保留未标记项；已标记删除的书源不能在此恢复。", fontSize = UiTypography.caption, color = Muted)
+                        Text("可修改本组保留项；保存后未选中的候选将标记删除。", fontSize = UiTypography.caption, color = Muted)
                     }
                     TextButton(onClick = onDismiss, contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)) {
                         Text("×", fontSize = UiTypography.pageTitle, color = Muted)
@@ -2461,14 +2478,14 @@ private fun CompareGroupDialog(
                     Modifier.fillMaxWidth().heightIn(max = 400.dp).verticalScroll(rememberScrollState()),
                 ) {
                     candidates.forEachIndexed { index, source ->
-                        val recommended = source.id == group.suggestedKeepId && canBeSelectedAsDuplicateKeeper(source.deleteMarked)
-                        val selectedKeep = canBeSelectedAsDuplicateKeeper(source.deleteMarked) && !keepAll && source.id == keepId
-                        val proposedKeep = canBeSelectedAsDuplicateKeeper(source.deleteMarked) && (keepAll || selectedKeep)
+                        val recommended = source.id == group.suggestedKeepId
+                        val selectedKeep = !keepAll && source.id == keepId
+                        val proposedKeep = keepAll || selectedKeep
                         val differences = ruleDifferenceSummary(differingRuleKeys, source)
                         Row(
                             Modifier.fillMaxWidth()
                                 .background(if (selectedKeep) SoftBlue else Color.White)
-                                .clickable(enabled = !state.busy && !keepAll && canBeSelectedAsDuplicateKeeper(source.deleteMarked)) { keepId = source.id }
+                                .clickable(enabled = !state.busy && !keepAll) { keepId = source.id }
                                 .padding(horizontal = 14.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -2476,7 +2493,7 @@ private fun CompareGroupDialog(
                                 RadioButton(
                                     selected = selectedKeep,
                                     onClick = { keepId = source.id },
-                                    enabled = !state.busy && !keepAll && !source.deleteMarked,
+                                    enabled = !state.busy && !keepAll,
                                     modifier = Modifier.size(28.dp),
                                 )
                             }
@@ -2516,9 +2533,8 @@ private fun CompareGroupDialog(
                             Box(Modifier.width(88.dp), contentAlignment = Alignment.CenterStart) {
                                 Text(
                                     when {
+                                        proposedKeep -> "保留"
                                         source.deleteMarked -> "已标记删除"
-                                        keepAll -> "保留"
-                                        selectedKeep -> "保留"
                                         else -> "标记删除"
                                     },
                                     fontSize = UiTypography.label,
@@ -2542,26 +2558,25 @@ private fun CompareGroupDialog(
                         Checkbox(
                             checked = keepAll,
                             onCheckedChange = { keepAll = it },
-                            enabled = !state.busy && candidates.any { canBeSelectedAsDuplicateKeeper(it.deleteMarked) },
+                            enabled = !state.busy && candidates.isNotEmpty(),
                             modifier = Modifier.size(30.dp),
                         )
-                        Text("保留本组全部未标记项", fontSize = UiTypography.label, color = BodyText)
+                        Text("保留本组全部候选", fontSize = UiTypography.label, color = BodyText)
                     }
                     TextButton(onClick = onDismiss) { Text("取消", color = Muted) }
                     Spacer(Modifier.width(5.dp))
                     Button(
                         onClick = {
                             candidates.forEach { candidate ->
-                                val keep = canBeSelectedAsDuplicateKeeper(candidate.deleteMarked) && (keepAll || candidate.id == keepId)
+                                val keep = keepAll || candidate.id == keepId
                                 val index = state.sources.indexOfFirst { it.id == candidate.id }
                                 if (index >= 0) state.sources[index] = state.sources[index].copy(
-                                    // A marked source stays marked. This dialog can select
-                                    // among unmarked candidates, but cannot revive a delete mark.
-                                    deleteMarked = preserveDeleteMarkAfterDuplicateChoice(candidate.deleteMarked, keep),
+                                    // Duplicate-stage marks are reviewable and may be changed
+                                    // by explicitly choosing a different keeper.
+                                    deleteMarked = !keep,
                                     userDecision = true,
                                     suggestion = when {
-                                        candidate.deleteMarked -> "已标记删除"
-                                        keep && keepAll -> "用户确认：本组未标记项全部保留"
+                                        keep && keepAll -> "用户确认：本组全部候选保留"
                                         keep -> "用户指定保留"
                                         else -> "用户确认：同组其他候选删除"
                                     },
@@ -2733,21 +2748,27 @@ private fun buildSourceRows(state: WorkflowState): List<SourceListRow> {
     return rows
 }
 
-private fun commitMarkedDeletions(state: WorkflowState): Boolean {
+private fun commitMarkedDeletions(
+    state: WorkflowState,
+    resetUserDecisions: Boolean = false,
+): Boolean {
     val plan = planMarkedDeletions(state.sources.toList()) { it.deleteMarked }
-    if (plan.removedCount == 0) {
-        state.notice = "没有待删除的书源需要移除。"
-        return true
-    }
-
     state.sources.clear()
-    state.sources.addAll(plan.retained.map { it.copy(deleteMarked = false, duplicateGroup = null) })
+    state.sources.addAll(plan.retained.map { source ->
+        source.copy(
+            deleteMarked = false,
+            duplicateGroup = null,
+            userDecision = if (resetUserDecisions) false else source.userDecision,
+        )
+    })
     state.removedCount += plan.removedCount
     state.selectedId = resolveSelectedId(state.selectedId, state.sources) { it.id }
-    state.notice = if (state.sources.isEmpty()) {
-        "已直接删除全部 ${plan.removedCount} 个标记书源；没有保留项。导入文件未修改。"
-    } else {
-        "已直接删除 ${plan.removedCount} 个标记书源；剩余 ${state.sources.size} 个未标记书源进入下一阶段。导入文件未修改。"
+    state.notice = when {
+        plan.removedCount == 0 -> "没有待删除的书源需要移除。"
+        state.sources.isEmpty() ->
+            "已直接删除全部 ${plan.removedCount} 个标记书源；没有保留项。导入文件未修改。"
+        else ->
+            "已直接删除 ${plan.removedCount} 个标记书源；剩余 ${state.sources.size} 个未标记书源进入下一阶段。导入文件未修改。"
     }
     return true
 }
