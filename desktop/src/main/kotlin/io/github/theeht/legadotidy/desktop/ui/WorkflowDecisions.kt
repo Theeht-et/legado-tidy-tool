@@ -25,21 +25,27 @@ internal fun <T> planMarkedDeletions(
 ): DeletionPlan<T> {
     val markedCount = items.count(isMarked)
     val allMarked = items.isNotEmpty() && markedCount == items.size
-    if (allMarked) {
-        return DeletionPlan(
-            canAdvance = false,
-            retained = items,
-            removedCount = 0,
-            allItemsMarked = true,
-        )
-    }
     return DeletionPlan(
-        canAdvance = items.isNotEmpty(),
+        // An empty retained set is a valid outcome: never rescue a marked source merely
+        // to keep one item in a duplicate group or to make the export non-empty.
+        canAdvance = true,
         retained = items.filterNot(isMarked),
         removedCount = markedCount,
-        allItemsMarked = false,
+        allItemsMarked = allMarked,
     )
 }
+
+/**
+ * Validation deletion marks are mandatory. Duplicate suggestions may add new marks,
+ * but cannot cancel a failed validation result. Only an explicit user decision can
+ * override the combined automatic recommendation.
+ */
+internal fun resolveDuplicateDeleteMark(
+    validationMarked: Boolean,
+    duplicateSuggestedDelete: Boolean,
+    currentMarked: Boolean,
+    hasUserDecision: Boolean,
+): Boolean = if (hasUserDecision) currentMarked else validationMarked || duplicateSuggestedDelete
 
 /** Probe outcomes that should enter the pending-delete bucket by default. */
 internal fun shouldMarkForDeletionByDefault(status: ProbeStatus): Boolean =
