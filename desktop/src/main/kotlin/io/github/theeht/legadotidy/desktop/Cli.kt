@@ -8,8 +8,6 @@ import io.github.theeht.legadotidy.pipeline.Phase
 import io.github.theeht.legadotidy.pipeline.Pipeline
 import io.github.theeht.legadotidy.pipeline.PipelineConfig
 import io.github.theeht.legadotidy.pipeline.PipelineEvent
-import io.github.theeht.legadotidy.probe.ProbeDepth
-import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -57,11 +55,9 @@ fun runCli(args: Array<String>): Int {
     val config = PipelineConfig(
         concurrency = opts.concurrency,
         probe = ProbeOptions(
-            depth = ProbeDepth.FULL_CHAIN,
             timeoutMs = opts.timeoutSeconds * 1000L,
             keyword = opts.keyword,
             proxy = opts.proxy,
-            entry = ProbeEntry.SEARCH,
         ),
         export = ExportConfig(applyCleanNames = false),
         exportDir = Path.of(opts.out),
@@ -116,8 +112,8 @@ class Options(
 private fun parseArgs(args: Array<String>): Options? {
     var input: String? = null
     var out = "out"
-    var keyword = "剑来"
-    var timeout = 20L
+    var keyword = "我的"
+    var timeout = 180L
     var limit = 0
     var concurrency = 100
     var proxy: String? = null
@@ -164,12 +160,12 @@ private fun printUsage() {
 
           --in <文件>          书源 JSON（数组 / 单对象 / {sources:[...]} 都支持）
           --out <目录>         导出目录，默认 out
-          --keyword <书名>     校验用的关键词，默认「剑来」
-          --timeout <秒>       单个书源超时，默认 20
+          --keyword <书名>     校验用默认关键词，默认「我的」；书源 checkKeyWord 可覆盖
+          --timeout <秒>       单个书源整轮校验超时，默认 180
           --limit <N>          只处理前 N 个（调试用）
           --concurrency <N>    并发书源数，默认 100（上限 2000）
           --proxy <地址>       本轮默认代理；书源 header.proxy 优先，如 http://127.0.0.1:7890
-          校验固定使用搜索入口完整链路：搜索、详情、目录和第一条有效章节正文。
+          校验顺序与 Legado 上游一致：域名检测、搜索及结果校验、发现及结果校验；六个项目使用上游默认开关。
           --verbose, -v        逐条列出每个书源的校验结果与失败原因
         """.trimIndent()
     )
