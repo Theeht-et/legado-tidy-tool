@@ -1,6 +1,7 @@
 package io.github.theeht.legadotidy.engine
 
 import com.google.gson.Gson
+import com.script.ScriptException
 import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.probe.ProbeEngine
 import io.github.theeht.legadotidy.probe.ProbeOptions
@@ -29,6 +30,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import org.htmlunit.corejs.javascript.WrappedException
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -556,6 +558,8 @@ class LegadoProbeEngine(
         when {
             error is TimeoutCancellationException || error is SocketTimeoutException ->
                 return ProbeStatus.TIMEOUT to null
+            error is ScriptException || error is WrappedException ->
+                return ProbeStatus.NEED_JS to null
             error is TocEmptyException || error is ContentEmptyException ->
                 return ProbeStatus.PARSE_EMPTY to null
             message.contains("源地址不可访问") ->
@@ -577,6 +581,8 @@ class LegadoProbeEngine(
         val message = error.message.orEmpty()
         return when {
             error is TimeoutCancellationException -> ProbeStatus.TIMEOUT
+            error is ScriptException || error is WrappedException -> ProbeStatus.NEED_JS
+            message.contains("js失效") -> ProbeStatus.NEED_JS
             message.contains("源地址不可访问") -> ProbeStatus.NETWORK
             message.contains("搜索链接规则为空") -> ProbeStatus.NO_SEARCH_URL
             message.contains("发现规则为空") -> ProbeStatus.NO_EXPLORE_CATEGORY
