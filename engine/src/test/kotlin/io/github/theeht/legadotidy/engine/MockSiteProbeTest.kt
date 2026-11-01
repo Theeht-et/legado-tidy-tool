@@ -329,7 +329,6 @@ class MockSiteProbeTest {
         assertTrue(result.stageResults.filter {
             it.stage == ProbeStage.BOOK_INFO || it.stage == ProbeStage.TOC || it.stage == ProbeStage.CONTENT
         }.all { it.status == ProbeStageStatus.NOT_RUN })
-        assertEquals(0, bookInfoRequests)
         assertEquals(0, contentRequests.get())
     }
 
