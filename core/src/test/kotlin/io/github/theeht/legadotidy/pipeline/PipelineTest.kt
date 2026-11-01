@@ -21,9 +21,9 @@ class PipelineTest {
     private class FakeEngine(private val failing: Set<Int> = emptySet()) : ProbeEngine {
         override suspend fun probe(index: Int, source: BookSourceDoc, options: ProbeOptions): ProbeResult =
             if (index in failing) {
-                ProbeResult(index, ProbeStatus.TIMEOUT, options = options)
+                ProbeResult(index, ProbeStatus.TIMEOUT, proxy = options.proxy, options = options)
             } else {
-                ProbeResult(index, ProbeStatus.OK, bookCount = 10, elapsedMs = 5, options = options)
+                ProbeResult(index, ProbeStatus.OK, bookCount = 10, elapsedMs = 5, proxy = options.proxy, options = options)
             }
     }
 
@@ -87,7 +87,7 @@ class PipelineTest {
         assertEquals(false, receivedOptions?.checkSearch)
         assertEquals(true, receivedOptions?.checkDiscovery)
         assertEquals(ProbeStatus.OK, result.probeResults.getValue(0).status)
-        assertEquals(" http://127.0.0.1:7890 ", result.probeResults.getValue(0).proxy)
+        assertEquals("http://127.0.0.1:7890", result.probeResults.getValue(0).proxy)
     }
 
     @Test
