@@ -20,6 +20,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.http.ProbeProxyContext
 import io.legado.app.help.http.parseProxyConfig
+import io.legado.app.help.source.SuppressSourceNavigation
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.GSON
 import kotlinx.coroutines.TimeoutCancellationException
@@ -292,6 +293,7 @@ class LegadoProbeEngine(
             withContext(ProbeProxyContext(proxy)) {
                 // 上游 CheckSourceService.checkSource 的单源 withTimeout 包住整个 doCheckSource。
                 withTimeout(timeoutMs) {
+                    withContext(SuppressSourceNavigation) {
                     // 对齐 Debug.startChecking：在进入 doCheckSource 时开始总计时，
                     // 书源 JSON 反序列化与工具代理预检不计入 respondTime。
                     totalStartedAt = System.currentTimeMillis()
@@ -405,6 +407,7 @@ class LegadoProbeEngine(
                     val finalCheckMessage = bookSource.getInvalidGroupNames()
                     if (finalCheckMessage.isNotBlank()) {
                         throw NoStackTraceException(finalCheckMessage)
+                    }
                     }
                 }
             }
