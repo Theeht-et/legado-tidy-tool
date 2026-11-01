@@ -13,6 +13,9 @@ import io.github.theeht.legadotidy.organize.Organizer
 import io.github.theeht.legadotidy.probe.ProbeEngine
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeResult
+import io.github.theeht.legadotidy.probe.ProbeStage
+import io.github.theeht.legadotidy.probe.ProbeStageResult
+import io.github.theeht.legadotidy.probe.ProbeStageStatus
 import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -172,17 +175,31 @@ class Pipeline(private val engine: ProbeEngine) {
                     io.github.theeht.legadotidy.probe.ProbeEntry.SEARCH -> !source.canSearch
                     io.github.theeht.legadotidy.probe.ProbeEntry.EXPLORE -> !source.canExplore
                 }
-                val result = if (missingEntry) {
-                    val (status, detail) = when (config.probe.entry) {
-                        io.github.theeht.legadotidy.probe.ProbeEntry.SEARCH ->
+                val missingUrl = source.url.isBlank()
+                val result = if (missingUrl || missingEntry) {
+                    val (status, detail) = when {
+                        missingUrl -> ProbeStatus.ERROR to "缺少必要字段 bookSourceUrl，未发起网络校验"
+                        config.probe.entry == io.github.theeht.legadotidy.probe.ProbeEntry.SEARCH ->
                             ProbeStatus.NO_SEARCH_URL to "未配置上游搜索入口（普通源需要 searchUrl，JS 源需要 mainJs）"
-                        io.github.theeht.legadotidy.probe.ProbeEntry.EXPLORE ->
-                            ProbeStatus.NO_EXPLORE_CATEGORY to "未配置上游发现入口（需要 exploreUrl）"
+                        else -> ProbeStatus.NO_EXPLORE_CATEGORY to "未配置上游发现入口（需要 exploreUrl）"
+                    }
+                    val entryStage = if (config.probe.entry == io.github.theeht.legadotidy.probe.ProbeEntry.SEARCH) {
+                        ProbeStage.SEARCH
+                    } else {
+                        ProbeStage.EXPLORE_CATEGORIES
                     }
                     ProbeResult(
                         index = i,
                         status = status,
                         detail = detail,
+                        stageResults = listOf(
+                            ProbeStageResult(
+                                stage = entryStage,
+                                status = ProbeStageStatus.NOT_RUN,
+                                detail = detail,
+                                failureStatus = status,
+                            ),
+                        ),
                         entry = config.probe.entry,
                         depth = config.probe.depth,
                         keyword = config.probe.keyword,

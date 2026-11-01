@@ -9,7 +9,15 @@ import com.google.gson.JsonSyntaxException
 import java.nio.file.Path
 import kotlin.io.path.readText
 
-/** 解析 / 序列化书源 JSON。入参容错：数组、单个对象、或 `{ sources: [...] }` 包装。 */
+enum class ImportIssueSeverity { ERROR, WARNING }
+
+data class SourceImportIssue(
+    val field: String,
+    val severity: ImportIssueSeverity,
+    val message: String,
+)
+
+/** 解析 / 序列化书源 JSON。入参容错：数组、单个对象、或包装对象。 */
 object SourceIO {
 
     private val prettyGson = GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create()
@@ -40,6 +48,57 @@ object SourceIO {
     }
 
     fun load(path: Path): List<JsonObject> = parse(path.readText())
+
+    /**
+     * Inspect one imported record without silently discarding it.
+     * bookSourceUrl is required for source identity and request base URL.
+     * A blank name is only a warning because the upstream entity defaults it to empty.
+     */
+    fun validateSource(source: JsonObject): List<SourceImportIssue> = buildList {
+        val url = source.get(SourceField.URL)
+        if (url == null || url.isJsonNull || !url.isJsonPrimitive ||
+            !url.asJsonPrimitive.isString || url.asString.isBlank()
+        ) {
+            add(
+                SourceImportIssue(
+                    field = SourceField.URL,
+                    severity = ImportIssueSeverity.ERROR,
+                    message = "缺少有效的书源地址；该记录不会发起网络校验，也不能参与 URL 去重。",
+                ),
+            )
+        }
+
+        val name = source.get(SourceField.NAME)
+        if (name == null || name.isJsonNull || !name.isJsonPrimitive ||
+            !name.asJsonPrimitive.isString || name.asString.isBlank()
+        ) {
+            add(
+                SourceImportIssue(
+                    field = SourceField.NAME,
+                    severity = ImportIssueSeverity.WARNING,
+                    message = "书源名称为空，建议在整理前补充。",
+                ),
+            )
+        }
+
+        SourceField.RULE_GROUPS.forEach { field ->
+            val rule = source.get(field) ?: return@forEach
+            if (rule.isJsonNull) return@forEach
+            val validObject = rule.isJsonObject || (
+                rule.isJsonPrimitive && rule.asJsonPrimitive.isString &&
+                    runCatching { JsonParser.parseString(rule.asString).isJsonObject }.getOrDefault(false)
+                )
+            if (!validObject) {
+                add(
+                    SourceImportIssue(
+                        field = field,
+                        severity = ImportIssueSeverity.ERROR,
+                        message = "规则组必须是 JSON 对象或 JSON 对象字符串。",
+                    ),
+                )
+            }
+        }
+    }
 
     fun toJson(sources: List<JsonObject>, pretty: Boolean = true): String {
         val array = JsonArray()
