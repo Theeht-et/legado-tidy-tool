@@ -81,6 +81,7 @@ import io.github.theeht.legadotidy.export.Exporter
 import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.model.SourceField
 import io.github.theeht.legadotidy.model.SourceIO
+import io.github.theeht.legadotidy.model.ImportIssueSeverity
 import io.github.theeht.legadotidy.organize.OrganizeConfig
 import io.github.theeht.legadotidy.organize.OrganizeRule
 import io.github.theeht.legadotidy.organize.Organizer
@@ -89,6 +90,9 @@ import io.github.theeht.legadotidy.probe.ProbeDepth
 import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeResult
+import io.github.theeht.legadotidy.probe.ProbeStage
+import io.github.theeht.legadotidy.probe.ProbeStageResult
+import io.github.theeht.legadotidy.probe.ProbeStageStatus
 import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -228,6 +232,7 @@ private data class WorkflowSource(
     val deleteMarked: Boolean = false,
     val userDecision: Boolean = false,
     val suggestion: String = "待校验",
+    val importIssues: List<io.github.theeht.legadotidy.model.SourceImportIssue> = emptyList(),
 )
 
 private data class DuplicateGroupUi(
@@ -236,6 +241,7 @@ private data class DuplicateGroupUi(
     val sourceIds: List<Int>,
     val suggestedKeepId: Int,
     val similarity: Double,
+    val recommendationReason: String,
 )
 
 private data class PreviewSource(
@@ -317,7 +323,9 @@ fun TidyApp() {
                 return
             }
             state.sources.clear()
-            state.sources.addAll(docs.mapIndexed { index, raw -> WorkflowSource(index, BookSourceDoc(raw)) })
+            state.sources.addAll(docs.mapIndexed { index, raw ->
+                WorkflowSource(index, BookSourceDoc(raw), importIssues = SourceIO.validateSource(raw))
+            })
             editingId = null
             comparingGroup = null
             state.inputFile = selectedFile
@@ -332,7 +340,12 @@ fun TidyApp() {
             state.previewOrder = emptyList()
             state.exported = null
             state.error = null
-            state.notice = "已导入 ${docs.size} 个书源；下一步先校验全部书源，原始文件不会被修改。"
+            val issueSources = state.sources.count { it.importIssues.isNotEmpty() }
+            val blockingIssues = state.sources.sumOf { source ->
+                source.importIssues.count { it.severity == ImportIssueSeverity.ERROR }
+            }
+            state.notice = "已导入 " + docs.size + " 个书源；下一步先校验全部书源，原始文件不会被修改。" +
+                if (issueSources > 0) " 有 " + issueSources + " 个书源存在字段检查提示，其中 " + blockingIssues + " 项为错误。" else ""
             state.removedCount = 0
             state.completed = 0
             state.total = 0
@@ -366,6 +379,7 @@ fun TidyApp() {
                         sourceIds = stableIdsAtIndexes(snapshot, group.members) { it.id },
                         suggestedKeepId = snapshot[group.keep].id,
                         similarity = group.similarity,
+                        recommendationReason = group.recommendationReason,
                     )
                 }
                 val groupById = groups.flatMap { group -> group.sourceIds.map { it to group } }.toMap()
@@ -450,19 +464,52 @@ fun TidyApp() {
                     pending.map { source ->
                         async(Dispatchers.IO) {
                             val index = snapshot.indexOfFirst { it.id == source.id }
-                            val result = if (!source.doc.canSearch) {
-                                ProbeResult(
-                                    index,
-                                    ProbeStatus.NO_SEARCH_URL,
-                                    detail = "未配置上游搜索入口（普通源需要 searchUrl，JS 源需要 mainJs）",
-                                    entry = entry,
-                                    depth = depth,
-                                    keyword = keyword,
-                                    timeoutMs = timeoutMs,
-                                    proxy = proxy,
-                                )
-                            } else {
-                                try {
+                            val importIssues = SourceIO.validateSource(source.doc.raw)
+                            val blockingIssues = importIssues.filter { it.severity == ImportIssueSeverity.ERROR }
+                            val result = when {
+                                blockingIssues.isNotEmpty() -> {
+                                    val detail = blockingIssues.joinToString("；") { it.field + "：" + it.message }
+                                    ProbeResult(
+                                        index,
+                                        ProbeStatus.ERROR,
+                                        detail = detail,
+                                        stageResults = listOf(
+                                            ProbeStageResult(
+                                                stage = ProbeStage.SEARCH,
+                                                status = ProbeStageStatus.NOT_RUN,
+                                                detail = detail,
+                                                failureStatus = ProbeStatus.ERROR,
+                                            ),
+                                        ),
+                                        entry = entry,
+                                        depth = depth,
+                                        keyword = keyword,
+                                        timeoutMs = timeoutMs,
+                                        proxy = proxy,
+                                    )
+                                }
+                                !source.doc.canSearch -> {
+                                    val detail = "未配置上游搜索入口（普通源需要 searchUrl，JS 源需要 mainJs）"
+                                    ProbeResult(
+                                        index,
+                                        ProbeStatus.NO_SEARCH_URL,
+                                        detail = detail,
+                                        stageResults = listOf(
+                                            ProbeStageResult(
+                                                stage = ProbeStage.SEARCH,
+                                                status = ProbeStageStatus.NOT_RUN,
+                                                detail = detail,
+                                                failureStatus = ProbeStatus.NO_SEARCH_URL,
+                                            ),
+                                        ),
+                                        entry = entry,
+                                        depth = depth,
+                                        keyword = keyword,
+                                        timeoutMs = timeoutMs,
+                                        proxy = proxy,
+                                    )
+                                }
+                                else -> try {
                                     gate.withPermit { probeEngine.probe(index, source.doc, options) }
                                 } catch (e: CancellationException) {
                                     throw e
@@ -485,6 +532,7 @@ fun TidyApp() {
                                     val deleteByDefault = shouldMarkForDeletionByDefault(result.status)
                                     state.sources[currentIndex] = state.sources[currentIndex].copy(
                                         probe = result,
+                                        importIssues = importIssues,
                                         deleteMarked = deleteByDefault,
                                         userDecision = false,
                                         suggestion = if (deleteByDefault) "建议删除" else "建议保留",
@@ -939,12 +987,13 @@ fun TidyApp() {
                                 (state.stage == WorkflowStage.PROBE_REVIEW ||
                                     state.stage == WorkflowStage.ORGANIZE_REVIEW) && editedProbeInputsChanged -> old.copy(
                                     doc = edited,
+                                    importIssues = SourceIO.validateSource(edited.raw),
                                     probe = null,
                                     deleteMarked = false,
                                     userDecision = false,
                                     suggestion = "待重新校验",
                                 )
-                                else -> old.copy(doc = edited)
+                                else -> old.copy(doc = edited, importIssues = SourceIO.validateSource(edited.raw))
                             }
                         }
                         if (state.stage == WorkflowStage.DEDUP_REVIEW && editedProbeInputsChanged) {
@@ -1898,6 +1947,16 @@ private fun DetailOverviewContent(source: WorkflowSource) {
         DetailMetric("已配置规则字段", source.doc.ruleCompleteness.toString(), Modifier.weight(1f))
         DetailMetric("响应耗时", source.probe?.let { "${it.elapsedMs} ms" } ?: "暂无", Modifier.weight(1f))
     }
+    if (source.importIssues.isNotEmpty()) {
+        Text("导入字段检查", fontSize = UiTypography.emphasis, fontWeight = FontWeight.Bold, color = Ink)
+        source.importIssues.forEach { issue ->
+            Text(
+                issue.field + "：" + issue.message,
+                fontSize = UiTypography.label,
+                color = if (issue.severity == ImportIssueSeverity.ERROR) Bad else Warn,
+            )
+        }
+    }
     Text("审核与处理信息", fontSize = UiTypography.emphasis, fontWeight = FontWeight.Bold, color = Ink)
     Card(
         Modifier.fillMaxWidth(),
@@ -2382,6 +2441,40 @@ private fun ruleDifferenceSummary(keys: List<String>, source: WorkflowSource): S
         "${ruleLabel(key)}：${value.take(46)}${if (value.length > 46) "…" else ""}"
     }
 
+private fun coreProbeStageSummary(probe: ProbeResult?): String {
+    if (probe == null) return "待校验"
+    val entryStage = if (probe.entry == ProbeEntry.EXPLORE) ProbeStage.EXPLORE else ProbeStage.SEARCH
+    val stages = listOf(
+        entryStage to if (entryStage == ProbeStage.EXPLORE) "发现" else "搜索",
+        ProbeStage.BOOK_INFO to "详情",
+        ProbeStage.TOC to "目录",
+        ProbeStage.CONTENT to "正文",
+    )
+    return stages.joinToString(" · ") { pair ->
+        val result = probe.stageResults.firstOrNull { it.stage == pair.first }
+        val state = when (result?.status) {
+            ProbeStageStatus.SUCCESS -> "成功"
+            ProbeStageStatus.EMPTY -> "无结果"
+            ProbeStageStatus.FAILED -> "失败"
+            ProbeStageStatus.NOT_RUN -> "未执行"
+            null -> if (probe.status == ProbeStatus.OK && probe.stageResults.isEmpty()) "成功" else "未记录"
+        }
+        pair.second + state
+    }
+}
+
+private fun coreProbeFailureSummary(probe: ProbeResult?): String? {
+    val failures = probe?.stageResults.orEmpty().filter {
+        it.status == ProbeStageStatus.FAILED || it.status == ProbeStageStatus.EMPTY
+    }
+    if (failures.isEmpty()) {
+        return probe?.detail?.takeIf { probe.stageResults.isEmpty() && it.isNotBlank() }
+    }
+    return failures.take(2).joinToString("；") { stage ->
+        stage.stage.label + "：" + (stage.detail ?: stage.failureStatus?.label ?: stage.status.label)
+    }
+}
+
 @Composable
 private fun CompareGroupDialog(
     state: WorkflowState,
@@ -2395,7 +2488,6 @@ private fun CompareGroupDialog(
     var keepAll by remember(group.number) {
         mutableStateOf(candidates.isNotEmpty() && candidates.all { !it.deleteMarked })
     }
-    val differingRuleKeys = ruleDifferenceKeys(candidates)
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -2414,6 +2506,14 @@ private fun CompareGroupDialog(
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text("重复组 ${group.number}", fontSize = UiTypography.emphasis, fontWeight = FontWeight.Bold, color = Ink)
                         Text("选择保留的书源；其他候选将标记为待删除", fontSize = UiTypography.caption, color = Muted)
+                        val recommendedName = candidates.firstOrNull { it.id == group.suggestedKeepId }?.doc?.name
+                        Text(
+                            "系统推荐保留：" + (recommendedName?.ifBlank { "（未命名）" } ?: "候选") + "。" + group.recommendationReason,
+                            fontSize = UiTypography.label,
+                            color = PrimaryDeep,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                     TextButton(onClick = onDismiss, contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)) {
                         Text("×", fontSize = UiTypography.pageTitle, color = Muted)
@@ -2427,7 +2527,7 @@ private fun CompareGroupDialog(
                     Text("保留", Modifier.width(42.dp), fontSize = UiTypography.caption, color = Muted)
                     Text("书源 / 当前选择", Modifier.weight(1.45f), fontSize = UiTypography.caption, color = Muted)
                     Text("类型与分组", Modifier.weight(0.85f), fontSize = UiTypography.caption, color = Muted)
-                    Text("规则差异", Modifier.weight(1.25f), fontSize = UiTypography.caption, color = Muted)
+                    Text("核心功能校验", Modifier.weight(1.25f), fontSize = UiTypography.caption, color = Muted)
                     Text("判断", Modifier.width(88.dp), fontSize = UiTypography.caption, color = Muted)
                 }
                 Column(
@@ -2437,7 +2537,6 @@ private fun CompareGroupDialog(
                         val recommended = source.id == group.suggestedKeepId
                         val selectedKeep = !keepAll && source.id == keepId
                         val proposedKeep = keepAll || selectedKeep
-                        val differences = ruleDifferenceSummary(differingRuleKeys, source)
                         Row(
                             Modifier.fillMaxWidth()
                                 .background(if (selectedKeep) SoftBlue else Color.White)
@@ -2473,17 +2572,22 @@ private fun CompareGroupDialog(
                                 Text(source.doc.group.ifBlank { "未分组" }, fontSize = UiTypography.caption, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Column(Modifier.weight(1.25f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                if (differences.isEmpty()) {
-                                    Text("规则配置一致", fontSize = UiTypography.label, color = Muted)
-                                } else {
-                                    Text(
-                                        differences,
-                                        fontSize = UiTypography.label,
-                                        color = PrimaryDeep,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text("与组内其他候选存在差异", fontSize = UiTypography.caption, color = Muted)
+                                Text(
+                                    coreProbeStageSummary(source.probe),
+                                    fontSize = UiTypography.label,
+                                    color = BodyText,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    source.probe?.let { "响应 " + it.elapsedMs + "ms · " + it.status.label } ?: "暂无校验结果",
+                                    fontSize = UiTypography.caption,
+                                    color = Muted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                coreProbeFailureSummary(source.probe)?.let {
+                                    Text(it, fontSize = UiTypography.caption, color = Warn, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }
                             }
                             Box(Modifier.width(88.dp), contentAlignment = Alignment.CenterStart) {
