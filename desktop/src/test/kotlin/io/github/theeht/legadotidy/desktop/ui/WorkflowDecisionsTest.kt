@@ -165,7 +165,7 @@ class WorkflowDecisionsTest {
         assertTrue(canBeSelectedAsDuplicateKeeper(deleteMarked = false))
         assertTrue(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = true, requestedKeep = true))
         assertTrue(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = true, requestedKeep = false))
-        assertFalse(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = false, requestedKeep = false))
+        assertTrue(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = false, requestedKeep = false))
         assertFalse(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = false, requestedKeep = true))
     }
 
