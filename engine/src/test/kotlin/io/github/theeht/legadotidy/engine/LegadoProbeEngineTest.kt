@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 class LegadoProbeEngineTest {
 
     @Test
-    fun \`默认六项校验开关与 Legado CheckSource 一致\`() {
+    fun defaultCheckOptionsMatchUpstream() {
         val options = ProbeOptions()
 
         assertFalse(options.checkDomain)
@@ -23,7 +23,7 @@ class LegadoProbeEngineTest {
     }
 
     @Test
-    fun \`默认关键词和单源总超时与 Legado CheckSource 一致\`() {
+    fun defaultKeywordAndTimeoutMatchUpstream() {
         val options = ProbeOptions()
 
         assertEquals("我的", options.keyword)
@@ -31,7 +31,7 @@ class LegadoProbeEngineTest {
     }
 
     @Test
-    fun \`无法检测域名不等同于校验失败\`() {
+    fun uncheckableDomainIsNotAValidationFailure() {
         assertTrue(ProbeStatus.UNCHECKABLE.label.contains("无法检测"))
     }
 }
