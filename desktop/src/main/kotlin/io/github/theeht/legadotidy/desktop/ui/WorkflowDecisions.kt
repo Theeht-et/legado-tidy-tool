@@ -47,6 +47,14 @@ internal fun resolveDuplicateDeleteMark(
     hasUserDecision: Boolean,
 ): Boolean = if (hasUserDecision) currentMarked else validationMarked || duplicateSuggestedDelete
 
+/** Marked sources can never be selected as duplicate keepers or revived by the compare dialog. */
+internal fun canBeSelectedAsDuplicateKeeper(deleteMarked: Boolean): Boolean = !deleteMarked
+
+internal fun preserveDeleteMarkAfterDuplicateChoice(
+    currentlyMarked: Boolean,
+    requestedKeep: Boolean,
+): Boolean = currentlyMarked || !requestedKeep
+
 /** Probe outcomes that should enter the pending-delete bucket by default. */
 internal fun shouldMarkForDeletionByDefault(status: ProbeStatus): Boolean =
     status != ProbeStatus.OK && status != ProbeStatus.UNCHECKABLE
