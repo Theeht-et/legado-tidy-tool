@@ -273,6 +273,33 @@ class MockSiteProbeTest {
     }
 
     @Test
+    fun nonHttpSourceIsMarkedUncheckableButOtherChecksContinue() = runBlocking {
+        val origin = "file:///tmp/non-http-source"
+        val httpBase = "http://127.0.0.1:" + port
+        val json = sourceJson()
+            .replace(httpBase, origin)
+            .replace(
+                "\"searchUrl\": \"/search?q={{key}}\"",
+                "\"searchUrl\": \"" + httpBase + "/search?q={{key}}\"",
+            )
+            .replace(
+                "\"exploreUrl\": \"本地分类::/explore?page={{page}}\"",
+                "\"exploreUrl\": \"本地分类::" + httpBase + "/explore?page={{page}}\"",
+            )
+        val source = BookSourceDoc(SourceIO.parse(json).single())
+        val result = LegadoProbeEngine().probe(0, source, options(checkDomain = true))
+
+        assertEquals(ProbeStatus.UNCHECKABLE, result.status, "详情：" + result.detail)
+        assertEquals(listOf(1), discoveryPages.toList())
+        assertTrue(searchQueries.isNotEmpty())
+        assertEquals(result.actualElapsedMs, result.elapsedMs)
+        assertEquals(
+            ProbeStageStatus.NOT_RUN,
+            result.stageResults.first { it.stage == ProbeStage.DOMAIN }.status,
+        )
+    }
+
+    @Test
     fun disablingSearchStillAllowsDiscovery() = runBlocking {
         val result = LegadoProbeEngine().probe(
             0,
