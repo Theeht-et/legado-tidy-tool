@@ -479,7 +479,11 @@ fun TidyApp() {
                                         probe = result,
                                         deleteMarked = deleteByDefault,
                                         userDecision = false,
-                                        suggestion = if (deleteByDefault) "建议删除" else "建议保留",
+                                         suggestion = when {
+                                            deleteByDefault -> "建议删除"
+                                            result.status == ProbeStatus.UNCHECKABLE -> "域名无法检测，建议复核"
+                                            else -> "建议保留"
+                                        },
                                     )
                                 }
                                 state.completed = (state.completed + 1).coerceAtMost(state.total)
@@ -968,7 +972,7 @@ fun TidyApp() {
                                         isEditedSource -> "待重新校验"
                                         hasUserDecision -> current.suggestion
                                         deleteMarked -> "建议删除"
-                                        probe?.status == ProbeStatus.OK -> "建议保留"
+                                        probe?.ok == true -> "建议保留"
                                         probe?.status == ProbeStatus.SKIPPED -> "跳过校验"
                                         probe != null -> "建议复核"
                                         else -> "待重新校验"
@@ -1906,6 +1910,7 @@ private fun DetailOverviewContent(source: WorkflowSource) {
             Text(
                 when {
                     source.deleteMarked -> "该书源会在确认进入下一阶段时从当前工作池移除。"
+                    source.probe?.status == ProbeStatus.UNCHECKABLE -> "域名无法按 HTTP(S) 方式检测；其他已启用校验项目没有发现失效项。建议人工确认源地址。"
                     source.probe?.status == ProbeStatus.OK -> "校验成功；仍可根据规则完整度与重复候选情况人工判断。"
                     source.probe?.status?.let { it == ProbeStatus.TIMEOUT || it == ProbeStatus.NETWORK || it == ProbeStatus.HTTP_ERROR } == true ->
                         "网络或服务响应异常不代表书源一定失效，建议人工复核。"
@@ -2681,7 +2686,7 @@ private data class ProbeStatusStyle(val background: Color, val foreground: Color
 
 private fun probeStatusStyle(status: ProbeStatus?): ProbeStatusStyle = when (status) {
     ProbeStatus.OK -> ProbeStatusStyle(SoftGreen, Ok)
-    ProbeStatus.PARTIAL, ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> ProbeStatusStyle(SoftAmber, Warn)
+    ProbeStatus.UNCHECKABLE, ProbeStatus.PARTIAL, ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> ProbeStatusStyle(SoftAmber, Warn)
     ProbeStatus.NO_SEARCH_URL, ProbeStatus.NO_EXPLORE_CATEGORY, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS, ProbeStatus.ERROR ->
         ProbeStatusStyle(SoftRed, Bad)
     else -> ProbeStatusStyle(SoftSlate, Muted)
