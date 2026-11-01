@@ -237,13 +237,13 @@ class LegadoProbeEngine(
                 }
 
                 // 对应上游 checkBook(...).onSuccess：清除该入口之前记录的目录/正文失效组。
-                bookSource.removeGroup("\${bookType}目录失效")
-                bookSource.removeGroup("\${bookType}正文失效")
+                bookSource.removeGroup(bookType + "目录失效")
+                bookSource.removeGroup(bookType + "正文失效")
             } catch (error: Throwable) {
                 // 上游只吞掉这两类业务异常；其他异常必须冒泡并终止本轮后续检查。
                 when (error) {
                     is ContentEmptyException -> {
-                        bookSource.addGroup("\${bookType}正文失效")
+                        bookSource.addGroup(bookType + "正文失效")
                         if (activeStage != ProbeStage.CONTENT) {
                             addNotRun(
                                 ProbeStage.CONTENT,
@@ -254,7 +254,7 @@ class LegadoProbeEngine(
                     }
 
                     is TocEmptyException -> {
-                        bookSource.addGroup("\${bookType}目录失效")
+                        bookSource.addGroup(bookType + "目录失效")
                         if (activeStage != ProbeStage.TOC) {
                             addNotRun(
                                 ProbeStage.TOC,
