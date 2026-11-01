@@ -2441,31 +2441,6 @@ private fun ReportDialog(state: WorkflowState, onDismiss: () -> Unit) {
     )
 }
 
-private fun ruleDifferenceKeys(candidates: List<WorkflowSource>): List<String> {
-    if (candidates.size < 2) return emptyList()
-    return candidates
-        .flatMap { candidate -> candidate.doc.raw.entrySet().map { it.key } }
-        .filter { it.startsWith("rule", ignoreCase = true) }
-        .distinct()
-        .filter { key -> candidates.map { it.doc.raw.get(key) }.distinct().size > 1 }
-}
-
-private fun ruleLabel(key: String): String = when (key) {
-    "ruleSearch" -> "搜索"
-    "ruleExplore" -> "发现"
-    "ruleBookInfo" -> "书籍信息"
-    "ruleToc" -> "目录"
-    "ruleContent" -> "正文"
-    "ruleReview" -> "段评"
-    else -> key.removePrefix("rule").ifBlank { key }
-}
-
-private fun ruleDifferenceSummary(keys: List<String>, source: WorkflowSource): String =
-    keys.joinToString("；") { key ->
-        val value = source.doc.raw.get(key)?.toString()?.takeIf { it.isNotBlank() } ?: "未配置"
-        "${ruleLabel(key)}：${value.take(46)}${if (value.length > 46) "…" else ""}"
-    }
-
 private fun coreProbeStageSummary(probe: ProbeResult?): String {
     if (probe == null) return "待校验"
     val entryStage = if (probe.entry == ProbeEntry.EXPLORE) ProbeStage.EXPLORE else ProbeStage.SEARCH
@@ -2501,7 +2476,11 @@ private fun coreProbeFailureSummary(probe: ProbeResult?): String? {
         it.status == ProbeStageStatus.FAILED || it.status == ProbeStageStatus.EMPTY
     }
     if (failures.isEmpty()) {
-        return probe?.detail?.takeIf { probe.stageResults.isEmpty() && it.isNotBlank() }
+        val notRunReason = probe?.stageResults.orEmpty().firstOrNull {
+            it.status == ProbeStageStatus.NOT_RUN && it.failureStatus != null
+        }?.detail
+        return notRunReason
+            ?: probe?.detail?.takeIf { probe.stageResults.isEmpty() && it.isNotBlank() }
     }
     return failures.take(2).joinToString("；") { stage ->
         stage.stage.label + "：" + (stage.detail ?: stage.failureStatus?.label ?: stage.status.label)
