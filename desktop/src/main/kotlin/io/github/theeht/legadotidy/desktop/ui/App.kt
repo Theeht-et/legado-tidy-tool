@@ -2463,7 +2463,7 @@ private fun CompareGroupDialog(
                     candidates.forEachIndexed { index, source ->
                         val recommended = source.id == group.suggestedKeepId && canBeSelectedAsDuplicateKeeper(source.deleteMarked)
                         val selectedKeep = canBeSelectedAsDuplicateKeeper(source.deleteMarked) && !keepAll && source.id == keepId
-                        val proposedKeep = keepAll || selectedKeep
+                        val proposedKeep = canBeSelectedAsDuplicateKeeper(source.deleteMarked) && (keepAll || selectedKeep)
                         val differences = ruleDifferenceSummary(differingRuleKeys, source)
                         Row(
                             Modifier.fillMaxWidth()
