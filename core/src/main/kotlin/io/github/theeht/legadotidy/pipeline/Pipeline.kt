@@ -165,6 +165,7 @@ class Pipeline(private val engine: ProbeEngine) {
         val failed = AtomicInteger()
         val results = arrayOfNulls<ProbeResult>(sources.size)
         val proxy = config.probe.proxy?.trim()?.takeIf { it.isNotEmpty() }
+        val probeOptions = config.probe.copy(proxy = proxy)
 
         val jobs = sources.mapIndexed { i, source ->
             async(Dispatchers.Default) {
@@ -173,7 +174,7 @@ class Pipeline(private val engine: ProbeEngine) {
                         // 入口、是否跳过后续阶段和异常边界均由上游对齐的引擎决定。
                         // Pipeline 不得根据 canSearch/canExplore 预先拦截，否则会绕过上游
                         // checkSearch=false 时仍可继续发现、以及搜索异常时的真实终止语义。
-                        probeEngine.probe(i, source, config.probe)
+                        probeEngine.probe(i, source, probeOptions)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Throwable) {
@@ -181,10 +182,10 @@ class Pipeline(private val engine: ProbeEngine) {
                             index = i,
                             status = ProbeStatus.ERROR,
                             detail = e.toString(),
-                            keyword = config.probe.keyword,
-                            timeoutMs = config.probe.timeoutMs,
+                            keyword = probeOptions.keyword,
+                            timeoutMs = probeOptions.timeoutMs,
                             proxy = proxy,
-                            options = config.probe.copy(proxy = proxy),
+                            options = probeOptions,
                         )
                     }
                 }
@@ -204,10 +205,11 @@ class Pipeline(private val engine: ProbeEngine) {
                 detail = "校验引擎未返回结果",
                 entry = config.probe.entry,
                 depth = config.probe.depth,
-                keyword = config.probe.keyword,
-                timeoutMs = config.probe.timeoutMs,
-                maxExplorePages = config.probe.maxExplorePages,
+                keyword = probeOptions.keyword,
+                timeoutMs = probeOptions.timeoutMs,
+                maxExplorePages = probeOptions.maxExplorePages,
                 proxy = proxy,
+                options = probeOptions,
             ))
         }.toMap()
     }
