@@ -20,8 +20,6 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.http.ProbeProxyContext
 import io.legado.app.help.http.parseProxyConfig
-import io.legado.app.help.source.exploreKindsInSession
-import io.legado.app.help.source.withExploreSession
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.GSON
 import kotlinx.coroutines.TimeoutCancellationException
@@ -373,19 +371,17 @@ class LegadoProbeEngine(
                             emptyDetail = "上游发现第一页未解析出书籍",
                             itemCount = { it.size },
                         ) {
-                            withExploreSession(bookSource.bookSourceUrl) {
-                                val url = bookSource.exploreKindsInSession()
-                                    .firstOrNull { !it.url.isNullOrBlank() }
-                                    ?.url
-                                if (url.isNullOrBlank()) {
-                                    throw NoStackTraceException("发现规则为空")
-                                }
-                                // WebBook.exploreBookAwait 默认 page=1，与上游自动校验完全一致。
-                                WebBook.exploreBookAwait(
-                                    bookSource = bookSource,
-                                    url = url,
-                                )
+                            val url = bookSource.exploreKinds()
+                                .firstOrNull { !it.url.isNullOrBlank() }
+                                ?.url
+                            if (url.isNullOrBlank()) {
+                                throw NoStackTraceException("发现规则为空")
                             }
+                            // 与上游 CheckSourceService 相同：分类解析结束后直接请求第一页。
+                            WebBook.exploreBookAwait(
+                                bookSource = bookSource,
+                                url = url,
+                            )
                         }
                         bookCount += exploreBooks.size
                         if (exploreBooks.isEmpty()) {
