@@ -381,20 +381,22 @@ fun TidyApp() {
                     val group = groupById[source.id]
                     val keep = group?.suggestedKeepId == source.id
                     val hasUserDecision = source.userDecision
+                    val deleteMarked = if (group == null) {
+                        source.deleteMarked
+                    } else {
+                        resolveDuplicateDeleteMark(
+                            validationMarked = source.deleteMarked,
+                            duplicateSuggestedDelete = !keep,
+                            currentMarked = source.deleteMarked,
+                            hasUserDecision = hasUserDecision,
+                        )
+                    }
                     source.copy(
                         duplicateGroup = group?.number,
-                        deleteMarked = if (group == null) {
-                            source.deleteMarked
-                        } else {
-                            resolveDeleteMark(
-                                defaultMarked = !keep,
-                                currentMarked = source.deleteMarked,
-                                hasUserDecision = hasUserDecision,
-                            )
-                        },
+                        deleteMarked = deleteMarked,
                         suggestion = when {
                             hasUserDecision -> source.suggestion
-                            group == null && source.deleteMarked -> source.suggestion
+                            deleteMarked -> "校验或去重标记删除"
                             group == null -> "未发现重复"
                             keep -> "建议保留"
                             else -> "建议删除"
@@ -516,35 +518,32 @@ fun TidyApp() {
     }
 
     fun confirmDedup() {
-        val emptyDuplicateGroup = state.duplicateGroups.firstOrNull { group ->
-            group.sourceIds.isNotEmpty() && group.sourceIds.all { id ->
-                state.sources.firstOrNull { it.id == id }?.deleteMarked == true
-            }
-        }
-        if (emptyDuplicateGroup != null) {
-            state.error = "重复组 ${emptyDuplicateGroup.number} 的候选项全部被标记为删除。每组至少需要保留一项，或确认它们并不重复后取消相应标记。"
-            state.selectedId = emptyDuplicateGroup.sourceIds.firstOrNull { id ->
-                state.sources.firstOrNull { it.id == id }?.deleteMarked == true
-            }
-            return
-        }
+        // Every checked delete mark is committed now. A duplicate group is not required
+        // to retain one member: if every member failed validation, remove the whole group.
         if (!commitMarkedDeletions(state)) return
         state.duplicateGroups = emptyList()
         state.duplicateReport = null
         state.sources.indices.forEach { index ->
             state.sources[index] = state.sources[index].copy(duplicateGroup = null)
         }
-        state.stage = WorkflowStage.ORGANIZE_REVIEW
         state.sourceFilter = "全部"
+        state.error = null
+        state.preview = null
+        state.previewOrder = emptyList()
+        if (state.sources.isEmpty()) {
+            state.stage = WorkflowStage.EXPORT
+            state.selectedId = null
+            state.exported = null
+            state.notice = "已直接删除全部标记书源；没有需要保留或导出的书源。原始导入文件未修改。"
+            return
+        }
+        state.stage = WorkflowStage.ORGANIZE_REVIEW
         state.selectedRules = setOf(
             OrganizeRule.CLEAN_DECORATIONS,
             OrganizeRule.REMOVE_ADVERTISING_WORDS,
             OrganizeRule.KEEP_ORIGINAL_GROUPS,
         )
-        state.preview = null
-        state.previewOrder = emptyList()
-        state.error = null
-        state.notice = "去重阶段已确认。现在选择需要执行的整理规则；未勾选的规则不会执行。"
+        state.notice = "去重审核完成，所有标记删除项已从工作池移除。现在整理剩余书源。"
     }
 
     fun confirmValidation() {
@@ -645,15 +644,7 @@ fun TidyApp() {
             return
         }
         val deletionPlan = planMarkedDeletions(allOrdered) { it.deleteMarked }
-        if (deletionPlan.allItemsMarked) {
-            state.error = "当前所有书源都被标记为删除。请至少保留一项，或修改删除标记后再进入导出。"
-            return
-        }
         val ordered = deletionPlan.retained
-        if (ordered.isEmpty()) {
-            state.error = "整理结果为空，无法进入导出。"
-            return
-        }
         state.removedCount += deletionPlan.removedCount
         val retainedIds = ordered.map { it.id }.toSet()
         state.preview = rankedPreview.filterKeys { it in retainedIds }
@@ -665,10 +656,10 @@ fun TidyApp() {
         state.selectedId = state.sources.firstOrNull()?.id
         state.exported = null
         state.error = null
-        state.notice = if (deletionPlan.removedCount > 0) {
-            "整理结果已确认，并将 " + deletionPlan.removedCount + " 个标记项从当前工作池移除。导出时只写入已确认或手动修改的字段。"
-        } else {
-            "整理结果已确认。导出时只写入已确认或手动修改的字段。"
+        state.notice = when {
+            ordered.isEmpty() -> "整理完成：所有标记删除项已直接移除，没有书源需要保留或导出。原始导入文件未修改。"
+            deletionPlan.removedCount > 0 -> "整理结果已确认，已直接删除 " + deletionPlan.removedCount + " 个标记项；导出只包含未标记的书源。"
+            else -> "整理结果已确认。导出时只写入已确认或手动修改的字段。"
         }
 
 
@@ -1315,8 +1306,13 @@ private fun SourceListPanel(
             if (state.sources.isEmpty()) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("尚未导入书源", fontSize = UiTypography.sectionTitle, color = BodyText)
-                        Text("点击右上角「导入 JSON」选择书源文件。", fontSize = UiTypography.body, color = Muted)
+                        if (state.inputCount > 0 && state.removedCount >= state.inputCount) {
+                            Text("所有标记书源均已删除", fontSize = UiTypography.sectionTitle, color = BodyText)
+                            Text("已从当前工作池删除 ${state.removedCount} 个书源；没有保留项或可导出内容。原始导入文件未修改。", fontSize = UiTypography.body, color = Muted)
+                        } else {
+                            Text("尚未导入书源", fontSize = UiTypography.sectionTitle, color = BodyText)
+                            Text("点击右上角「导入 JSON」选择书源文件。", fontSize = UiTypography.body, color = Muted)
+                        }
                     }
                 }
             } else {
@@ -2730,22 +2726,21 @@ private fun buildSourceRows(state: WorkflowState): List<SourceListRow> {
 
 private fun commitMarkedDeletions(state: WorkflowState): Boolean {
     val plan = planMarkedDeletions(state.sources.toList()) { it.deleteMarked }
-    if (plan.allItemsMarked) {
-        state.error = "当前所有书源都被标记为删除。请至少保留一项，或修改删除标记后再进入下一阶段。"
-        return false
-    }
     if (plan.removedCount == 0) {
         state.notice = "没有待删除的书源需要移除。"
-        return plan.canAdvance
+        return true
     }
-    if (!plan.canAdvance) return false
 
     state.sources.clear()
     state.sources.addAll(plan.retained.map { it.copy(deleteMarked = false, duplicateGroup = null) })
     state.removedCount += plan.removedCount
     state.selectedId = resolveSelectedId(state.selectedId, state.sources) { it.id }
-    state.notice = "已将 ${plan.removedCount} 个标记项从当前工作池移除；导入文件未修改。"
-    return state.sources.isNotEmpty()
+    state.notice = if (state.sources.isEmpty()) {
+        "已直接删除全部 ${plan.removedCount} 个标记书源；没有保留项。导入文件未修改。"
+    } else {
+        "已直接删除 ${plan.removedCount} 个标记书源；剩余 ${state.sources.size} 个未标记书源进入下一阶段。导入文件未修改。"
+    }
+    return true
 }
 
 private fun toggleDeleteMark(state: WorkflowState, id: Int, marked: Boolean? = null) {
