@@ -356,7 +356,7 @@ fun TidyApp() {
         }
         state.busy = true
         state.error = null
-        state.notice = "正在结合校验结果分析重复候选，不会直接删除书源。"
+        state.notice = "正在结合全量校验结果分析重复候选。确认进入整理时，所有标记删除项都会直接移出工作池，不会为了每组留一项而保留失败书源。"
         activeJob = scope.launch {
             try {
                 val snapshot = state.sources.toList()
@@ -2118,7 +2118,7 @@ private fun WorkflowNavigationBar(
                         enabled = state.sources.isNotEmpty() && !state.busy,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                    ) { Text("确认去重并进入整理", fontSize = UiTypography.label) }
+                    ) { Text("删除标记项并进入整理", fontSize = UiTypography.label) }
                 }
                 WorkflowStage.PROBE_REVIEW -> {
                     OutlinedButton(
