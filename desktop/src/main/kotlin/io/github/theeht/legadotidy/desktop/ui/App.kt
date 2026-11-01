@@ -2414,7 +2414,10 @@ private fun CompareGroupDialog(
 ) {
     val candidates = group.sourceIds.mapNotNull { id -> state.sources.firstOrNull { it.id == id } }
     var keepId by remember(group.number) {
-        mutableStateOf(candidates.firstOrNull { !it.deleteMarked }?.id)
+        mutableStateOf(
+            candidates.firstOrNull { it.id == group.suggestedKeepId && canBeSelectedAsDuplicateKeeper(it.deleteMarked) }?.id
+                ?: candidates.firstOrNull { canBeSelectedAsDuplicateKeeper(it.deleteMarked) }?.id
+        )
     }
     var keepAll by remember(group.number) {
         mutableStateOf(candidates.isNotEmpty() && candidates.all { !it.deleteMarked })
@@ -2458,14 +2461,14 @@ private fun CompareGroupDialog(
                     Modifier.fillMaxWidth().heightIn(max = 400.dp).verticalScroll(rememberScrollState()),
                 ) {
                     candidates.forEachIndexed { index, source ->
-                        val recommended = source.id == group.suggestedKeepId
-                        val selectedKeep = !source.deleteMarked && !keepAll && source.id == keepId
+                        val recommended = source.id == group.suggestedKeepId && canBeSelectedAsDuplicateKeeper(source.deleteMarked)
+                        val selectedKeep = canBeSelectedAsDuplicateKeeper(source.deleteMarked) && !keepAll && source.id == keepId
                         val proposedKeep = keepAll || selectedKeep
                         val differences = ruleDifferenceSummary(differingRuleKeys, source)
                         Row(
                             Modifier.fillMaxWidth()
                                 .background(if (selectedKeep) SoftBlue else Color.White)
-                                .clickable(enabled = !state.busy && !keepAll && !source.deleteMarked) { keepId = source.id }
+                                .clickable(enabled = !state.busy && !keepAll && canBeSelectedAsDuplicateKeeper(source.deleteMarked)) { keepId = source.id }
                                 .padding(horizontal = 14.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -2539,7 +2542,7 @@ private fun CompareGroupDialog(
                         Checkbox(
                             checked = keepAll,
                             onCheckedChange = { keepAll = it },
-                            enabled = !state.busy && candidates.any { !it.deleteMarked },
+                            enabled = !state.busy && candidates.any { canBeSelectedAsDuplicateKeeper(it.deleteMarked) },
                             modifier = Modifier.size(30.dp),
                         )
                         Text("保留本组全部未标记项", fontSize = UiTypography.label, color = BodyText)
@@ -2549,12 +2552,12 @@ private fun CompareGroupDialog(
                     Button(
                         onClick = {
                             candidates.forEach { candidate ->
-                                val keep = !candidate.deleteMarked && (keepAll || candidate.id == keepId)
+                                val keep = canBeSelectedAsDuplicateKeeper(candidate.deleteMarked) && (keepAll || candidate.id == keepId)
                                 val index = state.sources.indexOfFirst { it.id == candidate.id }
                                 if (index >= 0) state.sources[index] = state.sources[index].copy(
                                     // A marked source stays marked. This dialog can select
                                     // among unmarked candidates, but cannot revive a delete mark.
-                                    deleteMarked = candidate.deleteMarked || !keep,
+                                    deleteMarked = preserveDeleteMarkAfterDuplicateChoice(candidate.deleteMarked, keep),
                                     userDecision = true,
                                     suggestion = when {
                                         candidate.deleteMarked -> "已标记删除"
