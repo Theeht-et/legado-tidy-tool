@@ -12,6 +12,7 @@ import kotlinx.coroutines.runBlocking
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -27,19 +28,16 @@ class MockSiteProbeTest {
 
     private lateinit var server: HttpServer
     private var port: Int = 0
-    private var searchEmpty = false
+    @Volatile private var searchEmpty = false
     private val searchQueries = Collections.synchronizedList(mutableListOf<String>())
     private val discoveryPages = Collections.synchronizedList(mutableListOf<Int>())
-    private var bookInfoRequests = 0
-    private var contentRequests = 0
+    private val contentRequests = AtomicInteger()
 
     @BeforeTest
     fun start() {
         searchEmpty = false
         searchQueries.clear()
         discoveryPages.clear()
-        bookInfoRequests = 0
-        contentRequests = 0
 
         server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         port = server.address.port
@@ -82,7 +80,6 @@ class MockSiteProbeTest {
         }
 
         server.createContext("/book/1/") { exchange ->
-            bookInfoRequests += 1
             respond(
                 exchange,
                 """
@@ -101,7 +98,7 @@ class MockSiteProbeTest {
         }
 
         server.createContext("/book/1/c1") { exchange ->
-            contentRequests += 1
+            contentRequests.incrementAndGet()
             respond(
                 exchange,
                 """
@@ -209,7 +206,7 @@ class MockSiteProbeTest {
 
         assertEquals(ProbeStatus.OK, result.status, "详情：" + result.detail)
         assertEquals(listOf(1), discoveryPages.toList())
-        assertTrue(contentRequests >= 1)
+        assertTrue(contentRequests.get() >= 1)
 
         val domainIndex = result.stageResults.indexOfFirst { it.stage == ProbeStage.DOMAIN }
         val searchIndex = result.stageResults.indexOfFirst { it.stage == ProbeStage.SEARCH }
@@ -333,7 +330,7 @@ class MockSiteProbeTest {
             it.stage == ProbeStage.BOOK_INFO || it.stage == ProbeStage.TOC || it.stage == ProbeStage.CONTENT
         }.all { it.status == ProbeStageStatus.NOT_RUN })
         assertEquals(0, bookInfoRequests)
-        assertEquals(0, contentRequests)
+        assertEquals(0, contentRequests.get())
     }
 
     @Test
