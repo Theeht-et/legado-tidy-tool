@@ -193,6 +193,7 @@ object Deduper {
                     }
                     ProbeStageStatus.EMPTY -> 2
                     ProbeStageStatus.FAILED -> when (stage.failureStatus) {
+                        ProbeStatus.UNSUPPORTED, ProbeStatus.NEED_JS -> 0
                         ProbeStatus.NETWORK, ProbeStatus.TIMEOUT -> 1
                         ProbeStatus.HTTP_ERROR -> 2
                         else -> 3
@@ -228,6 +229,7 @@ object Deduper {
         ProbeStageStatus.EMPTY -> 2
         ProbeStageStatus.FAILED -> when (result.failureStatus) {
             ProbeStatus.NETWORK, ProbeStatus.TIMEOUT, ProbeStatus.HTTP_ERROR -> 1
+            ProbeStatus.UNSUPPORTED, ProbeStatus.NEED_JS -> -1
             else -> 0
         }
         ProbeStageStatus.NOT_RUN -> when (result.failureStatus) {

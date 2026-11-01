@@ -71,6 +71,31 @@ class PipelineTest {
 
 
     @Test
+    fun `错误规则组格式在流水线预检阶段被拦截`() = runBlocking {
+        var calls = 0
+        val engine = object : ProbeEngine {
+            override suspend fun probe(index: Int, source: BookSourceDoc, options: ProbeOptions): ProbeResult {
+                calls++
+                return ProbeResult(index, ProbeStatus.OK)
+            }
+        }
+        val source = Docs.doc("规则组格式错误", "https://invalid.example").also {
+            it.raw.add("ruleSearch", com.google.gson.JsonArray())
+        }
+
+        val result = Pipeline(engine).run(listOf(source))
+        val probe = result.probeResults.getValue(0)
+
+        assertEquals(0, calls)
+        assertEquals(ProbeStatus.ERROR, probe.status)
+        assertTrue(probe.detail.orEmpty().contains("ruleSearch"))
+        assertEquals(
+            listOf(ProbeStage.SEARCH, ProbeStage.BOOK_INFO, ProbeStage.TOC, ProbeStage.CONTENT),
+            probe.stageResults.map { it.stage },
+        )
+    }
+
+    @Test
     fun `缺少书源地址时记录未执行阶段且不调用引擎`() = runBlocking {
         var calls = 0
         val engine = object : ProbeEngine {

@@ -181,6 +181,28 @@ class MockSiteProbeTest {
     }
 
     @Test
+    fun `搜索无结果时明确记录详情目录正文未执行`() = runBlocking {
+        val brokenJson = sourceJson().replace("class.list@tag.li", "class.missing-list@tag.li")
+        val brokenDoc = BookSourceDoc(SourceIO.parse(brokenJson).single())
+
+        val result = LegadoProbeEngine().probe(0, brokenDoc, options(ProbeDepth.FULL_CHAIN))
+
+        assertEquals(ProbeStatus.PARSE_EMPTY, result.status, "详情：${result.detail}")
+        assertEquals(
+            listOf(
+                io.github.theeht.legadotidy.probe.ProbeStage.SEARCH,
+                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
+                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
+                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
+            ),
+            result.stageResults.map { it.stage },
+        )
+        assertTrue(result.stageResults.drop(1).all {
+            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.NOT_RUN
+        })
+    }
+
+    @Test
     fun `连目录一起验能拿到章节`() = runBlocking {
         val result = LegadoProbeEngine().probe(0, doc(), options(ProbeDepth.WITH_TOC))
 

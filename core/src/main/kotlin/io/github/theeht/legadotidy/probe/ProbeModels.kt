@@ -88,7 +88,6 @@ data class ProbeResult(
     val ok: Boolean get() = status == ProbeStatus.OK
 }
 
-/** 引擎实现方在 core 侧的唯一接口，方便用假引擎写单测。 */
 /**
  * Ordered stages expected for one validation run. Discovery has a category parsing
  * prerequisite in addition to its paging stage.
@@ -120,6 +119,7 @@ fun notRunProbeStages(
             ProbeStageResult(stage, ProbeStageStatus.NOT_RUN, detail = reason)
         }
 
+/** 引擎实现方在 core 侧的唯一接口，方便用假引擎写单测。 */
 interface ProbeEngine {
     suspend fun probe(index: Int, source: BookSourceDoc, options: ProbeOptions): ProbeResult
 }

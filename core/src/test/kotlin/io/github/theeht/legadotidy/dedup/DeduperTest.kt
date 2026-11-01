@@ -161,6 +161,36 @@ class DeduperTest {
     }
 
     @Test
+    fun `工具不支持的阶段不按书源规则失败计入惩罚`() {
+        val unverified = Docs.docFromJson(
+            """{"bookSourceName":"当前环境不支持","bookSourceUrl":"https://same.example","searchUrl":"https://example.com/search?q=%s","ruleSearch":{"bookList":"//div"}}"""
+        )
+        val configured = Docs.doc("配置更完整", "https://same.example")
+        val probe = ProbeResult(
+            index = 0,
+            status = ProbeStatus.UNSUPPORTED,
+            stageResults = listOf(
+                ProbeStageResult(
+                    ProbeStage.SEARCH,
+                    ProbeStageStatus.FAILED,
+                    detail = "当前环境不支持 WebView",
+                    failureStatus = ProbeStatus.UNSUPPORTED,
+                ),
+                ProbeStageResult(ProbeStage.BOOK_INFO, ProbeStageStatus.NOT_RUN),
+                ProbeStageResult(ProbeStage.TOC, ProbeStageStatus.NOT_RUN),
+                ProbeStageResult(ProbeStage.CONTENT, ProbeStageStatus.NOT_RUN),
+            ),
+        )
+
+        val group = Deduper.run(
+            listOf(unverified, configured),
+            probeResults = mapOf(0 to probe),
+        ).groups.single()
+
+        assertEquals(1, group.keep)
+    }
+
+    @Test
     fun `核心阶段校验通过数量优先于规则配置完整度`() {
         val leanButWorking = Docs.docFromJson(
             """{"bookSourceName":"实际可用","bookSourceUrl":"https://same.example","searchUrl":"https://example.com/search?q=%s","ruleSearch":{"bookList":"//div"}}"""
