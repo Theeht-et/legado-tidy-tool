@@ -990,13 +990,18 @@ fun TidyApp() {
                             (state.stage == WorkflowStage.PROBE_REVIEW ||
                                 state.stage == WorkflowStage.ORGANIZE_REVIEW) && editedProbeInputsChanged
                         ) {
+                            val returningFromOrganize = state.stage == WorkflowStage.ORGANIZE_REVIEW
                             state.completed = state.sources.count { it.probe != null }
                             state.total = state.sources.size
-                            if (state.stage == WorkflowStage.ORGANIZE_REVIEW) {
+                            if (returningFromOrganize) {
                                 state.stage = WorkflowStage.PROBE_REVIEW
                                 resetLaterStageDecisionsForValidationReview(id)
                             }
-                            state.notice = "书源地址或类型已修改；整理阶段的删除标记和手动选择已清空，该书源需要重新校验。"
+                            state.notice = if (returningFromOrganize) {
+                                "书源地址或类型已修改；整理阶段的删除标记和手动选择已清空，该书源需要重新校验。"
+                            } else {
+                                "书源地址或类型已修改，该书源需要重新校验；当前校验阶段的其他删除标记保持不变。"
+                            }
                         }
                     }
                     editingId = null
@@ -2452,7 +2457,7 @@ private fun CompareGroupDialog(
                 ) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text("重复组 ${group.number}", fontSize = UiTypography.emphasis, fontWeight = FontWeight.Bold, color = Ink)
-                        Text("可修改本组保留项；保存后未选中的候选将标记删除。", fontSize = UiTypography.caption, color = Muted)
+                        Text("可明确选择一个保留项或保留全部；未作选择时不会更改当前标记。", fontSize = UiTypography.caption, color = Muted)
                     }
                     TextButton(onClick = onDismiss, contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)) {
                         Text("×", fontSize = UiTypography.pageTitle, color = Muted)
