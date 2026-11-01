@@ -377,6 +377,7 @@ class LegadoProbeEngine(
                             if (url.isNullOrBlank()) {
                                 throw NoStackTraceException("发现规则为空")
                             }
+                            bookSource.removeGroup("发现规则为空")
                             // 与上游 CheckSourceService 相同：分类解析结束后直接请求第一页。
                             WebBook.exploreBookAwait(
                                 bookSource = bookSource,
@@ -419,6 +420,12 @@ class LegadoProbeEngine(
             }
         }
 
+        // 上游 Debug.getRespondTime 在 checkSource 的错误处理完成后立即取值；
+        // 不把后续仅用于 UI 的 NOT_RUN 状态补齐工作计入总响应耗时。
+        val actualElapsedMs = totalStartedAt?.let {
+            (System.currentTimeMillis() - it).coerceAtLeast(0L)
+        } ?: 0L
+
         // 保证详情页六个阶段都有明确状态；已执行项不会被覆盖。
         if (!hasStage(ProbeStage.DOMAIN)) {
             addNotRun(
@@ -458,10 +465,6 @@ class LegadoProbeEngine(
         if (!hasStage(ProbeStage.CONTENT, "发现结果")) {
             addNotRun(ProbeStage.CONTENT, "发现阶段未产生可校验书籍", "发现结果")
         }
-
-        val actualElapsedMs = totalStartedAt?.let {
-            (System.currentTimeMillis() - it).coerceAtLeast(0L)
-        } ?: 0L
 
         val status = when {
             failure != null -> classifyFinal(failure!!)
