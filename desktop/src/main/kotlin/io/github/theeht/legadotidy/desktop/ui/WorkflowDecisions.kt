@@ -43,7 +43,7 @@ internal fun <T> planMarkedDeletions(
 
 /** Probe outcomes that should enter the pending-delete bucket by default. */
 internal fun shouldMarkForDeletionByDefault(status: ProbeStatus): Boolean =
-    status != ProbeStatus.OK
+    status != ProbeStatus.OK && status != ProbeStatus.UNCHECKABLE
 
 /** A manual decision must survive recalculating duplicate groups and other automatic suggestions. */
 internal fun resolveDeleteMark(
@@ -58,7 +58,7 @@ internal fun resolveDeleteMark(
  */
 internal fun shouldShowInExceptionReview(status: ProbeStatus?, deleteMarked: Boolean): Boolean =
     !deleteMarked && status != null &&
-        status != ProbeStatus.OK && status != ProbeStatus.SKIPPED
+        status != ProbeStatus.OK && status != ProbeStatus.UNCHECKABLE && status != ProbeStatus.SKIPPED
 
 /**
  * Single source of truth for the category filters shown above the source list.
