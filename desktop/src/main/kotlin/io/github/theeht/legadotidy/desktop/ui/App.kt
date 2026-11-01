@@ -541,7 +541,7 @@ fun TidyApp() {
             OrganizeRule.REMOVE_ADVERTISING_WORDS,
             OrganizeRule.KEEP_ORIGINAL_GROUPS,
         )
-        state.notice = "去重审核完成，所有标记删除项已从工作池移除。现在整理剩余书源。"
+        state.notice = "去重阶段待删除项已全部移除；现在只整理剩余书源。"
     }
 
     fun confirmValidation() {
@@ -2135,7 +2135,7 @@ private fun WorkflowNavigationBar(
                         enabled = state.sources.isNotEmpty() && !state.busy,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                    ) { Text("删除标记项并进入整理", fontSize = UiTypography.label) }
+                    ) { Text("删除去重标记并进入整理", fontSize = UiTypography.label) }
                 }
                 WorkflowStage.PROBE_REVIEW -> {
                     OutlinedButton(
@@ -2159,7 +2159,7 @@ private fun WorkflowNavigationBar(
                             enabled = state.sources.isNotEmpty(),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                        ) { Text("确认校验并开始去重", fontSize = UiTypography.label) }
+                        ) { Text("删除校验标记并开始去重", fontSize = UiTypography.label) }
                     }
                 }
                 WorkflowStage.ORGANIZE_REVIEW -> {
@@ -2185,7 +2185,7 @@ private fun WorkflowNavigationBar(
                             enabled = !state.busy,
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                        ) { Text("确认整理并导出", fontSize = UiTypography.label) }
+                        ) { Text("删除整理标记并进入导出", fontSize = UiTypography.label) }
                     }
                 }
                 WorkflowStage.EXPORT -> {
