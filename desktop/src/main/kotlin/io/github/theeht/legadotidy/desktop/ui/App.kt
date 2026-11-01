@@ -489,12 +489,12 @@ fun TidyApp() {
                 }
                 if (state.sources.all { it.probe != null }) {
                     val marked = state.sources.count { it.deleteMarked }
-                    state.notice = "校验完成。\${marked} 个书源至少有一项上游校验未通过，已标记为待删除；无法检测域名的书源不会因此自动标记删除。"
+                    state.notice = "校验完成。" + marked + " 个书源至少有一项上游校验未通过，已标记为待删除；无法检测域名的书源不会因此自动标记删除。"
                 }
             } catch (e: CancellationException) {
                 state.error = "校验已停止；已完成的结果已保留，可继续校验剩余书源。"
             } catch (e: Throwable) {
-                state.error = "校验任务失败：\${e.message ?: e::class.java.simpleName}"
+                state.error = "校验任务失败：" + (e.message ?: e::class.java.simpleName)
             } finally {
                 state.busy = false
                 activeJob = null
