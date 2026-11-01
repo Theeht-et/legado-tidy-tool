@@ -276,10 +276,17 @@ private class WorkflowState {
     var previewOrder by mutableStateOf<List<Int>>(emptyList())
     var exported by mutableStateOf<ExportResult?>(null)
 
-    var keyword by mutableStateOf("剑来")
+    var keyword by mutableStateOf("我的")
     var concurrency by mutableStateOf(100)
-    var timeoutSeconds by mutableStateOf(20)
+    var timeoutSeconds by mutableStateOf(180)
     var proxy by mutableStateOf("")
+    var checkDomain by mutableStateOf(false)
+    var checkSearch by mutableStateOf(true)
+    var checkDiscovery by mutableStateOf(true)
+    var checkInfo by mutableStateOf(true)
+    var checkCategory by mutableStateOf(true)
+    var checkContent by mutableStateOf(true)
+    var writeErrorComment by mutableStateOf(true)
     var exportDir by mutableStateOf(defaultExportDir())
     var directUrl by mutableStateOf("")
 
@@ -416,32 +423,31 @@ fun TidyApp() {
         state.busy = true
         state.error = null
         state.total = state.sources.size
-        val entry = ProbeEntry.SEARCH
-        val depth = ProbeDepth.FULL_CHAIN
         val keyword = state.keyword
         val timeoutMs = state.timeoutSeconds.coerceAtLeast(1) * 1000L
         val proxy = state.proxy.trim().takeIf { it.isNotEmpty() }
         val concurrency = state.concurrency.coerceIn(1, 2000)
+        val options = ProbeOptions(
+            timeoutMs = timeoutMs,
+            keyword = keyword,
+            proxy = proxy,
+            checkDomain = state.checkDomain,
+            checkSearch = state.checkSearch,
+            checkDiscovery = state.checkDiscovery,
+            checkInfo = state.checkInfo,
+            checkCategory = state.checkCategory,
+            checkContent = state.checkContent,
+            writeErrorComment = state.writeErrorComment,
+        )
         val snapshot = state.sources.toList()
         val pending = snapshot.filter { source ->
             val previous = source.probe
             previous == null ||
-                previous.entry != entry ||
-                previous.depth != depth ||
-                previous.keyword != keyword ||
-                previous.timeoutMs != timeoutMs ||
-                previous.proxy != proxy ||
+                previous.options != options ||
                 previous.status == ProbeStatus.SKIPPED
         }
         state.completed = snapshot.size - pending.size
-        state.notice = "正在使用 Legado 搜索入口执行完整校验链：搜索、详情、目录和正文。"
-        val options = ProbeOptions(
-            depth = depth,
-            timeoutMs = timeoutMs,
-            keyword = keyword,
-            proxy = proxy,
-            entry = entry,
-        )
+        state.notice = "正在按 Legado 上游顺序校验：域名检测 → 搜索及结果校验 → 发现及结果校验。"
         activeJob = scope.launch {
             try {
                 val gate = Semaphore(concurrency)
@@ -450,34 +456,20 @@ fun TidyApp() {
                     pending.map { source ->
                         async(Dispatchers.IO) {
                             val index = snapshot.indexOfFirst { it.id == source.id }
-                            val result = if (!source.doc.canSearch) {
+                            val result = try {
+                                gate.withPermit { probeEngine.probe(index, source.doc, options) }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Throwable) {
                                 ProbeResult(
-                                    index,
-                                    ProbeStatus.NO_SEARCH_URL,
-                                    detail = "未配置上游搜索入口（普通源需要 searchUrl，JS 源需要 mainJs）",
-                                    entry = entry,
-                                    depth = depth,
+                                    index = index,
+                                    status = ProbeStatus.ERROR,
+                                    detail = e.message ?: e::class.java.simpleName,
                                     keyword = keyword,
                                     timeoutMs = timeoutMs,
                                     proxy = proxy,
+                                    options = options,
                                 )
-                            } else {
-                                try {
-                                    gate.withPermit { probeEngine.probe(index, source.doc, options) }
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Throwable) {
-                                    ProbeResult(
-                                        index,
-                                        ProbeStatus.ERROR,
-                                        detail = e.message ?: e::class.java.simpleName,
-                                        entry = entry,
-                                        depth = depth,
-                                        keyword = keyword,
-                                        timeoutMs = timeoutMs,
-                                        proxy = proxy,
-                                    )
-                                }
                             }
                             withContext(Dispatchers.Main) {
                                 val currentIndex = state.sources.indexOfFirst { it.id == source.id }
@@ -497,12 +489,12 @@ fun TidyApp() {
                 }
                 if (state.sources.all { it.probe != null }) {
                     val marked = state.sources.count { it.deleteMarked }
-                    state.notice = "校验完成。${marked} 个书源至少有一项校验未通过，已标记为待删除；可在复核后取消标记。"
+                    state.notice = "校验完成。\${marked} 个书源至少有一项上游校验未通过，已标记为待删除；无法检测域名的书源不会因此自动标记删除。"
                 }
             } catch (e: CancellationException) {
                 state.error = "校验已停止；已完成的结果已保留，可继续校验剩余书源。"
             } catch (e: Throwable) {
-                state.error = "校验任务失败：${e.message ?: e::class.java.simpleName}"
+                state.error = "校验任务失败：\${e.message ?: e::class.java.simpleName}"
             } finally {
                 state.busy = false
                 activeJob = null
@@ -1404,7 +1396,7 @@ private fun TableHeader(showNameComparison: Boolean = false) {
         Text("URL", Modifier.weight(if (showNameComparison) 1.95f else 2.15f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
         Text("类型", Modifier.weight(0.65f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
         Text("分组", Modifier.weight(0.9f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
-        Text("耗时", Modifier.weight(0.6f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("响应耗时", Modifier.weight(0.6f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
         Text("状态", Modifier.weight(0.95f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
         Text("建议", Modifier.weight(1.1f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
         Text("操作", Modifier.weight(1.35f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
@@ -1930,7 +1922,7 @@ private fun DetailOverviewContent(source: WorkflowSource) {
                     result.stageResults.forEach { stage ->
                         val count = if (stage.itemCount > 0) " · ${stage.itemCount} 项" else ""
                         Text(
-                            "${stage.stage.label}：${stage.status.label}${count} · ${stage.elapsedMs}ms",
+                            "${stage.context?.let { "$it · " }.orEmpty()}${stage.stage.label}：${stage.status.label}${count} · ${stage.elapsedMs}ms",
                             fontSize = UiTypography.caption,
                             color = when (stage.status) {
                                 io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS -> Ok
@@ -2275,8 +2267,21 @@ private fun SettingsDialog(state: WorkflowState, onDismiss: () -> Unit, onChoose
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    "校验模式固定为完整搜索链：搜索 → 详情 → 目录 → 正文。",
+                    "校验项目（默认值与 Legado 上游一致）",
                     fontSize = UiTypography.body,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Ink,
+                )
+                ProbeOptionRow("域名检测", state.checkDomain) { state.checkDomain = it }
+                ProbeOptionRow("搜索", state.checkSearch) { state.checkSearch = it }
+                ProbeOptionRow("发现", state.checkDiscovery) { state.checkDiscovery = it }
+                ProbeOptionRow("书籍详情", state.checkInfo) { state.checkInfo = it }
+                ProbeOptionRow("目录", state.checkCategory) { state.checkCategory = it }
+                ProbeOptionRow("正文", state.checkContent) { state.checkContent = it }
+                ProbeOptionRow("记录错误注释", state.writeErrorComment) { state.writeErrorComment = it }
+                Text(
+                    "单源超时包住整轮校验，默认 180 秒；域名 Socket 检测另按上游使用 2 秒超时。书源 ruleSearch.checkKeyWord 有效时优先于上方默认关键词。",
+                    fontSize = UiTypography.caption,
                     color = Muted,
                 )
                 OutlinedTextField(
@@ -2297,6 +2302,24 @@ private fun SettingsDialog(state: WorkflowState, onDismiss: () -> Unit, onChoose
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } },
     )
+}
+
+@Composable
+private fun ProbeOptionRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+        )
+        Text(label, fontSize = UiTypography.body, color = BodyText)
+    }
 }
 
 @Composable
