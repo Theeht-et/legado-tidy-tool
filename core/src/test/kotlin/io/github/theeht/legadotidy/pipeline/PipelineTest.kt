@@ -86,7 +86,11 @@ class PipelineTest {
         assertEquals(0, calls)
         assertEquals(ProbeStatus.ERROR, probe.status)
         assertEquals(ProbeStage.SEARCH, probe.stageResults.single().stage)
-        assertEquals(ProbeStageStatus.NOT_RUN, probe.stageResults.single().status)
+        assertEquals(ProbeStageStatus.NOT_RUN, probe.stageResults.first().status)
+        assertEquals(
+            listOf(ProbeStage.SEARCH, ProbeStage.BOOK_INFO, ProbeStage.TOC, ProbeStage.CONTENT),
+            probe.stageResults.map { it.stage },
+        )
         assertTrue(probe.detail.orEmpty().contains("bookSourceUrl"))
     }
 

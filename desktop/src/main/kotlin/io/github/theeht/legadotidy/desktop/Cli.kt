@@ -4,6 +4,7 @@ import io.github.theeht.legadotidy.engine.LegadoProbeEngine
 import io.github.theeht.legadotidy.export.ExportConfig
 import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.model.SourceIO
+import io.github.theeht.legadotidy.model.ImportIssueSeverity
 import io.github.theeht.legadotidy.pipeline.Phase
 import io.github.theeht.legadotidy.pipeline.Pipeline
 import io.github.theeht.legadotidy.pipeline.PipelineConfig
@@ -49,6 +50,18 @@ fun runCli(args: Array<String>): Int {
     if (docs.isEmpty()) {
         System.err.println("文件里没有书源：${input.absolutePath}")
         return 2
+    }
+
+    val importIssues = docs.mapIndexed { index, doc -> index to SourceIO.validateSource(doc.raw) }
+        .filter { (_, issues) -> issues.isNotEmpty() }
+    if (importIssues.isNotEmpty()) {
+        val errors = importIssues.sumOf { (_, issues) ->
+            issues.count { it.severity == ImportIssueSeverity.ERROR }
+        }
+        val warnings = importIssues.sumOf { (_, issues) ->
+            issues.count { it.severity == ImportIssueSeverity.WARNING }
+        }
+        println("导入检查：${importIssues.size} 个书源有提示，错误 ${errors} 项，提醒 ${warnings} 项；问题记录仍保留。")
     }
 
     val selected = if (opts.limit > 0) docs.take(opts.limit) else docs

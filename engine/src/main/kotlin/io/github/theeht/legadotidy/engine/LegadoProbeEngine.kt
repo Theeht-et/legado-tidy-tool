@@ -126,7 +126,11 @@ class LegadoProbeEngine(
         }
 
         val stageResults = ArrayList<ProbeStageResult>(4)
-        var activeStage = ProbeStage.SEARCH
+        var activeStage = if (options.entry == ProbeEntry.EXPLORE) {
+            ProbeStage.EXPLORE_CATEGORIES
+        } else {
+            ProbeStage.SEARCH
+        }
         var hits: List<SearchBook> = emptyList()
         var bookCount = 0
         var httpCode: Int? = null

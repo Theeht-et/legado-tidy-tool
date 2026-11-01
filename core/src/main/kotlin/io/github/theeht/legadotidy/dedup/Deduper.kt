@@ -186,7 +186,11 @@ object Deduper {
         } else {
             relevantResults.sumOf { stage ->
                 when (stage.status) {
-                    ProbeStageStatus.SUCCESS, ProbeStageStatus.NOT_RUN -> 0
+                    ProbeStageStatus.SUCCESS -> 0
+                    ProbeStageStatus.NOT_RUN -> when (stage.failureStatus) {
+                        ProbeStatus.NO_SEARCH_URL, ProbeStatus.NO_EXPLORE_CATEGORY, ProbeStatus.ERROR -> 3
+                        else -> 0
+                    }
                     ProbeStageStatus.EMPTY -> 2
                     ProbeStageStatus.FAILED -> when (stage.failureStatus) {
                         ProbeStatus.NETWORK, ProbeStatus.TIMEOUT -> 1
@@ -226,7 +230,10 @@ object Deduper {
             ProbeStatus.NETWORK, ProbeStatus.TIMEOUT, ProbeStatus.HTTP_ERROR -> 1
             else -> 0
         }
-        ProbeStageStatus.NOT_RUN -> -1
+        ProbeStageStatus.NOT_RUN -> when (result.failureStatus) {
+            ProbeStatus.NO_SEARCH_URL, ProbeStatus.NO_EXPLORE_CATEGORY, ProbeStatus.ERROR -> 0
+            else -> -1
+        }
     }
 
     private fun fallbackFailurePenalty(status: ProbeStatus?): Int = when (status) {

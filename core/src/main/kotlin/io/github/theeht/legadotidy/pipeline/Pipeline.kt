@@ -7,6 +7,8 @@ import io.github.theeht.legadotidy.export.ExportConfig
 import io.github.theeht.legadotidy.export.ExportResult
 import io.github.theeht.legadotidy.export.Exporter
 import io.github.theeht.legadotidy.model.BookSourceDoc
+import io.github.theeht.legadotidy.model.SourceIO
+import io.github.theeht.legadotidy.model.ImportIssueSeverity
 import io.github.theeht.legadotidy.organize.OrganizeConfig
 import io.github.theeht.legadotidy.organize.OrganizeReport
 import io.github.theeht.legadotidy.organize.Organizer
@@ -177,9 +179,14 @@ class Pipeline(private val engine: ProbeEngine) {
                     io.github.theeht.legadotidy.probe.ProbeEntry.EXPLORE -> !source.canExplore
                 }
                 val missingUrl = source.url.isBlank()
-                val result = if (missingUrl || missingEntry) {
+                val importErrors = SourceIO.validateSource(source.raw)
+                    .filter { it.severity == ImportIssueSeverity.ERROR }
+                val result = if (missingUrl || importErrors.isNotEmpty() || missingEntry) {
                     val (status, detail) = when {
                         missingUrl -> ProbeStatus.ERROR to "缺少必要字段 bookSourceUrl，未发起网络校验"
+                        importErrors.isNotEmpty() -> ProbeStatus.ERROR to importErrors.joinToString("；") {
+                            it.field + "：" + it.message
+                        }
                         config.probe.entry == io.github.theeht.legadotidy.probe.ProbeEntry.SEARCH ->
                             ProbeStatus.NO_SEARCH_URL to "未配置上游搜索入口（普通源需要 searchUrl，JS 源需要 mainJs）"
                         else -> ProbeStatus.NO_EXPLORE_CATEGORY to "未配置上游发现入口（需要 exploreUrl）"
