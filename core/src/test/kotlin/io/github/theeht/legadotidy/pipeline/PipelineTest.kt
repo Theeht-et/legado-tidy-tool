@@ -3,7 +3,6 @@ package io.github.theeht.legadotidy.pipeline
 import io.github.theeht.legadotidy.dedup.Docs
 import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.probe.ProbeEngine
-import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
@@ -21,12 +20,15 @@ class PipelineTest {
 
     private class FakeEngine(private val failing: Set<Int> = emptySet()) : ProbeEngine {
         override suspend fun probe(index: Int, source: BookSourceDoc, options: ProbeOptions): ProbeResult =
-            if (index in failing) ProbeResult(index, ProbeStatus.TIMEOUT)
-            else ProbeResult(index, ProbeStatus.OK, bookCount = 10, elapsedMs = 5)
+            if (index in failing) {
+                ProbeResult(index, ProbeStatus.TIMEOUT, options = options)
+            } else {
+                ProbeResult(index, ProbeStatus.OK, bookCount = 10, elapsedMs = 5, options = options)
+            }
     }
 
     @Test
-    fun `四个阶段都有事件并导出文件`(@TempDir dir: Path) = runBlocking {
+    fun fourPhasesEmitEventsAndExportFile(@TempDir dir: Path) = runBlocking {
         val sources = List(5) { Docs.doc("源$it", "https://s$it.com") }
         val events = mutableListOf<PipelineEvent>()
         val result = Pipeline(FakeEngine()).run(
@@ -45,7 +47,7 @@ class PipelineTest {
     }
 
     @Test
-    fun `单源失败不影响整轮`(@TempDir dir: Path) = runBlocking {
+    fun oneSourceFailureDoesNotAbortTheWholePipeline(@TempDir dir: Path) = runBlocking {
         val sources = List(3) { Docs.doc("源$it", "https://s$it.com") }
         val result = Pipeline(FakeEngine(failing = setOf(1))).run(
             sources, PipelineConfig(exportDir = dir, concurrency = 3),
@@ -55,63 +57,41 @@ class PipelineTest {
     }
 
     @Test
-    fun `没有搜索规则的源直接标为不可校验`() = runBlocking {
-        val sources = listOf(Docs.doc("无搜索", "https://a.com", searchUrl = "", bookList = ""))
-        val result = Pipeline(FakeEngine()).run(
-            sources,
-            PipelineConfig(
-                probe = ProbeOptions(proxy = " http://127.0.0.1:7890 "),
-            ),
+    fun pipelineDoesNotPreRejectSourcesWithoutSearchUrl() = runBlocking {
+        val source = BookSourceDoc(
+            Docs.doc("无搜索", "https://a.com", searchUrl = "", bookList = "").raw,
         )
-        assertEquals(ProbeStatus.NO_SEARCH_URL, result.probeResults.getValue(0).status)
-        assertEquals("http://127.0.0.1:7890", result.probeResults.getValue(0).proxy)
-    }
-
-
-    @Test
-    fun `发现模式允许仅有发现入口的书源进入引擎`() = runBlocking {
-        val raw = Docs.doc("仅发现入口", "https://explore.example").raw.apply {
-            addProperty("searchUrl", "")
-            addProperty("exploreUrl", "/explore")
-        }
-        val source = BookSourceDoc(raw)
         assertTrue(!source.canSearch)
-        assertTrue(source.canExplore)
 
-        var receivedEntry: ProbeEntry? = null
+        var receivedSource: BookSourceDoc? = null
+        var receivedOptions: ProbeOptions? = null
         val engine = object : ProbeEngine {
             override suspend fun probe(
                 index: Int,
                 source: BookSourceDoc,
                 options: ProbeOptions,
             ): ProbeResult {
-                receivedEntry = options.entry
-                return ProbeResult(
-                    index = index,
-                    status = ProbeStatus.OK,
-                    entry = options.entry,
-                    depth = options.depth,
-                    keyword = options.keyword,
-                    timeoutMs = options.timeoutMs,
-                    maxExplorePages = options.maxExplorePages,
-                )
+                receivedSource = source
+                receivedOptions = options
+                return ProbeResult(index, ProbeStatus.OK, options = options)
             }
         }
-        val result = Pipeline(engine).run(
-            listOf(source),
-            PipelineConfig(
-                probe = ProbeOptions(entry = ProbeEntry.EXPLORE),
-            ),
+        val options = ProbeOptions(
+            checkSearch = false,
+            checkDiscovery = true,
+            proxy = " http://127.0.0.1:7890 ",
         )
+        val result = Pipeline(engine).run(listOf(source), PipelineConfig(probe = options))
 
-        assertEquals(ProbeEntry.EXPLORE, receivedEntry)
+        assertEquals(source, receivedSource)
+        assertEquals(false, receivedOptions?.checkSearch)
+        assertEquals(true, receivedOptions?.checkDiscovery)
         assertEquals(ProbeStatus.OK, result.probeResults.getValue(0).status)
-        assertEquals(ProbeEntry.EXPLORE, result.probeResults.getValue(0).entry)
+        assertEquals(" http://127.0.0.1:7890 ", result.probeResults.getValue(0).proxy)
     }
 
-
     @Test
-    fun `先校验全部重复候选再使用校验结果推荐保留项`() = runBlocking {
+    fun allDuplicateCandidatesAreProbedBeforeDeduplication() = runBlocking {
         val sources = listOf(
             Docs.doc("校验通过", "https://same.example"),
             Docs.doc("校验失败", "https://same.example"),
@@ -131,7 +111,7 @@ class PipelineTest {
     }
 
     @Test
-    fun `引擎取消异常会向上传播而不是转换成单源 ERROR`() = runBlocking {
+    fun cancellationFromEnginePropagatesInsteadOfBecomingSingleSourceError() = runBlocking {
         val engine = object : ProbeEngine {
             override suspend fun probe(
                 index: Int,
@@ -148,8 +128,16 @@ class PipelineTest {
     }
 
     @Test
-    fun `默认校验选项为完整搜索链`() {
-        assertEquals(io.github.theeht.legadotidy.probe.ProbeDepth.FULL_CHAIN, ProbeOptions().depth)
-        assertEquals(ProbeEntry.SEARCH, ProbeOptions().entry)
+    fun defaultProbeOptionsMatchLegadoCheckSourceDefaults() {
+        val options = ProbeOptions()
+        assertEquals("我的", options.keyword)
+        assertEquals(180_000L, options.timeoutMs)
+        assertEquals(false, options.checkDomain)
+        assertEquals(true, options.checkSearch)
+        assertEquals(true, options.checkDiscovery)
+        assertEquals(true, options.checkInfo)
+        assertEquals(true, options.checkCategory)
+        assertEquals(true, options.checkContent)
+        assertEquals(true, options.writeErrorComment)
     }
 }
