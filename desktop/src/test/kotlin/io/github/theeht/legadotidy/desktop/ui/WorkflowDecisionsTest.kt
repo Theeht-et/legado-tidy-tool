@@ -136,9 +136,13 @@ class WorkflowDecisionsTest {
     @Test
     fun `任一校验未通过都默认标记待删除`() {
         assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.OK))
-        ProbeStatus.values().filter { it != ProbeStatus.OK }.forEach { status ->
-            assertTrue(shouldMarkForDeletionByDefault(status), status.name)
-        }
+        ProbeStatus.values()
+            .filter { it != ProbeStatus.OK && it != ProbeStatus.UNCHECKABLE }
+            .forEach { status ->
+                assertTrue(shouldMarkForDeletionByDefault(status), status.name)
+            }
+        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.UNCHECKABLE))
+        assertFalse(shouldShowInExceptionReview(ProbeStatus.UNCHECKABLE, deleteMarked = false))
         assertTrue(shouldShowInExceptionReview(ProbeStatus.PARTIAL, deleteMarked = false))
         assertFalse(shouldShowInExceptionReview(ProbeStatus.PARTIAL, deleteMarked = true))
     }
@@ -167,6 +171,7 @@ class WorkflowDecisionsTest {
         assertTrue(matches("待校验", pending = true))
         assertFalse(matches("待校验", status = ProbeStatus.OK))
         assertTrue(matches("校验通过", status = ProbeStatus.OK))
+        assertTrue(matches("校验通过", status = ProbeStatus.UNCHECKABLE))
         assertFalse(matches("校验通过", status = ProbeStatus.NETWORK))
         assertFalse(matches("校验通过", status = ProbeStatus.PARTIAL))
         assertTrue(matches("异常 / 复核", status = ProbeStatus.NETWORK))
