@@ -160,6 +160,16 @@ class WorkflowDecisionsTest {
     }
 
     @Test
+    fun `重复组对比不能把已标记删除项重新设为保留`() {
+        assertFalse(canBeSelectedAsDuplicateKeeper(deleteMarked = true))
+        assertTrue(canBeSelectedAsDuplicateKeeper(deleteMarked = false))
+        assertTrue(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = true, requestedKeep = true))
+        assertTrue(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = true, requestedKeep = false))
+        assertFalse(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = false, requestedKeep = false))
+        assertFalse(preserveDeleteMarkAfterDuplicateChoice(currentlyMarked = false, requestedKeep = true))
+    }
+
+    @Test
     fun `去重建议可以新增删除标记但不能覆盖用户明确决定`() {
         assertTrue(
             resolveDuplicateDeleteMark(
