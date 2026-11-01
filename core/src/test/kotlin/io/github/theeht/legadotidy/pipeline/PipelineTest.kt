@@ -7,6 +7,8 @@ import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
+import io.github.theeht.legadotidy.probe.ProbeStage
+import io.github.theeht.legadotidy.probe.ProbeStageStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.io.TempDir
@@ -67,6 +69,26 @@ class PipelineTest {
         assertEquals("http://127.0.0.1:7890", result.probeResults.getValue(0).proxy)
     }
 
+
+    @Test
+    fun `缺少书源地址时记录未执行阶段且不调用引擎`() = runBlocking {
+        var calls = 0
+        val engine = object : ProbeEngine {
+            override suspend fun probe(index: Int, source: BookSourceDoc, options: ProbeOptions): ProbeResult {
+                calls++
+                return ProbeResult(index, ProbeStatus.OK)
+            }
+        }
+        val source = Docs.doc("无地址", "", searchUrl = "https://example.com/search?q=%s")
+        val result = Pipeline(engine).run(listOf(source))
+        val probe = result.probeResults.getValue(0)
+
+        assertEquals(0, calls)
+        assertEquals(ProbeStatus.ERROR, probe.status)
+        assertEquals(ProbeStage.SEARCH, probe.stageResults.single().stage)
+        assertEquals(ProbeStageStatus.NOT_RUN, probe.stageResults.single().status)
+        assertTrue(probe.detail.orEmpty().contains("bookSourceUrl"))
+    }
 
     @Test
     fun `发现模式允许仅有发现入口的书源进入引擎`() = runBlocking {

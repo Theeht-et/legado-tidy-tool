@@ -6,6 +6,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SourceIOTest {
@@ -52,6 +53,27 @@ class SourceIOTest {
 
         assertEquals(1, loaded.size)
         assertEquals("路径读取", loaded.single().get("bookSourceName").asString)
+    }
+
+    @Test
+    fun `导入检查报告缺少书源地址但保留记录`() {
+        val source = JsonParser.parseString("""{"bookSourceName":"缺少地址"}""").asJsonObject
+
+        val issues = SourceIO.validateSource(source)
+
+        assertEquals(1, issues.count { it.severity == ImportIssueSeverity.ERROR })
+        assertTrue(issues.any { it.field == SourceField.URL })
+        assertFalse(issues.any { it.field == SourceField.NAME && it.severity == ImportIssueSeverity.WARNING })
+    }
+
+    @Test
+    fun `规则组格式错误会产生导入错误但不丢弃记录`() {
+        val sources = SourceIO.parse("""[{"bookSourceName":"格式错误","bookSourceUrl":"https://example.com","ruleSearch":[]}]""")
+
+        val issues = SourceIO.validateSource(sources.single())
+
+        assertEquals(1, sources.size)
+        assertTrue(issues.any { it.field == SourceField.RULE_SEARCH && it.severity == ImportIssueSeverity.ERROR })
     }
 
     @Test

@@ -159,7 +159,7 @@ object Deduper {
             ProbeStatus.PARTIAL -> 0
             ProbeStatus.PARSE_EMPTY -> 2
             ProbeStatus.NETWORK, ProbeStatus.TIMEOUT, ProbeStatus.HTTP_ERROR -> 1
-            ProbeStatus.SKIPPED -> -1
+            ProbeStatus.SKIPPED, ProbeStatus.UNSUPPORTED, ProbeStatus.NEED_JS -> -1
             null -> -2
             else -> 0
         }
@@ -233,7 +233,7 @@ object Deduper {
         ProbeStatus.NETWORK, ProbeStatus.TIMEOUT -> 1
         ProbeStatus.HTTP_ERROR -> 2
         ProbeStatus.PARSE_EMPTY -> 2
-        ProbeStatus.SKIPPED, null, ProbeStatus.OK -> 0
+        ProbeStatus.SKIPPED, ProbeStatus.UNSUPPORTED, ProbeStatus.NEED_JS, null, ProbeStatus.OK -> 0
         else -> 3
     }
 

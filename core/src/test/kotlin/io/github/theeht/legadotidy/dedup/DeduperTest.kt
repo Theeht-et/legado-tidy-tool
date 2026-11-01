@@ -4,6 +4,9 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.probe.ProbeResult
+import io.github.theeht.legadotidy.probe.ProbeStage
+import io.github.theeht.legadotidy.probe.ProbeStageResult
+import io.github.theeht.legadotidy.probe.ProbeStageStatus
 import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -158,7 +161,46 @@ class DeduperTest {
     }
 
     @Test
-    fun `核心配置完整度优先于偶然更快的响应速度`() {
+    fun `核心阶段校验通过数量优先于规则配置完整度`() {
+        val leanButWorking = Docs.docFromJson(
+            """{"bookSourceName":"实际可用","bookSourceUrl":"https://same.example","searchUrl":"https://example.com/search?q=%s","ruleSearch":{"bookList":"//div"}}"""
+        )
+        val richButFailing = Docs.doc("配置完整但详情失败", "https://same.example")
+        val richInfo = com.google.gson.JsonObject().apply { addProperty("name", "//h1") }
+        richButFailing.raw.add("ruleBookInfo", richInfo)
+
+        val workingResult = ProbeResult(
+            index = 0,
+            status = ProbeStatus.OK,
+            stageResults = listOf(
+                ProbeStageResult(ProbeStage.SEARCH, ProbeStageStatus.SUCCESS, elapsedMs = 100),
+                ProbeStageResult(ProbeStage.BOOK_INFO, ProbeStageStatus.SUCCESS, elapsedMs = 100),
+                ProbeStageResult(ProbeStage.TOC, ProbeStageStatus.SUCCESS, elapsedMs = 100),
+                ProbeStageResult(ProbeStage.CONTENT, ProbeStageStatus.SUCCESS, elapsedMs = 100),
+            ),
+        )
+        val failingResult = ProbeResult(
+            index = 1,
+            status = ProbeStatus.PARTIAL,
+            stageResults = listOf(
+                ProbeStageResult(ProbeStage.SEARCH, ProbeStageStatus.SUCCESS, elapsedMs = 50),
+                ProbeStageResult(ProbeStage.BOOK_INFO, ProbeStageStatus.FAILED, detail = "详情解析失败", failureStatus = ProbeStatus.ERROR),
+                ProbeStageResult(ProbeStage.TOC, ProbeStageStatus.NOT_RUN, detail = "详情阶段未通过"),
+                ProbeStageResult(ProbeStage.CONTENT, ProbeStageStatus.NOT_RUN, detail = "详情阶段未通过"),
+            ),
+        )
+
+        val group = Deduper.run(
+            listOf(leanButWorking, richButFailing),
+            probeResults = mapOf(0 to workingResult, 1 to failingResult),
+        ).groups.single()
+
+        assertEquals(0, group.keep)
+        assertTrue(group.recommendationReason.contains("核心功能成功阶段更多"))
+    }
+
+    @Test
+    fun `实际响应速度优先于配置完整度`() {
         val complete = Docs.doc("规则较完整", "https://same.example")
         val lean = Docs.docFromJson(
             """{"bookSourceName":"配置较少","bookSourceUrl":"https://same.example","searchUrl":"https://example.com/search?q=%s","ruleSearch":{"bookList":"//div"}}"""
@@ -172,7 +214,7 @@ class DeduperTest {
             ),
         )
 
-        assertEquals(0, report.groups.single().keep)
+        assertEquals(1, report.groups.single().keep)
     }
 
     @Test
@@ -188,12 +230,14 @@ class DeduperTest {
     }
 
     @Test
-    fun `评分相同时稳定保留原列表靠前项`() {
+    fun `评分相同时稳定保留原列表靠前项且仍有推荐理由`() {
         val sources = listOf(
             Docs.doc("甲", "https://a.com"),
             Docs.doc("乙", "https://a.com"),
         )
-        assertEquals(0, Deduper.run(sources).groups.single().keep)
+        val group = Deduper.run(sources).groups.single()
+        assertEquals(0, group.keep)
+        assertTrue(group.recommendationReason.isNotBlank())
     }
 
     @Test
