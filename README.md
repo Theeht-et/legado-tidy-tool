@@ -33,18 +33,26 @@ python3 scripts/fetch-engine-jar.py # 拉 htmlunit-core-js jar（唯一的二进
 ./gradlew :desktop:run             # 或：gradle :desktop:run
 ```
 
-打出免安装便携目录（自带精简 JRE，双击即用，无黑窗）：
+## Windows 原生 EXE
 
-```bash
-gradle :desktop:portable
-# 产物：desktop/build/portable/legado-tidy/
+在 Windows 主机上执行（需要 JDK 21 与 Gradle 8.14.4）：
+
+```powershell
+gradle :desktop:windowsAppImage
 ```
 
-命令行跑一次（不进界面）：
+产物目录：
 
-```bash
-gradle :desktop:cli -Pargs="--in sources.json --limit 20"
+```text
+desktop/build/windows-app-image/legado-tidy/
+  legado-tidy.exe
+  app/       应用依赖、Skiko DLL/DAT
+  runtime/   随程序分发的精简 JRE
 ```
+
+双击 `legado-tidy.exe` 即可启动图形界面。它是 jpackage 生成的 Windows 原生 GUI 启动器，不需要用户另装 Java，也不需要 BAT/VBS 脚本。分发时请完整保留 `legado-tidy/` 目录，不要只复制 EXE 文件。当前输出是免安装应用目录（app-image），不是安装向导。
+
+打包时会将 Skiko Runtime JAR 顶层的 DLL/DAT 提取到 `app/`，并从对应 JAR 中移除相同资源；JAR 中其余类和资源仍保留，避免重复分发原生文件。
 
 ## 界面
 
@@ -64,9 +72,6 @@ Windows 单窗口，按阶段审核，不再要求用户一键跑完整条流水
 界面上可以直接复制 `legado://import/bookSource?src=<订阅地址>` 形式的导入链接，
 在手机上点一下就订阅。前提是这个 JSON 已经传到了某个可访问的地址。
 
-`gradle :desktop:portable` 打出的免安装目录里，双击 `打开书源整理.vbs` 启动（无控制台窗口）；
-`legado-tidy.bat` 是有日志的版本。
-
 ## 三种使用方式
 
 界面里处理完的书源，可以：
@@ -84,7 +89,7 @@ core/     纯 JVM 逻辑：书源模型、去重、归一化、整理、导出�
 engine/   唯一一个带解析引擎的模块：vendored 上游源码 + 平台补全层
   vendor/legado/  上游 Legado 引擎源码（pin 死，勿手改）
   vendor/glue/    平台补全层（Android/Room/Glide 桩），勿手改
-desktop/  Compose Desktop 界面 + CLI + 便携打包
+desktop/  Compose Desktop 界面与 Windows 原生 EXE 打包
 scripts/  vendor 拉取、补全层拉取、jar 拉取
 docs/     决策记录与引擎说明
 ```

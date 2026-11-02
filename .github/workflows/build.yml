@@ -93,8 +93,8 @@ jobs:
           git commit -m "ci: 失败现场" || exit 0
           git push origin HEAD:refs/heads/ci-artifacts --force
 
-  portable:
-    name: Windows 便携包
+  windows-exe:
+    name: Windows 原生 EXE
     runs-on: windows-latest
     needs: test
     steps:
@@ -118,23 +118,87 @@ jobs:
           python scripts/fetch-engine-jar.py
           python scripts/fetch-assets.py
 
-      - name: 组装便携目录
-        run: gradle :desktop:portable --console=plain
+      - name: 生成 Windows 原生 EXE 应用目录
+        run: gradle :desktop:windowsAppImage --console=plain
 
-      - name: 验证便携 JVM 启动与环境隔离
+      - name: 验证原生 EXE、Skiko 资源去重与启动
         shell: pwsh
         run: |
-          $env:_JAVA_OPTIONS = "-Xbootclasspath/p:invalid-test.jar"
-          $env:JAVA_TOOL_OPTIONS = "-Xbootclasspath/p:invalid-test.jar"
-          $env:JDK_JAVA_OPTIONS = "-Xbootclasspath/p:invalid-test.jar"
-          & cmd.exe /c 'call "desktop\build\portable\legado-tidy\legado-tidy.bat" --runtime-check'
-          if ($LASTEXITCODE -ne 0) {
-            throw "便携 JRE 启动失败，或启动器未隔离外部 JVM 参数。"
+          $bundle = Join-Path $PWD 'desktop\build\windows-app-image\legado-tidy'
+          $exe = Join-Path $bundle 'legado-tidy.exe'
+          $appDir = Join-Path $bundle 'app'
+          $config = Join-Path $appDir 'legado-tidy.cfg'
+          $modules = Join-Path $bundle 'runtime\lib\modules'
+
+          foreach ($path in @($exe, $config, $modules)) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Windows app-image 缺少必要文件：$path"
+            }
           }
 
-      # 直接上传便携目录；GitHub Artifact 本身会生成下载 ZIP，避免再嵌套一层 ZIP。
+          if ((Get-Content -LiteralPath $config -Raw) -notmatch 'skiko\.library\.path=.*APPDIR') {
+            throw 'jpackage 启动配置没有把 Skiko 原生库路径指向 app 目录。'
+          }
+
+          $skikoJars = @(Get-ChildItem -LiteralPath $appDir -Filter 'skiko*.jar' -File)
+          if ($skikoJars.Count -eq 0) {
+            throw '应用目录缺少 Skiko JAR。'
+          }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          foreach ($jar in $skikoJars) {
+            $zip = [System.IO.Compression.ZipFile]::OpenRead($jar.FullName)
+            try {
+              $duplicates = @($zip.Entries | Where-Object {
+                $_.FullName -match '^[^/]+\.(dll|dat)$'
+              })
+              if ($duplicates.Count -gt 0) {
+                throw "Skiko JAR 仍含有重复的顶层原生资源：$($jar.Name): $($duplicates.FullName -join ', ')"
+              }
+            } finally {
+              $zip.Dispose()
+            }
+          }
+
+          if (-not (Test-Path -LiteralPath (Join-Path $appDir 'skiko-windows-x64.dll'))) {
+            throw '应用目录缺少提取后的 skiko-windows-x64.dll。'
+          }
+          if (-not (Test-Path -LiteralPath (Join-Path $appDir 'icudtl.dat'))) {
+            throw '应用目录缺少提取后的 icudtl.dat。'
+          }
+
+          $launchScripts = @(Get-ChildItem -LiteralPath $bundle -Recurse -File |
+            Where-Object { $_.Extension -in @('.bat', '.cmd', '.vbs') })
+          if ($launchScripts.Count -gt 0) {
+            throw "应用目录仍包含旧启动脚本：$($launchScripts.FullName -join ', ')"
+          }
+
+          # 将整套程序复制到带空格的路径，验证原生启动器不依赖当前工作目录或无空格路径。
+          $testRoot = Join-Path $env:RUNNER_TEMP 'legado tidy exe smoke test'
+          if (Test-Path -LiteralPath $testRoot) {
+            Remove-Item -LiteralPath $testRoot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $testRoot | Out-Null
+          Copy-Item -Path (Join-Path $bundle '*') -Destination $testRoot -Recurse
+          $testExe = Join-Path $testRoot 'legado-tidy.exe'
+
+          $process = Start-Process -FilePath $testExe -WorkingDirectory $testRoot -PassThru
+          try {
+            Start-Sleep -Seconds 10
+            $process.Refresh()
+            if ($process.HasExited) {
+              throw "原生 GUI 启动后提前退出，ExitCode=$($process.ExitCode)"
+            }
+            Write-Host '原生 GUI 已保持运行 10 秒，启动冒烟测试通过。'
+          } finally {
+            $process.Refresh()
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+            }
+          }
+
+      # app-image 是完整的免安装应用目录；下载后解压并双击 legado-tidy.exe。
       - uses: actions/upload-artifact@v4
         with:
           name: legado-tidy-windows-x64
-          path: desktop/build/portable/legado-tidy/
+          path: desktop/build/windows-app-image/legado-tidy/
           retention-days: 7
