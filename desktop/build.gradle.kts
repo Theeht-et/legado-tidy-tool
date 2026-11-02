@@ -105,7 +105,7 @@ val prepareWindowsAppInput by tasks.registering {
         appDir.deleteRecursively()
         appDir.mkdirs()
 
-        val runtimeJars = runtimeClasspath.files
+        val runtimeJars = runtimeClasspath.get().files
             .filter { it.isFile && it.extension.equals("jar", ignoreCase = true) }
             .sortedBy { it.name }
         val skikoJars = runtimeJars.filter { it.name.startsWith("skiko", ignoreCase = true) }
