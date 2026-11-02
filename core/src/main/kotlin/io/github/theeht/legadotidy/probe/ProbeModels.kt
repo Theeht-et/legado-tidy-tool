@@ -123,5 +123,8 @@ data class ProbeResult(
 }
 
 interface ProbeEngine {
+    /** Reject run-wide configuration errors before individual sources are probed. */
+    fun validateOptions(options: ProbeOptions): String? = null
+
     suspend fun probe(index: Int, source: BookSourceDoc, options: ProbeOptions): ProbeResult
 }

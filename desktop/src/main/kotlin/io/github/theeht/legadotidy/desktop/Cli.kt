@@ -8,6 +8,7 @@ import io.github.theeht.legadotidy.pipeline.Phase
 import io.github.theeht.legadotidy.pipeline.Pipeline
 import io.github.theeht.legadotidy.pipeline.PipelineConfig
 import io.github.theeht.legadotidy.pipeline.PipelineEvent
+import io.github.theeht.legadotidy.pipeline.PipelineConfigurationException
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -64,8 +65,13 @@ fun runCli(args: Array<String>): Int {
     )
 
     val started = System.currentTimeMillis()
-    val result = runBlocking {
-        Pipeline(LegadoProbeEngine()).run(selected, config) { event -> render(event) }
+    val result = try {
+        runBlocking {
+            Pipeline(LegadoProbeEngine()).run(selected, config) { event -> render(event) }
+        }
+    } catch (error: PipelineConfigurationException) {
+        System.err.println(error.message ?: "运行配置无效")
+        return 2
     }
     val cost = System.currentTimeMillis() - started
 

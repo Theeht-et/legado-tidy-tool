@@ -8,15 +8,26 @@ import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeStage
 import io.github.theeht.legadotidy.probe.ProbeStageStatus
 import io.github.theeht.legadotidy.probe.ProbeStatus
+import io.legado.app.help.CacheManager
+import io.legado.app.ui.main.explore.ExploreAdapter
+import io.legado.app.help.http.ProbeProxyContext
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertContains
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -27,19 +38,27 @@ import kotlin.test.assertTrue
 class MockSiteProbeTest {
 
     private lateinit var server: HttpServer
+    private lateinit var serverExecutor: ExecutorService
     private var port: Int = 0
     @Volatile private var searchEmpty = false
     private val searchQueries = Collections.synchronizedList(mutableListOf<String>())
     private val discoveryPages = Collections.synchronizedList(mutableListOf<Int>())
     private val contentRequests = AtomicInteger()
+    private val discoveryInFlight = AtomicInteger()
+    private val maxDiscoveryInFlight = AtomicInteger()
 
     @BeforeTest
     fun start() {
         searchEmpty = false
         searchQueries.clear()
         discoveryPages.clear()
+        contentRequests.set(0)
+        discoveryInFlight.set(0)
+        maxDiscoveryInFlight.set(0)
 
         server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        serverExecutor = Executors.newCachedThreadPool()
+        server.executor = serverExecutor
         port = server.address.port
 
         server.createContext("/search") { exchange ->
@@ -65,18 +84,25 @@ class MockSiteProbeTest {
         }
 
         server.createContext("/explore") { exchange ->
-            val page = exchange.requestURI.rawQuery.orEmpty()
-                .substringAfter("page=", "1")
-                .toIntOrNull() ?: 1
-            discoveryPages += page
-            respond(
-                exchange,
-                """
-                <html><body>
-                  <a href="/book/1/">发现之书</a>
-                </body></html>
-                """.trimIndent(),
-            )
+            val active = discoveryInFlight.incrementAndGet()
+            maxDiscoveryInFlight.updateAndGet { previous -> maxOf(previous, active) }
+            try {
+                Thread.sleep(120)
+                val page = exchange.requestURI.rawQuery.orEmpty()
+                    .substringAfter("page=", "1")
+                    .toIntOrNull() ?: 1
+                discoveryPages += page
+                respond(
+                    exchange,
+                    """
+                    <html><body>
+                      <a href="/book/1/">发现之书</a>
+                    </body></html>
+                    """.trimIndent(),
+                )
+            } finally {
+                discoveryInFlight.decrementAndGet()
+            }
         }
 
         server.createContext("/book/1/") { exchange ->
@@ -115,6 +141,7 @@ class MockSiteProbeTest {
     @AfterTest
     fun stop() {
         server.stop(0)
+        serverExecutor.shutdownNow()
     }
 
     private fun respond(exchange: HttpExchange, html: String, code: Int = 200) {
@@ -353,6 +380,81 @@ class MockSiteProbeTest {
         assertTrue(noContent.stageResults.filter {
             it.stage == ProbeStage.CONTENT
         }.all { it.status == ProbeStageStatus.NOT_RUN })
+    }
+
+    @Test
+    fun discoveryInitializesCategoryDefaultsAndPersistsInfoMapChanges() = runBlocking {
+        val sourceUrl = "http://127.0.0.1:$port"
+        val exploreRule =
+            "@JS: infoMap.put('headlessState', 'saved'); infoMap.save(); " +
+                "JSON.stringify([{title:'排序',url:'/explore?page={{page}}'," +
+                "type:'toggle',chars:['最新','最热']}])"
+        val fixture = sourceJson().replace(
+            "本地分类::/explore?page={{page}}",
+            exploreRule,
+        )
+        val source = BookSourceDoc(SourceIO.parse(fixture).single())
+
+        try {
+            val result = LegadoProbeEngine().probe(
+                0,
+                source,
+                options(checkSearch = false, checkInfo = false),
+            )
+
+            assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+            val infoMap = ExploreAdapter.exploreInfoMapList[sourceUrl]
+            assertEquals("最新", infoMap?.get("排序"))
+            assertEquals("saved", infoMap?.get("headlessState"))
+
+            val persisted = CacheManager.get("infoMap_$sourceUrl").orEmpty()
+            assertContains(persisted, "headlessState")
+            assertContains(persisted, "saved")
+            assertContains(persisted, "排序")
+        } finally {
+            ExploreAdapter.exploreInfoMapList.remove(sourceUrl)
+            CacheManager.delete("infoMap_$sourceUrl")
+        }
+    }
+
+    @Test
+    fun concurrentEngineProbesForTheSameSourceUrlSerializeDiscoveryRequests() = runBlocking {
+        val source = doc()
+        val engine = LegadoProbeEngine()
+        val results = coroutineScope {
+            (0..1).map { index ->
+                async(Dispatchers.IO) {
+                    engine.probe(
+                        index,
+                        source,
+                        options(checkSearch = false, checkInfo = false),
+                    )
+                }
+            }.awaitAll()
+        }
+
+        assertTrue(results.all { it.status == ProbeStatus.OK }, results.joinToString { it.detail.orEmpty() })
+        assertEquals(2, discoveryPages.size)
+        assertEquals(1, maxDiscoveryInFlight.get())
+    }
+
+    @Test
+    fun explicitEmptySourceProxyOverridesTheToolDefault() = runBlocking {
+        val json = sourceJson(includeDiscovery = false).replace(
+            "\"enabled\": true,",
+            "\"enabled\": true,\n  \"header\": \"{\\\"proxy\\\":\\\"\\\"}\",",
+        )
+        val source = BookSourceDoc(SourceIO.parse(json).single())
+        val result = withContext(ProbeProxyContext("http://127.0.0.1:1")) {
+            LegadoProbeEngine().probe(
+                0,
+                source,
+                options(checkDiscovery = false),
+            )
+        }
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertTrue(searchQueries.isNotEmpty())
     }
 
     @Test

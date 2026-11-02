@@ -41,6 +41,10 @@ class LegadoProbeEngineTest {
             LegadoProbeEngine.validateProxyConfiguration("not a proxy")
                 ?.startsWith("代理配置无效") == true,
         )
+        assertTrue(
+            LegadoProbeEngine().validateOptions(ProbeOptions(proxy = "not a proxy"))
+                ?.startsWith("代理配置无效") == true,
+        )
         assertNull(LegadoProbeEngine.validateProxyConfiguration(null))
         assertNull(LegadoProbeEngine.validateProxyConfiguration("   "))
         assertNull(LegadoProbeEngine.validateProxyConfiguration("http://127.0.0.1:7890"))

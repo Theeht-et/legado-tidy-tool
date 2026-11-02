@@ -2,6 +2,7 @@ package io.github.theeht.legadotidy.engine
 
 import io.legado.app.help.http.ProbeProxyContext
 import io.legado.app.help.http.getProxyClient
+import io.legado.app.model.analyzeRule.validateDnsIpProxyCompatibility
 import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeStatus
@@ -18,6 +19,7 @@ import java.net.InetSocketAddress
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class ProbeProxyContextTest {
@@ -66,6 +68,31 @@ class ProbeProxyContextTest {
         assertNull(ProbeProxyContext.currentProxy())
     }
 
+
+    @Test
+    fun `显式空书源代理覆盖默认代理且默认代理参与 dnsIp 互斥检查`() = runBlocking {
+        val defaultProxy = "http://127.0.0.1:18704"
+        val sourceProxy = "http://127.0.0.1:28704"
+
+        withContext(ProbeProxyContext(defaultProxy)) {
+            assertEquals(null, ProbeProxyContext.resolveProxy("", sourceProxyConfigured = true))
+            assertEquals(defaultProxy, ProbeProxyContext.resolveProxy(null, sourceProxyConfigured = false))
+            assertEquals(sourceProxy, ProbeProxyContext.resolveProxy(sourceProxy, sourceProxyConfigured = true))
+
+            assertFailsWith<IllegalArgumentException> {
+                validateDnsIpProxyCompatibility(
+                    ProbeProxyContext.resolveProxy(null, sourceProxyConfigured = false),
+                    "192.0.2.10",
+                )
+            }
+            validateDnsIpProxyCompatibility(
+                ProbeProxyContext.resolveProxy("", sourceProxyConfigured = true),
+                "192.0.2.10",
+            )
+            assertNull(getProxyClient(null, inheritContextProxy = false).proxy)
+        }
+        assertNull(ProbeProxyContext.currentProxy())
+    }
 
     @Test
     fun `无效代理配置在网络请求前返回明确错误`() = runBlocking {

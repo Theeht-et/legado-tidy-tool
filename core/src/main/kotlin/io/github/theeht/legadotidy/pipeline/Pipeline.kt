@@ -79,6 +79,8 @@ data class PipelineResult(
  * 只管「顺序、进度、并发」；具体怎么探测由 [ProbeEngine] 提供。
  * 单源失败只记录，不中断整轮；阶段异常会包成 [PipelineEvent.Failed] 再抛出。
  */
+class PipelineConfigurationException(message: String) : IllegalArgumentException(message)
+
 class Pipeline(private val engine: ProbeEngine) {
 
     suspend fun run(
@@ -86,6 +88,14 @@ class Pipeline(private val engine: ProbeEngine) {
         config: PipelineConfig = PipelineConfig(),
         emit: suspend (PipelineEvent) -> Unit = { _ -> },
     ): PipelineResult = coroutineScope {
+        val normalizedProbeOptions = config.probe.copy(
+            proxy = config.probe.proxy?.trim()?.takeIf { it.isNotEmpty() },
+        )
+        val effectiveConfig = config.copy(probe = normalizedProbeOptions)
+        engine.validateOptions(normalizedProbeOptions)?.let { detail ->
+            throw PipelineConfigurationException(detail)
+        }
+
         val events = Channel<PipelineEvent>(Channel.BUFFERED)
         val pump = launch { for (e in events) emit(e) }
 
@@ -93,7 +103,7 @@ class Pipeline(private val engine: ProbeEngine) {
             // ---- S1 校验：所有导入书源（包括重复候选）都先获得独立结果 ----
             events.send(PipelineEvent.PhaseStarted(Phase.PROBE, sources.size))
             var mark = TimeSource.Monotonic.markNow()
-            val probeResults: Map<Int, ProbeResult> = probeAll(sources, config, events)
+            val probeResults: Map<Int, ProbeResult> = probeAll(sources, effectiveConfig, events)
             val ok = probeResults.values.count { it.ok }
             events.send(
                 PipelineEvent.PhaseFinished(
@@ -106,7 +116,7 @@ class Pipeline(private val engine: ProbeEngine) {
             // ---- S2 去重：将校验结果用于重复组默认保留建议 ----
             events.send(PipelineEvent.PhaseStarted(Phase.DEDUP, sources.size))
             mark = TimeSource.Monotonic.markNow()
-            val dedup = Deduper.run(sources, config.dedup, probeResults)
+            val dedup = Deduper.run(sources, effectiveConfig.dedup, probeResults)
             events.send(
                 PipelineEvent.PhaseFinished(
                     Phase.DEDUP,
@@ -118,7 +128,7 @@ class Pipeline(private val engine: ProbeEngine) {
             // ---- S3 整理 ----
             events.send(PipelineEvent.PhaseStarted(Phase.ORGANIZE, sources.size))
             mark = TimeSource.Monotonic.markNow()
-            val organize = Organizer.run(sources, probeResults, config.organize)
+            val organize = Organizer.run(sources, probeResults, effectiveConfig.organize)
             events.send(
                 PipelineEvent.PhaseFinished(
                     Phase.ORGANIZE, mark.elapsedNow().inWholeMilliseconds, "分组 ${organize.pools.size}",
@@ -127,13 +137,13 @@ class Pipeline(private val engine: ProbeEngine) {
 
             // ---- S4 导出 ----
             var exported: ExportResult? = null
-            val dir = config.exportDir
+            val dir = effectiveConfig.exportDir
             if (dir != null) {
                 events.send(PipelineEvent.PhaseStarted(Phase.EXPORT, sources.size))
                 mark = TimeSource.Monotonic.markNow()
                 val raws = sources.map { it.raw }
-                val name = config.exportFileName ?: Exporter.defaultFileName()
-                val result = Exporter.write(raws, organize.sources, dir, name, config.export)
+                val name = effectiveConfig.exportFileName ?: Exporter.defaultFileName()
+                val result = Exporter.write(raws, organize.sources, dir, name, effectiveConfig.export)
                 exported = result
                 events.send(
                     PipelineEvent.PhaseFinished(

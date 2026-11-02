@@ -13,6 +13,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -125,6 +126,37 @@ class PipelineTest {
             Pipeline(engine).run(listOf(Docs.doc("cancel", "https://cancel.test")))
         }.exceptionOrNull()
         assertTrue(failure is CancellationException)
+    }
+
+    @Test
+    fun invalidRunWideOptionsAreRejectedBeforePipelineStartsOrProbesSources() = runBlocking {
+        var probeCalls = 0
+        val events = mutableListOf<PipelineEvent>()
+        val engine = object : ProbeEngine {
+            override fun validateOptions(options: ProbeOptions): String? =
+                if (options.proxy == "invalid") "代理配置无效" else null
+
+            override suspend fun probe(
+                index: Int,
+                source: BookSourceDoc,
+                options: ProbeOptions,
+            ): ProbeResult {
+                probeCalls++
+                return ProbeResult(index, ProbeStatus.OK, options = options)
+            }
+        }
+
+        val failure = runCatching {
+            Pipeline(engine).run(
+                listOf(Docs.doc("不应开始", "https://never-probed.test")),
+                PipelineConfig(probe = ProbeOptions(proxy = " invalid ")),
+            ) { events.add(it) }
+        }.exceptionOrNull()
+
+        assertTrue(failure is PipelineConfigurationException)
+        assertEquals("代理配置无效", failure?.message)
+        assertEquals(0, probeCalls)
+        assertFalse(events.any { it is PipelineEvent.PhaseStarted })
     }
 
     @Test

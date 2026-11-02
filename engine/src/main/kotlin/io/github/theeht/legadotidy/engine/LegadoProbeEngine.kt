@@ -21,7 +21,10 @@ import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.http.ProbeProxyContext
 import io.legado.app.help.http.parseProxyConfig
 import io.legado.app.help.source.SuppressSourceNavigation
-import io.legado.app.help.source.exploreKinds
+import io.legado.app.help.source.exploreKindsInSession
+import io.legado.app.help.source.flushExploreInfoMapIfNeeded
+import io.legado.app.help.source.initializeExploreInfoMap
+import io.legado.app.help.source.withExploreSession
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.GSON
 import kotlinx.coroutines.TimeoutCancellationException
@@ -67,6 +70,9 @@ class LegadoProbeEngine(
                 ?.let { "代理配置无效：请检查协议、主机、端口和认证信息。" }
         }
     }
+
+    override fun validateOptions(options: ProbeOptions): String? =
+        validateProxyConfiguration(options.proxy)
 
     internal data class ChapterSelection(
         val chapter: BookChapter,
@@ -380,18 +386,27 @@ class LegadoProbeEngine(
                             emptyDetail = "上游发现第一页未解析出书籍",
                             itemCount = { it.size },
                         ) {
-                            val url = bookSource.exploreKinds()
-                                .firstOrNull { !it.url.isNullOrBlank() }
-                                ?.url
-                            if (url.isNullOrBlank()) {
-                                throw NoStackTraceException("发现规则为空")
+                            withExploreSession(bookSource.bookSourceUrl) {
+                                try {
+                                    // Protect the shared upstream InfoMap from category parsing
+                                    // through the actual discovery request.
+                                    val kinds = bookSource.exploreKindsInSession()
+                                    bookSource.initializeExploreInfoMap(kinds)
+                                    val url = kinds.firstOrNull { !it.url.isNullOrBlank() }?.url
+                                    if (url.isNullOrBlank()) {
+                                        throw NoStackTraceException("发现规则为空")
+                                    }
+                                    bookSource.removeGroup("发现规则为空")
+                                    // 与上游 CheckSourceService 相同：分类解析结束后直接请求第一页。
+                                    WebBook.exploreBookAwait(
+                                        bookSource = bookSource,
+                                        url = url,
+                                    )
+                                } finally {
+                                    // Headless has no ExploreAdapter.onPause lifecycle to save InfoMap.
+                                    bookSource.flushExploreInfoMapIfNeeded()
+                                }
                             }
-                            bookSource.removeGroup("发现规则为空")
-                            // 与上游 CheckSourceService 相同：分类解析结束后直接请求第一页。
-                            WebBook.exploreBookAwait(
-                                bookSource = bookSource,
-                                url = url,
-                            )
                         }
                         bookCount += exploreBooks.size
                         if (exploreBooks.isEmpty()) {
