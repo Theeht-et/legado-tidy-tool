@@ -203,10 +203,13 @@ val okHttpClient: OkHttpClient by lazy {
 /**
  * 缓存代理okHttp
  */
-fun getProxyClient(proxy: String? = null): OkHttpClient {
-    // A source-level header.proxy wins; otherwise use this validation's coroutine-scoped default.
-    val effectiveProxy = proxy?.takeIf { it.isNotBlank() }
-        ?: ProbeProxyContext.currentProxy()
+fun getProxyClient(
+    proxy: String? = null,
+    inheritContextProxy: Boolean = true,
+): OkHttpClient {
+    // When false, null/blank is an explicit direct connection and must not inherit a default.
+    val effectiveProxy = proxy?.trim()?.takeIf { it.isNotEmpty() }
+        ?: if (inheritContextProxy) ProbeProxyContext.currentProxy() else null
     if (effectiveProxy.isNullOrBlank()) {
         return okHttpClient
     }

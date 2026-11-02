@@ -4,96 +4,107 @@ import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.model.SourceIO
-import io.github.theeht.legadotidy.probe.ProbeDepth
-import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeOptions
+import io.github.theeht.legadotidy.probe.ProbeStage
+import io.github.theeht.legadotidy.probe.ProbeStageStatus
 import io.github.theeht.legadotidy.probe.ProbeStatus
-import io.legado.app.utils.GSON
+import io.legado.app.help.CacheManager
+import io.legado.app.ui.main.explore.ExploreAdapter
+import io.legado.app.help.http.ProbeProxyContext
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import java.net.InetSocketAddress
+import java.net.ServerSocket
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertContains
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * 用本地假站点跑通「真引擎」。
- *
- * ## 为什么必须有这个测试
- * 这个模块的价值在于「引擎真的能跑」，而引擎是由上游源码 + 平台桩拼出来的。
- * 桩只要有一个方法签名不对，编译照样能过、运行期才炸。所以必须有一个真的 HTTP 往返：
- * 起一个本地服务器，写一个最普通的书源，让上游 `WebBook.searchBookAwait` 去搜。
- *
- * 用本地假站点而不是真站点的理由：
- * - 结果确定。真站点会改版、会限流，CI 里抖动会让人以为引擎坏了。
- * - 不碰第三方内容，也不需要外网。
- *
- * 它挡住的是「引擎接线错了」这类错误；挡不住「规则写得不好」，那不归静态校验管。
+ * 用本地假站点验证真实上游 WebBook 调用以及 CheckSourceService 的单轮编排。
+ * 不访问公网，不依赖可变的第三方书源。
  */
 class MockSiteProbeTest {
 
     private lateinit var server: HttpServer
+    private lateinit var serverExecutor: ExecutorService
     private var port: Int = 0
-    private val explorePagesRequested = java.util.Collections.synchronizedList(mutableListOf<Int>())
-    private val explorePageTokensRequested = java.util.Collections.synchronizedList(mutableListOf<String>())
+    @Volatile private var searchEmpty = false
+    private val searchQueries = Collections.synchronizedList(mutableListOf<String>())
+    private val discoveryPages = Collections.synchronizedList(mutableListOf<Int>())
+    private val contentRequests = AtomicInteger()
+    private val discoveryInFlight = AtomicInteger()
+    private val maxDiscoveryInFlight = AtomicInteger()
 
     @BeforeTest
     fun start() {
+        searchEmpty = false
+        searchQueries.clear()
+        discoveryPages.clear()
+        contentRequests.set(0)
+        discoveryInFlight.set(0)
+        maxDiscoveryInFlight.set(0)
+
         server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        serverExecutor = Executors.newCachedThreadPool()
+        server.executor = serverExecutor
         port = server.address.port
 
-        server.createContext("/explore") { exchange ->
-            val pageToken = exchange.requestURI.rawQuery
-                ?.substringAfter("page=", "1") ?: "1"
-            val page = pageToken.toIntOrNull() ?: 1
-            if (exchange.requestURI.path == "/explore-map") {
-                explorePageTokensRequested += pageToken
-            } else {
-                explorePagesRequested += page
-            }
-            val ids = when (exchange.requestURI.path) {
-                "/explore-limit" -> when (page) {
-                    1 -> listOf(11, 12)
-                    else -> listOf(13, 14)
-                }
-                "/explore-map" -> when (pageToken) {
-                    "one" -> listOf(21)
-                    else -> listOf(22)
-                }
-                "/explore-full" -> if (page == 1) listOf(1) else emptyList()
-                else -> when (page) {
-                    1 -> listOf(1, 2)
-                    2 -> listOf(2, 3)
-                    else -> listOf(1, 2, 3)
-                }
-            }
-            val html = ids.joinToString("") { id ->
-                val href = if (exchange.requestURI.path == "/explore-full") "/book/1/" else "/discovered/$id"
-                "<a href='$href'>发现书 $id</a>"
-            }
-            respond(exchange, "<html><body>$html</body></html>")
-        }
-
         server.createContext("/search") { exchange ->
-            respond(
-                exchange,
-                """
-                <!DOCTYPE html>
-                <html><head><meta charset="utf-8"><title>搜索</title></head>
-                <body>
-                  <ul class="list">
-                    <li class="book-item">
-                      <a href="/book/1/">测试之书</a>
-                      <span class="au">某作者</span>
-                    </li>
-                  </ul>
-                </body></html>
-                """.trimIndent(),
-            )
+            searchQueries += exchange.requestURI.rawQuery.orEmpty()
+            when {
+                searchEmpty -> respond(exchange, "<html><body><ul class='list'></ul></body></html>")
+                else -> respond(
+                    exchange,
+                    """
+                    <!DOCTYPE html>
+                    <html><head><meta charset="utf-8"></head>
+                    <body>
+                      <ul class="list">
+                        <li class="book-item">
+                          <a href="/book/1/">测试之书</a>
+                          <span class="au">某作者</span>
+                        </li>
+                      </ul>
+                    </body></html>
+                    """.trimIndent(),
+                )
+            }
         }
 
-        // 详情页直接带目录：覆盖上游先取书籍详情、再取目录的真实调用顺序。
+        server.createContext("/explore") { exchange ->
+            val active = discoveryInFlight.incrementAndGet()
+            maxDiscoveryInFlight.updateAndGet { previous -> maxOf(previous, active) }
+            try {
+                Thread.sleep(120)
+                val page = exchange.requestURI.rawQuery.orEmpty()
+                    .substringAfter("page=", "1")
+                    .toIntOrNull() ?: 1
+                discoveryPages += page
+                respond(
+                    exchange,
+                    """
+                    <html><body>
+                      <a href="/book/1/">发现之书</a>
+                    </body></html>
+                    """.trimIndent(),
+                )
+            } finally {
+                discoveryInFlight.decrementAndGet()
+            }
+        }
+
         server.createContext("/book/1/") { exchange ->
             respond(
                 exchange,
@@ -113,6 +124,7 @@ class MockSiteProbeTest {
         }
 
         server.createContext("/book/1/c1") { exchange ->
+            contentRequests.incrementAndGet()
             respond(
                 exchange,
                 """
@@ -129,192 +141,45 @@ class MockSiteProbeTest {
     @AfterTest
     fun stop() {
         server.stop(0)
+        serverExecutor.shutdownNow()
     }
 
-    private fun respond(exchange: HttpExchange, html: String) {
+    private fun respond(exchange: HttpExchange, html: String, code: Int = 200) {
         val bytes = html.toByteArray(Charsets.UTF_8)
         exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
-        exchange.sendResponseHeaders(200, bytes.size.toLong())
+        exchange.sendResponseHeaders(code, bytes.size.toLong())
         exchange.responseBody.use { it.write(bytes) }
     }
 
-    private fun sourceJson(): String = """
-        {
-          "bookSourceName": "本地模拟站",
-          "bookSourceGroup": "测试",
-          "bookSourceUrl": "http://127.0.0.1:$port",
-          "bookSourceType": 0,
-          "enabled": true,
-          "searchUrl": "/search?q={{key}}",
-          "ruleSearch": {
-            "bookList": "class.list@tag.li",
-            "name": "tag.a@text",
-            "author": "class.au@text",
-            "bookUrl": "tag.a@href"
-          },
-          "ruleBookInfo": { "name": "tag.h1@text", "author": "class.au@text" },
-          "ruleToc": {
-            "chapterList": "class.ch@tag.li",
-            "chapterName": "tag.a@text",
-            "chapterUrl": "tag.a@href"
-          },
-          "ruleContent": {
-            "content": "class.content@text"
-          }
-        }
-    """.trimIndent()
-
-    private fun doc(): BookSourceDoc = BookSourceDoc(SourceIO.parse(sourceJson()).single())
-
-    private fun options(depth: ProbeDepth = ProbeDepth.SEARCH) = ProbeOptions(
-        depth = depth,
-        timeoutMs = 10_000,
-        keyword = "test",
-    )
-
-    @Test
-    fun `搜索能解析出一条结果`() = runBlocking {
-        val result = LegadoProbeEngine().probe(0, doc(), options())
-
-        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
-        assertTrue(result.bookCount >= 1, "应至少解析出 1 本书，实际 ${result.bookCount}")
-    }
-
-    @Test
-    fun `连目录一起验能拿到章节`() = runBlocking {
-        val result = LegadoProbeEngine().probe(0, doc(), options(ProbeDepth.WITH_TOC))
-
-        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
-        assertEquals("目录 2 章", result.detail)
-        assertTrue(result.stageResults.any {
-            it.stage == io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO &&
-                it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
-        })
-    }
-
-    @Test
-    fun `全链路校验会依次完成搜索详情目录和正文`() = runBlocking {
-        val result = LegadoProbeEngine().probe(0, doc(), options(ProbeDepth.FULL_CHAIN))
-
-        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
-        assertEquals(
-            listOf(
-                io.github.theeht.legadotidy.probe.ProbeStage.SEARCH,
-                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
-                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
-                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
-            ),
-            result.stageResults.map { it.stage },
-        )
-        assertTrue(result.stageResults.all {
-            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
-        })
-        assertTrue(result.detail.orEmpty().contains("正文校验成功"))
-    }
-
-    @Test
-    fun `正文解析失败时保留前序成功阶段并返回部分通过`() = runBlocking {
-        val brokenJson = sourceJson().replace(
-            "\"class.content@text\"",
-            "\"class.missing-content@text\"",
-        )
-        val brokenDoc = BookSourceDoc(SourceIO.parse(brokenJson).single())
-
-        val result = LegadoProbeEngine().probe(0, brokenDoc, options(ProbeDepth.FULL_CHAIN))
-
-        assertEquals(ProbeStatus.PARTIAL, result.status, "详情：${result.detail}")
-        assertEquals(
-            listOf(
-                io.github.theeht.legadotidy.probe.ProbeStage.SEARCH,
-                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
-                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
-                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
-            ),
-            result.stageResults.map { it.stage },
-        )
-        assertTrue(result.stageResults.take(3).all {
-            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
-        })
-        assertEquals(
-            io.github.theeht.legadotidy.probe.ProbeStageStatus.FAILED,
-            result.stageResults.last().status,
-        )
-    }
-
-    @Test
-    fun `JS 书源按上游函数链完成搜索详情目录和正文`() = runBlocking {
-        val mainJs = """
-            function search(key, page) {
-                return [{
-                    name: "JS 书源书",
-                    author: "JS 作者",
-                    bookUrl: baseUrl + "/js-book/",
-                    tocUrl: baseUrl + "/js-book/"
-                }];
-            }
-            // getBookInfo 是上游可选函数；缺失时应沿用搜索阶段字段。
-            function getChapters(book) {
-                return [
-                    { title: "JS 第一章", url: baseUrl + "/js-chapter/1" },
-                    { title: "JS 第二章", url: baseUrl + "/js-chapter/2" }
-                ];
-            }
-            function getContent(chapter, book, nextChapterUrl) {
-                return "JS 正文：" + chapter.title;
-            }
-        """.trimIndent()
-        val json = """
-            {
-              "bookSourceName": "本地 JS 书源",
-              "bookSourceUrl": "http://127.0.0.1:$port",
-              "bookSourceType": 0,
-              "mainJs": ${GSON.toJson(mainJs)}
-            }
-        """.trimIndent()
-        val jsDoc = BookSourceDoc(SourceIO.parse(json).single())
-
-        val result = LegadoProbeEngine().probe(0, jsDoc, options(ProbeDepth.FULL_CHAIN))
-
-        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
-        // bookCount is the number of search hits (one book); chapter count belongs to TOC.
-        assertEquals(1, result.bookCount)
-        assertEquals(
-            1,
-            result.stageResults.first {
-                it.stage == io.github.theeht.legadotidy.probe.ProbeStage.SEARCH
-            }.itemCount,
-        )
-        assertEquals(
-            2,
-            result.stageResults.first {
-                it.stage == io.github.theeht.legadotidy.probe.ProbeStage.TOC
-            }.itemCount,
-        )
-        assertEquals(
-            listOf(
-                io.github.theeht.legadotidy.probe.ProbeStage.SEARCH,
-                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
-                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
-                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
-            ),
-            result.stageResults.map { it.stage },
-        )
-        assertTrue(result.stageResults.all {
-            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
-        })
-    }
-
-    private fun exploreDoc(url: String): BookSourceDoc {
-        val json = """
-            {
-              "bookSourceName": "本地发现书源",
-              "bookSourceUrl": "http://127.0.0.1:$port",
-              "bookSourceType": 0,
-              "exploreUrl": "本地分类::$url",
+    private fun sourceJson(
+        includeDiscovery: Boolean = true,
+        checkKeyWord: String = "",
+    ): String {
+        val discovery = if (includeDiscovery) {
+            """,
+              "exploreUrl": "本地分类::/explore?page={{page}}",
               "ruleExplore": {
                 "bookList": "tag.a",
                 "name": "text",
                 "bookUrl": "href"
+              }"""
+        } else {
+            ""
+        }
+        val json = """
+            {
+              "bookSourceName": "本地模拟站",
+              "bookSourceGroup": "测试",
+              "bookSourceUrl": "http://127.0.0.1:PORT",
+              "bookSourceType": 0,
+              "enabled": true,
+              "searchUrl": "/search?q={{key}}",
+              "ruleSearch": {
+                "bookList": "class.list@tag.li",
+                "name": "tag.a@text",
+                "author": "class.au@text",
+                "bookUrl": "tag.a@href",
+                "checkKeyWord": "SOURCE_KEYWORD"
               },
               "ruleBookInfo": { "name": "tag.h1@text", "author": "class.au@text" },
               "ruleToc": {
@@ -322,192 +187,295 @@ class MockSiteProbeTest {
                 "chapterName": "tag.a@text",
                 "chapterUrl": "tag.a@href"
               },
-              "ruleContent": { "content": "class.content@text" }
+              "ruleContent": { "content": "class.content@text" }DISCOVERY
             }
         """.trimIndent()
-        return BookSourceDoc(SourceIO.parse(json).single())
+        return json
+            .replace("PORT", port.toString())
+            .replace("SOURCE_KEYWORD", checkKeyWord)
+            .replace("DISCOVERY", discovery)
+    }
+
+    private fun doc(
+        includeDiscovery: Boolean = true,
+        checkKeyWord: String = "",
+    ): BookSourceDoc = BookSourceDoc(
+        SourceIO.parse(sourceJson(includeDiscovery, checkKeyWord)).single(),
+    )
+
+    private fun options(
+        checkDomain: Boolean = false,
+        checkSearch: Boolean = true,
+        checkDiscovery: Boolean = true,
+        checkInfo: Boolean = true,
+        checkCategory: Boolean = true,
+        checkContent: Boolean = true,
+        keyword: String = "test",
+        timeoutMs: Long = 10_000,
+    ) = ProbeOptions(
+        timeoutMs = timeoutMs,
+        keyword = keyword,
+        checkDomain = checkDomain,
+        checkSearch = checkSearch,
+        checkDiscovery = checkDiscovery,
+        checkInfo = checkInfo,
+        checkCategory = checkCategory,
+        checkContent = checkContent,
+    )
+
+    @Test
+    fun singleRoundRunsDomainThenSearchThenDiscoveryAndOnlyFirstDiscoveryPage() = runBlocking {
+        val result = LegadoProbeEngine().probe(
+            0,
+            doc(),
+            options(checkDomain = true),
+        )
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：" + result.detail)
+        assertEquals(listOf(1), discoveryPages.toList())
+        assertTrue(contentRequests.get() >= 1)
+
+        val domainIndex = result.stageResults.indexOfFirst { it.stage == ProbeStage.DOMAIN }
+        val searchIndex = result.stageResults.indexOfFirst { it.stage == ProbeStage.SEARCH }
+        val discoveryIndex = result.stageResults.indexOfFirst { it.stage == ProbeStage.DISCOVERY }
+        assertTrue(domainIndex >= 0 && searchIndex > domainIndex && discoveryIndex > searchIndex)
+        assertEquals(result.actualElapsedMs, result.elapsedMs)
     }
 
     @Test
-    fun `发现结果继续复用详情目录和正文校验链`() = runBlocking {
-        explorePagesRequested.clear()
-        val source = exploreDoc("/explore-full?page={{page}}")
-        val result = LegadoProbeEngine().probe(
-            0,
-            source,
-            ProbeOptions(
-                depth = ProbeDepth.FULL_CHAIN,
-                entry = ProbeEntry.EXPLORE,
-                maxExplorePages = 5,
-                timeoutMs = 10_000,
-            ),
-        )
+    fun emptySearchStillRunsDiscoveryAndKeepsSearchFailure() = runBlocking {
+        searchEmpty = true
+        val result = LegadoProbeEngine().probe(0, doc(), options())
 
-        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
-        assertEquals(1, result.bookCount)
-        assertEquals(listOf(1, 2), explorePagesRequested.toList())
+        assertEquals(ProbeStatus.PARSE_EMPTY, result.status, "详情：" + result.detail)
+        assertEquals(listOf(1), discoveryPages.toList())
         assertEquals(
-            listOf(
-                io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE_CATEGORIES,
-                io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE,
-                io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE,
-                io.github.theeht.legadotidy.probe.ProbeStage.BOOK_INFO,
-                io.github.theeht.legadotidy.probe.ProbeStage.TOC,
-                io.github.theeht.legadotidy.probe.ProbeStage.CONTENT,
-            ),
-            result.stageResults.map { it.stage },
+            ProbeStageStatus.EMPTY,
+            result.stageResults.first { it.stage == ProbeStage.SEARCH }.status,
         )
-        assertTrue(result.stageResults.all {
-            it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
-        })
-    }
-
-    @Test
-    fun `发现入口按页码请求并在无新增去重结果时按上游规则停止`() = runBlocking {
-        explorePagesRequested.clear()
-        val source = exploreDoc("/explore?page={{page}}")
-        val result = LegadoProbeEngine().probe(
-            0,
-            source,
-            ProbeOptions(
-                depth = ProbeDepth.SEARCH,
-                entry = ProbeEntry.EXPLORE,
-                maxExplorePages = 5,
-                timeoutMs = 10_000,
-            ),
-        )
-
-        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
-        assertEquals(3, result.bookCount)
-        assertEquals(listOf(1, 2, 3), explorePagesRequested.toList())
-        assertEquals(
-            3,
-            result.stageResults.count {
-                it.stage == io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE
-            },
-        )
-        assertTrue(result.stageResults.last().detail.orEmpty().contains("没有新增书籍"))
-    }
-
-    @Test
-    fun `发现 URL 的页码映射在超过映射项后沿用最后一项`() = runBlocking {
-        explorePageTokensRequested.clear()
-        val source = exploreDoc("/explore-map?page=<one,two>")
-        val result = LegadoProbeEngine().probe(
-            0,
-            source,
-            ProbeOptions(
-                depth = ProbeDepth.SEARCH,
-                entry = ProbeEntry.EXPLORE,
-                maxExplorePages = 5,
-                timeoutMs = 10_000,
-            ),
-        )
-
-        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
-        assertEquals(2, result.bookCount)
-        assertEquals(listOf("one", "two", "two"), explorePageTokensRequested.toList())
-    }
-
-    @Test
-    fun `达到发现页数上限时不误报完整成功`() = runBlocking {
-        explorePagesRequested.clear()
-        val source = exploreDoc("/explore-limit?page={{page}}")
-        val result = LegadoProbeEngine().probe(
-            0,
-            source,
-            ProbeOptions(
-                depth = ProbeDepth.SEARCH,
-                entry = ProbeEntry.EXPLORE,
-                maxExplorePages = 1,
-                timeoutMs = 10_000,
-            ),
-        )
-
-        assertEquals(ProbeStatus.PARTIAL, result.status)
-        assertEquals(2, result.bookCount)
-        assertEquals(listOf(1), explorePagesRequested.toList())
-        assertTrue(result.detail.orEmpty().contains("页数上限"))
-    }
-
-    @Test
-    fun `JS 书源通过 explore 函数执行发现入口`() = runBlocking {
-        val mainJs = """
-            function explore(url, page) {
-                return JSON.stringify([{
-                    name: "JS 发现书",
-                    author: "JS 作者",
-                    bookUrl: baseUrl + "/js-discovered",
-                    tocUrl: baseUrl + "/js-discovered"
-                }]);
-            }
-        """.trimIndent()
-        val json = """
-            {
-              "bookSourceName": "本地 JS 发现书源",
-              "bookSourceUrl": "http://127.0.0.1:$port",
-              "bookSourceType": 0,
-              "exploreUrl": "@js: JSON.stringify([{title:'JS 分类',url:'/js-category',type:'url'}])",
-              "mainJs": ${GSON.toJson(mainJs)}
-            }
-        """.trimIndent()
-        val source = BookSourceDoc(SourceIO.parse(json).single())
-
-        val result = LegadoProbeEngine().probe(
-            0,
-            source,
-            ProbeOptions(
-                depth = ProbeDepth.SEARCH,
-                entry = ProbeEntry.EXPLORE,
-                maxExplorePages = 3,
-                timeoutMs = 10_000,
-            ),
-        )
-
-        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
-        assertEquals(1, result.bookCount)
         assertTrue(result.stageResults.any {
-            it.stage == io.github.theeht.legadotidy.probe.ProbeStage.EXPLORE_CATEGORIES &&
-                it.status == io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS
+            it.stage == ProbeStage.DISCOVERY && it.status == ProbeStageStatus.SUCCESS
+        })
+        assertTrue(result.detail.orEmpty().contains("搜索失效"))
+    }
+
+    @Test
+    fun searchRequestExceptionStopsBeforeDiscovery() = runBlocking {
+        val unusedPort = ServerSocket(0).use { it.localPort }
+        val json = sourceJson().replace(
+            "\"searchUrl\": \"/search?q={{key}}\"",
+            "\"searchUrl\": \"http://127.0.0.1:" + unusedPort + "/search?q={{key}}\"",
+        )
+        val source = BookSourceDoc(SourceIO.parse(json).single())
+        val timeoutMs = 10_000L
+        val result = LegadoProbeEngine().probe(0, source, options(timeoutMs = timeoutMs))
+
+        assertEquals(ProbeStatus.NETWORK, result.status, "详情：" + result.detail)
+        assertTrue(discoveryPages.isEmpty())
+        assertEquals(timeoutMs, result.elapsedMs - result.actualElapsedMs)
+        assertEquals(
+            ProbeStageStatus.FAILED,
+            result.stageResults.first { it.stage == ProbeStage.SEARCH }.status,
+        )
+        assertEquals(
+            ProbeStageStatus.NOT_RUN,
+            result.stageResults.first { it.stage == ProbeStage.DISCOVERY }.status,
+        )
+    }
+
+    @Test
+    fun sourceCheckKeywordOverridesToolDefaultKeyword() = runBlocking {
+        val result = LegadoProbeEngine().probe(
+            0,
+            doc(includeDiscovery = false, checkKeyWord = "source-keyword"),
+            options(checkDiscovery = false, keyword = "tool-keyword"),
+        )
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：" + result.detail)
+        assertTrue(searchQueries.single().contains("source-keyword"), searchQueries.single())
+        assertFalse(searchQueries.single().contains("tool-keyword"))
+    }
+
+    @Test
+    fun nonHttpSourceIsMarkedUncheckableButOtherChecksContinue() = runBlocking {
+        val origin = "file:///tmp/non-http-source"
+        val httpBase = "http://127.0.0.1:" + port
+        val json = sourceJson()
+            .replace(httpBase, origin)
+            .replace(
+                "\"searchUrl\": \"/search?q={{key}}\"",
+                "\"searchUrl\": \"" + httpBase + "/search?q={{key}}\"",
+            )
+            .replace(
+                "\"exploreUrl\": \"本地分类::/explore?page={{page}}\"",
+                "\"exploreUrl\": \"本地分类::" + httpBase + "/explore?page={{page}}\"",
+            )
+        val source = BookSourceDoc(SourceIO.parse(json).single())
+        val result = LegadoProbeEngine().probe(0, source, options(checkDomain = true))
+
+        assertEquals(ProbeStatus.UNCHECKABLE, result.status, "详情：" + result.detail)
+        assertEquals(listOf(1), discoveryPages.toList())
+        assertTrue(searchQueries.isNotEmpty())
+        assertEquals(result.actualElapsedMs, result.elapsedMs)
+        assertEquals(
+            ProbeStageStatus.NOT_RUN,
+            result.stageResults.first { it.stage == ProbeStage.DOMAIN }.status,
+        )
+    }
+
+    @Test
+    fun disablingSearchStillAllowsDiscovery() = runBlocking {
+        val result = LegadoProbeEngine().probe(
+            0,
+            doc(),
+            options(checkSearch = false, checkDiscovery = true),
+        )
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：" + result.detail)
+        assertTrue(searchQueries.isEmpty())
+        assertEquals(listOf(1), discoveryPages.toList())
+        assertEquals(
+            ProbeStageStatus.NOT_RUN,
+            result.stageResults.first { it.stage == ProbeStage.SEARCH }.status,
+        )
+        assertTrue(result.stageResults.any {
+            it.stage == ProbeStage.DISCOVERY && it.status == ProbeStageStatus.SUCCESS
         })
     }
 
     @Test
-    fun `没有 searchUrl 的源不浪费网络请求`() = runBlocking {
-        val json = """
-            {
-              "bookSourceName": "只有发现页",
-              "bookSourceUrl": "http://127.0.0.1:$port",
-              "bookSourceType": 0,
-              "exploreUrl": "/explore"
-            }
-        """.trimIndent()
-        val doc = BookSourceDoc(SourceIO.parse(json).single())
+    fun disablingBookInfoSkipsAllDownstreamBookChecksButStillSearchesAndDiscovers() = runBlocking {
+        val result = LegadoProbeEngine().probe(
+            0,
+            doc(),
+            options(checkInfo = false),
+        )
 
-        val result = LegadoProbeEngine().probe(0, doc, options())
-
-        assertEquals(ProbeStatus.NO_SEARCH_URL, result.status)
+        assertEquals(ProbeStatus.OK, result.status, "详情：" + result.detail)
+        assertEquals(listOf(1), discoveryPages.toList())
+        assertTrue(result.stageResults.filter {
+            it.stage == ProbeStage.BOOK_INFO || it.stage == ProbeStage.TOC || it.stage == ProbeStage.CONTENT
+        }.all { it.status == ProbeStageStatus.NOT_RUN })
+        assertEquals(0, contentRequests.get())
     }
 
     @Test
-    fun `需要 webView 的源被静态识别出来`() = runBlocking {
-        val json = """
-            {
-              "bookSourceName": "要浏览器",
-              "bookSourceUrl": "http://127.0.0.1:$port",
-              "bookSourceType": 0,
-              "searchUrl": "/search?q={{key}}",
-              "ruleSearch": {
-                "bookList": "class.list@tag.li@js:webView(\"xxx\")",
-                "name": "tag.a@text",
-                "bookUrl": "tag.a@href"
-              }
-            }
-        """.trimIndent()
-        val doc = BookSourceDoc(SourceIO.parse(json).single())
+    fun categoryAndContentTogglesRespectUpstreamDependencies() = runBlocking {
+        val noCategory = LegadoProbeEngine().probe(
+            0,
+            doc(includeDiscovery = false),
+            options(checkDiscovery = false, checkCategory = false),
+        )
+        assertEquals(ProbeStatus.OK, noCategory.status, "详情：" + noCategory.detail)
+        assertTrue(noCategory.stageResults.filter {
+            it.stage == ProbeStage.TOC || it.stage == ProbeStage.CONTENT
+        }.all { it.status == ProbeStageStatus.NOT_RUN })
 
-        val result = LegadoProbeEngine().probe(0, doc, options())
+        val noContent = LegadoProbeEngine().probe(
+            1,
+            doc(includeDiscovery = false),
+            options(checkDiscovery = false, checkContent = false),
+        )
+        assertEquals(ProbeStatus.OK, noContent.status, "详情：" + noContent.detail)
+        assertTrue(noContent.stageResults.filter {
+            it.stage == ProbeStage.CONTENT
+        }.all { it.status == ProbeStageStatus.NOT_RUN })
+    }
 
-        assertEquals(ProbeStatus.UNSUPPORTED, result.status, "详情：${result.detail}")
+    @Test
+    fun discoveryInitializesCategoryDefaultsAndPersistsInfoMapChanges() = runBlocking {
+        val sourceUrl = "http://127.0.0.1:$port"
+        val exploreRule =
+            "@JS: infoMap.put('headlessState', 'saved'); infoMap.save(); " +
+                "JSON.stringify([{title:'排序',url:'/explore?page={{page}}'," +
+                "type:'toggle',chars:['最新','最热']}])"
+        val fixture = sourceJson().replace(
+            "本地分类::/explore?page={{page}}",
+            exploreRule,
+        )
+        val source = BookSourceDoc(SourceIO.parse(fixture).single())
+
+        try {
+            val result = LegadoProbeEngine().probe(
+                0,
+                source,
+                options(checkSearch = false, checkInfo = false),
+            )
+
+            assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+            val infoMap = ExploreAdapter.exploreInfoMapList[sourceUrl]
+            assertEquals("最新", infoMap?.get("排序"))
+            assertEquals("saved", infoMap?.get("headlessState"))
+
+            val persisted = CacheManager.get("infoMap_$sourceUrl").orEmpty()
+            assertContains(persisted, "headlessState")
+            assertContains(persisted, "saved")
+            assertContains(persisted, "排序")
+        } finally {
+            ExploreAdapter.exploreInfoMapList.remove(sourceUrl)
+            CacheManager.delete("infoMap_$sourceUrl")
+        }
+    }
+
+    @Test
+    fun concurrentEngineProbesForTheSameSourceUrlSerializeDiscoveryRequests() = runBlocking {
+        val source = doc()
+        val engine = LegadoProbeEngine()
+        val results = coroutineScope {
+            (0..1).map { index ->
+                async(Dispatchers.IO) {
+                    engine.probe(
+                        index,
+                        source,
+                        options(checkSearch = false, checkInfo = false),
+                    )
+                }
+            }.awaitAll()
+        }
+
+        assertTrue(results.all { it.status == ProbeStatus.OK }, results.joinToString { it.detail.orEmpty() })
+        assertEquals(2, discoveryPages.size)
+        assertEquals(1, maxDiscoveryInFlight.get())
+    }
+
+    @Test
+    fun explicitEmptySourceProxyOverridesTheToolDefault() = runBlocking {
+        val json = sourceJson(includeDiscovery = false).replace(
+            "\"enabled\": true,",
+            "\"enabled\": true,\n  \"header\": \"{\\\"proxy\\\":\\\"\\\"}\",",
+        )
+        val source = BookSourceDoc(SourceIO.parse(json).single())
+        val result = withContext(ProbeProxyContext("http://127.0.0.1:1")) {
+            LegadoProbeEngine().probe(
+                0,
+                source,
+                options(checkDiscovery = false),
+            )
+        }
+
+        assertEquals(ProbeStatus.OK, result.status, "详情：${result.detail}")
+        assertTrue(searchQueries.isNotEmpty())
+    }
+
+    @Test
+    fun domainFailureStopsSearchAndDiscoveryAndUsesUpstreamFailurePenalty() = runBlocking {
+        val unusedPort = ServerSocket(0).use { it.localPort }
+        val json = sourceJson().replace("127.0.0.1:" + port, "127.0.0.1:" + unusedPort)
+        val source = BookSourceDoc(SourceIO.parse(json).single())
+        val timeoutMs = 10_000L
+        val result = LegadoProbeEngine().probe(
+            0,
+            source,
+            options(checkDomain = true, timeoutMs = timeoutMs),
+        )
+
+        assertEquals(ProbeStatus.NETWORK, result.status, "详情：" + result.detail)
+        assertTrue(searchQueries.isEmpty())
+        assertTrue(discoveryPages.isEmpty())
+        assertEquals(
+            ProbeStageStatus.FAILED,
+            result.stageResults.first { it.stage == ProbeStage.DOMAIN }.status,
+        )
+        assertEquals(timeoutMs, result.elapsedMs - result.actualElapsedMs)
     }
 }

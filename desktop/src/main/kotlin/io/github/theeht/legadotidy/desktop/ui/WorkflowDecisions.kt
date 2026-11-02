@@ -25,25 +25,61 @@ internal fun <T> planMarkedDeletions(
 ): DeletionPlan<T> {
     val markedCount = items.count(isMarked)
     val allMarked = items.isNotEmpty() && markedCount == items.size
-    if (allMarked) {
-        return DeletionPlan(
-            canAdvance = false,
-            retained = items,
-            removedCount = 0,
-            allItemsMarked = true,
-        )
-    }
     return DeletionPlan(
-        canAdvance = items.isNotEmpty(),
+        // An empty retained set is a valid outcome: never rescue a marked source merely
+        // to keep one item in a duplicate group or to make the export non-empty.
+        canAdvance = true,
         retained = items.filterNot(isMarked),
         removedCount = markedCount,
-        allItemsMarked = false,
+        allItemsMarked = allMarked,
     )
 }
 
+/**
+ * A later-stage back-navigation must not leak deduplication/organization marks into
+ * validation. Previously committed validation removals are already absent from the pool,
+ * so even an old failed probe must not silently recreate a validation delete mark.
+ */
+internal data class ValidationReviewReset(
+    val deleteMarked: Boolean,
+    val userDecision: Boolean,
+    val suggestion: String,
+)
+
+internal fun validationReviewReset(status: ProbeStatus?): ValidationReviewReset =
+    ValidationReviewReset(
+        deleteMarked = false,
+        userDecision = false,
+        suggestion = when (status) {
+            null -> "待重新校验"
+            ProbeStatus.OK, ProbeStatus.UNCHECKABLE -> "建议保留"
+            ProbeStatus.SKIPPED -> "跳过校验"
+            else -> "建议复核"
+        },
+    )
+
 /** Probe outcomes that should enter the pending-delete bucket by default. */
 internal fun shouldMarkForDeletionByDefault(status: ProbeStatus): Boolean =
-    status != ProbeStatus.OK
+    status != ProbeStatus.OK && status != ProbeStatus.UNCHECKABLE
+
+/**
+ * The dialog may display a suggested candidate, but that suggestion is not a user
+ * decision. Never initialize the selection to a candidate already marked for deletion.
+ */
+internal fun initialDuplicateKeepId(
+    candidates: List<Pair<Int, Boolean>>,
+    suggestedKeepId: Int,
+): Int? =
+    candidates.firstOrNull { (id, marked) -> id == suggestedKeepId && !marked }?.first
+        ?: candidates.firstOrNull { (_, marked) -> !marked }?.first
+
+internal fun canSaveDuplicateChoice(
+    selectionMade: Boolean,
+    keepAll: Boolean,
+    keepId: Int?,
+    candidateIds: List<Int>,
+): Boolean =
+    keepAll || (selectionMade && keepId != null && keepId in candidateIds)
 
 /** A manual decision must survive recalculating duplicate groups and other automatic suggestions. */
 internal fun resolveDeleteMark(
@@ -58,7 +94,7 @@ internal fun resolveDeleteMark(
  */
 internal fun shouldShowInExceptionReview(status: ProbeStatus?, deleteMarked: Boolean): Boolean =
     !deleteMarked && status != null &&
-        status != ProbeStatus.OK && status != ProbeStatus.SKIPPED
+        status != ProbeStatus.OK && status != ProbeStatus.UNCHECKABLE && status != ProbeStatus.SKIPPED
 
 /**
  * Single source of truth for the category filters shown above the source list.
@@ -74,7 +110,7 @@ internal fun isSourceIncludedInFilter(
     "全部" -> true
     "重复候选" -> hasDuplicateGroup
     "待校验" -> needsProbe
-    "校验通过" -> probeStatus == ProbeStatus.OK
+    "校验通过" -> probeStatus == ProbeStatus.OK || probeStatus == ProbeStatus.UNCHECKABLE
     "异常 / 复核" -> shouldShowInExceptionReview(probeStatus, deleteMarked)
     "待删除" -> deleteMarked
     else -> true
