@@ -5,21 +5,12 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import io.github.theeht.legadotidy.desktop.ui.TidyApp
-import kotlin.system.exitProcess
 
 /**
- * 唯一入口，两条路：
- * - 无参数（或带 `--gui`）→ 图形界面；
- * - 带任何其它参数 → 命令行。
- *
- * 不在启动时判断「有没有图形环境」：这个程序只做 Windows 桌面版，
- * 没有 X11/headless 的部署场景，猜反而会躲掉真正的启动错误。
+ * jpackage 的 GUI 唯一入口。保留 main(String[]) 签名以供 Windows 原生启动器调用；
+ * 程序不再解析或提供命令行参数模式。
  */
-fun main(args: Array<String>) {
-    val gui = args.isEmpty() || args.contains("--gui")
-    if (!gui) {
-        exitProcess(runCli(args))
-    }
+fun main(@Suppress("UNUSED_PARAMETER") args: Array<String>) {
     application {
         // 初次启动直接使用显示器可用工作区，充分利用 2K/高分辨率屏幕；
         // 用户仍可通过系统窗口按钮还原、调整大小。

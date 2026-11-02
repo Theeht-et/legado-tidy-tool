@@ -1,4 +1,7 @@
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
+import org.gradle.jvm.tasks.Jar
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -27,78 +30,41 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "io.github.theeht.legadotidy.desktop.MainKt"
-
-        nativeDistributions {
-            // AppImage = 免安装目录（解压即用），不需要 WiX。
-            targetFormats(TargetFormat.AppImage)
-            packageName = "legado-tidy"
-            packageVersion = "0.1.0"
-            description = "书源去重、校验、整理"
-            vendor = "Theeht"
-            // 便携目录不要黑窗：用 javaw 启动的口令在 launcher 侧配置。
-            windows {
-                menu = false
-                shortcut = false
-                dirChooser = false
-                perUserInstall = true
-                upgradeUuid = "9f1c0a53-5b6e-4d47-9a1f-2f7bd4f4a6d1"
-            }
-        }
     }
 }
 
 /**
- * 命令行跑一遍（不进界面）：
+ * 用 jlink + jpackage 生成 Windows 原生 GUI 启动器。
  *
- *   gradle :desktop:cli -Pargs="--in sources.json --limit 20"
- *
- * 不用 application 插件，是因为它和 Compose 桌面插件都要注册 `run`，名字会撞。
- * 路径里带空格时改用 `--in="C:/a b/x.json"` 这种等号写法。
- */
-tasks.register<JavaExec>("cli") {
-    group = "application"
-    description = "命令行模式跑一次"
-    mainClass.set("io.github.theeht.legadotidy.desktop.MainKt")
-    classpath = sourceSets["main"].runtimeClasspath
-    workingDir = rootProject.projectDir
-    val raw = (project.findProperty("args") as String?)?.trim().orEmpty()
-    if (raw.isNotEmpty()) {
-        args = raw.split(' ').filter { it.isNotEmpty() }
-    }
-}
-
-/**
- * 便携目录：免安装、双击即用。
- *
- * 为什么不用 jpackage：它在本机对 dest 目录的可写性检查恒失败（换到 TEMP 也一样），
- * 所以这里自己组装，结构：
- *
+ * 产物是一个可直接运行的应用目录：
  *   legado-tidy/
- *     runtime/          精简 JRE（jlink，带 java.exe）
- *     app/              全部 jar
- *     legado-tidy.bat   带控制台（排障看日志用）
- *     打开书源整理.vbs  无黑窗（日常用这个）
+ *     legado-tidy.exe
+ *     app/       应用及依赖 JAR、Skiko 原生 DLL/DAT
+ *     runtime/   精简 JRE
  *
- * 模块清单是「跑起来需要什么」而不是「全都带上」：
- * - java.desktop   Compose/AWT
- * - jdk.unsupported sun.misc.Unsafe（Skiko、okhttp 都要）
- * - jdk.crypto.ec  TLS 的 ECDHE 套件
- * - jdk.charsets   GBK/GB18030 —— 中文书源站大量在用，缺了会乱码
- * - java.naming / java.management / java.sql / java.xml / java.logging：传递依赖要
+ * app-image 不依赖 WiX，也不是安装包；分发时必须保留整个目录。
  */
-val portableRuntime = layout.buildDirectory.dir("jlink/runtime")
+val bundledRuntime = layout.buildDirectory.dir("jlink/runtime")
 
 val jlinkRuntime by tasks.registering(Exec::class) {
     group = "distribution"
     description = "用 jlink 生成精简 JRE"
-    val out = portableRuntime.get().asFile
+
+    val out = bundledRuntime.get().asFile
     val javaHome = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(21)
     }.get().metadata.installationPath.asFile
-    val exe = if (System.getProperty("os.name").lowercase().contains("windows")) "jlink.exe" else "jlink"
+    val executableName = if (System.getProperty("os.name").lowercase().contains("windows")) {
+        "jlink.exe"
+    } else {
+        "jlink"
+    }
 
-    doFirst { out.deleteRecursively(); out.parentFile.mkdirs() }
-    executable = File(javaHome, "bin/$exe").absolutePath
+    doFirst {
+        out.deleteRecursively()
+        out.parentFile.mkdirs()
+    }
+    executable = File(javaHome, "bin/$executableName").absolutePath
     args(
         "--add-modules",
         listOf(
@@ -115,25 +81,162 @@ val jlinkRuntime by tasks.registering(Exec::class) {
     )
 }
 
-val portable by tasks.registering(Sync::class) {
+val windowsAppInput = layout.buildDirectory.dir("windows-app-input")
+
+/**
+ * jpackage 会把输入目录中的所有 JAR 放入 app/。
+ * Skiko Runtime JAR 中的顶层 DLL/DAT 同时还需要以独立文件放入 app/，
+ * 因此这里在复制时仅从 Skiko JAR 中移除这些顶层原生资源，保留其余类和资源。
+ * 这样不改变运行时类路径，也避免同一份原生文件在 JAR 和目录中重复分发。
+ */
+val prepareWindowsAppInput by tasks.registering {
     group = "distribution"
-    description = "组装便携目录（免安装）"
-    dependsOn(jlinkRuntime, tasks.named("jar"))
-    into(layout.buildDirectory.dir("portable/legado-tidy"))
+    description = "准备 Windows app-image 输入并去除 Skiko JAR 中重复的原生资源"
 
-    from(portableRuntime) { into("runtime") }
-    from(configurations.runtimeClasspath.get().filter { it.name.endsWith(".jar") }) { into("app") }
-    from(tasks.named("jar")) { into("app") }
-    from("src/main/portable")
+    val runtimeClasspath = configurations.runtimeClasspath
+    val desktopJar = tasks.named<Jar>("jar")
+    dependsOn(desktopJar)
+    inputs.files(runtimeClasspath)
+    inputs.file(desktopJar.flatMap { it.archiveFile })
+    outputs.dir(windowsAppInput)
 
-    // Skiko 的 dll 从 jar 里解出来单独放：精简 JRE 里它自己往 temp 解压会失败。
     doLast {
-        val appDir = layout.buildDirectory.dir("portable/legado-tidy/app").get().asFile
-        appDir.listFiles { f -> f.name.startsWith("skiko") && f.name.endsWith(".jar") }?.forEach { skikoJar ->
-            copy {
-                from(zipTree(skikoJar)) { include("*.dll", "*.dat") }
-                into(appDir)
+        val appDir = windowsAppInput.get().asFile
+        appDir.deleteRecursively()
+        appDir.mkdirs()
+
+        val runtimeJars = runtimeClasspath.get()
+            .filter { it.isFile && it.extension.equals("jar", ignoreCase = true) }
+            .sortedBy { it.name }
+        val skikoJars = runtimeJars.filter { it.name.startsWith("skiko", ignoreCase = true) }
+        if (skikoJars.isEmpty()) {
+            throw GradleException("未解析到 Skiko JAR，无法准备 Windows 原生资源。")
+        }
+
+        val nativeResourceNames = linkedSetOf<String>()
+        runtimeJars.forEach { source ->
+            val target = File(appDir, source.name)
+            if (source in skikoJars) {
+                ZipFile(source).use { zip ->
+                    ZipOutputStream(target.outputStream().buffered()).use { output ->
+                        val entries = zip.entries()
+                        while (entries.hasMoreElements()) {
+                            val entry = entries.nextElement()
+                            val isRootNativeResource = !entry.isDirectory &&
+                                !entry.name.contains('/') &&
+                                (entry.name.endsWith(".dll", ignoreCase = true) ||
+                                    entry.name.endsWith(".dat", ignoreCase = true))
+                            val upperEntryName = entry.name.uppercase()
+                            val isJarSignatureFile = upperEntryName.startsWith("META-INF/") && (
+                                upperEntryName.endsWith(".SF") ||
+                                    upperEntryName.endsWith(".RSA") ||
+                                    upperEntryName.endsWith(".DSA") ||
+                                    upperEntryName.endsWith(".EC") ||
+                                    upperEntryName.substringAfterLast('/').startsWith("SIG-")
+                                )
+
+                            if (isRootNativeResource) {
+                                val bytes = zip.getInputStream(entry).use { it.readBytes() }
+                                val nativeFile = File(appDir, entry.name)
+                                if (nativeFile.exists()) {
+                                    if (!nativeFile.readBytes().contentEquals(bytes)) {
+                                        throw GradleException(
+                                            "不同 Skiko JAR 含有同名但内容不同的原生资源：${entry.name}"
+                                        )
+                                    }
+                                } else {
+                                    nativeFile.writeBytes(bytes)
+                                }
+                                nativeResourceNames += entry.name
+                            } else if (!isJarSignatureFile) {
+                                val copiedEntry = ZipEntry(entry.name).apply {
+                                    if (entry.time >= 0) time = entry.time
+                                }
+                                output.putNextEntry(copiedEntry)
+                                if (!entry.isDirectory) {
+                                    zip.getInputStream(entry).use { it.copyTo(output) }
+                                }
+                                output.closeEntry()
+                            }
+                        }
+                    }
+                }
+            } else {
+                source.copyTo(target, overwrite = true)
             }
         }
+
+        if (nativeResourceNames.none { it.endsWith(".dll", ignoreCase = true) }) {
+            throw GradleException("Skiko JAR 中没有找到可提取的 DLL。")
+        }
+        if (nativeResourceNames.none { it.endsWith(".dat", ignoreCase = true) }) {
+            throw GradleException("Skiko JAR 中没有找到可提取的 DAT 资源。")
+        }
+
+        val appJar = desktopJar.get().archiveFile.get().asFile
+        appJar.copyTo(File(appDir, appJar.name), overwrite = true)
+
+        logger.lifecycle(
+            "Windows app 输入已准备：${runtimeJars.size} 个依赖 JAR，" +
+                "提取 ${nativeResourceNames.size} 个 Skiko 原生资源，原生资源不再重复保留在 JAR 中。"
+        )
+    }
+}
+
+/**
+ * Windows 主机上运行：
+ *   gradle :desktop:windowsAppImage
+ *
+ * jpackage 的 app-image 会生成真正的 legado-tidy.exe GUI 启动器，
+ * 同时把精简 JRE 和应用依赖放入同一目录。
+ */
+val windowsAppImage by tasks.registering(Exec::class) {
+    group = "distribution"
+    description = "生成免安装 Windows 原生 EXE 应用目录"
+    dependsOn(jlinkRuntime, prepareWindowsAppInput)
+
+    val outputDir = layout.buildDirectory.dir("windows-app-image").get().asFile
+    val appInputDir = windowsAppInput.get().asFile
+    val runtimeDir = bundledRuntime.get().asFile
+    val javaHome = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }.get().metadata.installationPath.asFile
+    val appJarName = tasks.named<Jar>("jar").get().archiveFileName.get()
+
+    executable = File(javaHome, "bin/jpackage.exe").absolutePath
+    args(
+        "--type", "app-image",
+        "--name", "legado-tidy",
+        "--app-version", "0.1.0",
+        "--vendor", "Theeht",
+        "--description", "书源去重、校验、整理",
+        "--input", appInputDir.absolutePath,
+        "--main-jar", appJarName,
+        "--main-class", "io.github.theeht.legadotidy.desktop.MainKt",
+        "--runtime-image", runtimeDir.absolutePath,
+        "--dest", outputDir.absolutePath,
+        "--java-options", "-Dfile.encoding=UTF-8",
+        "--java-options", "-Xmx2g",
+        "--java-options", "-Dskiko.library.path=\$APPDIR",
+    )
+    outputs.dir(outputDir)
+
+    doFirst {
+        if (!System.getProperty("os.name").lowercase().contains("windows")) {
+            throw GradleException("windowsAppImage 必须在 Windows 主机上运行。")
+        }
+        outputDir.deleteRecursively()
+        outputDir.mkdirs()
+    }
+
+    doLast {
+        val appImage = File(outputDir, "legado-tidy")
+        val launcher = File(appImage, "legado-tidy.exe")
+        val appConfig = File(appImage, "app/legado-tidy.cfg")
+        val runtimeModules = File(appImage, "runtime/lib/modules")
+        if (!launcher.isFile || !appConfig.isFile || !runtimeModules.isFile) {
+            throw GradleException("jpackage 生成的 Windows app-image 不完整：${appImage.absolutePath}")
+        }
+        logger.lifecycle("Windows EXE 已生成：${launcher.absolutePath}")
     }
 }
