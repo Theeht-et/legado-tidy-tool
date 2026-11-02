@@ -26,7 +26,6 @@ object SourceField {
     const val LOGIN_UI = "loginUi"
     const val LOGIN_CHECK_JS = "loginCheckJs"
     const val COVER_DECODE_JS = "coverDecodeJs"
-    const val COMMENT = "bookSourceComment"
     const val VARIABLE_COMMENT = "variableComment"
     const val LAST_UPDATE_TIME = "lastUpdateTime"
     const val RESPOND_TIME = "respondTime"
@@ -58,11 +57,17 @@ class RuleGroup internal constructor(private val raw: JsonObject?) {
         return if (value.isJsonPrimitive) value.asString else value.toString()
     }
 
+    /** 遍历实际存在的字段，不为每次行为评分额外创建中间 Map。 */
+    fun forEachField(action: (String, String) -> Unit) {
+        raw?.entrySet()?.forEach { (key, value) ->
+            action(key, if (value.isJsonNull) "" else if (value.isJsonPrimitive) value.asString else value.toString())
+        }
+    }
+
     /** 返回实际存在的字段，而不是假设每个书源都填满上游实体的所有属性。 */
-    fun fields(): Map<String, String> = raw?.entrySet()
-        ?.associateTo(LinkedHashMap()) { (key, value) ->
-            key to if (value.isJsonNull) "" else if (value.isJsonPrimitive) value.asString else value.toString()
-        } ?: emptyMap()
+    fun fields(): Map<String, String> = LinkedHashMap<String, String>().also { result ->
+        forEachField { key, value -> result[key] = value }
+    }
 
     fun isEmpty(): Boolean = raw == null || raw.size() == 0
 }
@@ -78,12 +83,8 @@ class BookSourceDoc(val raw: JsonObject) {
     val group: String = raw.str(SourceField.GROUP)
     val type: Int = raw.int(SourceField.TYPE)
     val enabled: Boolean = raw.bool(SourceField.ENABLED, fallback = true)
-    val comment: String = raw.str(SourceField.COMMENT)
 
     val searchUrl: String = raw.str(SourceField.SEARCH_URL)
-    val loginUrl: String = raw.str(SourceField.LOGIN_URL)
-    val loginCheckJs: String = raw.str(SourceField.LOGIN_CHECK_JS)
-    val header: String = raw.str(SourceField.HEADER)
     val exploreUrl: String = raw.str(SourceField.EXPLORE_URL)
     val mainJs: String = raw.str(SourceField.MAIN_JS)
 
@@ -93,6 +94,16 @@ class BookSourceDoc(val raw: JsonObject) {
     val ruleToc: RuleGroup = ruleGroup(SourceField.RULE_TOC)
     val ruleContent: RuleGroup = ruleGroup(SourceField.RULE_CONTENT)
     val ruleReview: RuleGroup = ruleGroup(SourceField.RULE_REVIEW)
+
+    // 在构造时解析一次；行为评分复用这些 RuleGroup，避免反复解析 JSON 字符串。
+    private val parsedRuleGroups: Map<String, RuleGroup> = mapOf(
+        SourceField.RULE_SEARCH to ruleSearch,
+        SourceField.RULE_EXPLORE to ruleExplore,
+        SourceField.RULE_BOOK_INFO to ruleBookInfo,
+        SourceField.RULE_TOC to ruleToc,
+        SourceField.RULE_CONTENT to ruleContent,
+        SourceField.RULE_REVIEW to ruleReview,
+    )
 
     private fun ruleGroup(key: String): RuleGroup {
         val element = raw.get(key) ?: return RuleGroup(null)
@@ -118,18 +129,7 @@ class BookSourceDoc(val raw: JsonObject) {
         get() = mainJs.isNotBlank() || searchUrl.isNotBlank()
 
     /**
-     * 是否具备发现分类入口。上游先解析 exploreUrl，再筛选 type=url 且 URL 非空的分类；
-     * 不能要求 searchUrl，因为发现型书源可以完全没有搜索入口。
-     */
-    val canExplore: Boolean
-        get() = exploreUrl.isNotBlank()
-
-    /** 是否包含上游规则组或 JS 主脚本。可选规则组缺失不视为格式错误。 */
-    val hasAnyRule: Boolean
-        get() = mainJs.isNotEmpty() || SourceField.RULE_GROUPS.any { !ruleGroup(it).isEmpty() }
-
-    /**
-     * 行为字段用于去重指纹与相似度。
+     * 行为字段用于重复候选质量评分和规则完整度比较。
      *
      * 规则组字段按 JSON 中实际出现的键动态收集，覆盖上游新增字段和 ruleReview；
      * 同时纳入会改变抓取行为的顶层配置。展示属性、启用状态、排序和统计时间不参与。
@@ -157,7 +157,7 @@ class BookSourceDoc(val raw: JsonObject) {
         }
 
         for (groupName in SourceField.RULE_GROUPS) {
-            ruleGroup(groupName).fields().forEach { (field, value) ->
+            parsedRuleGroups.getValue(groupName).forEachField { field, value ->
                 if (value.isNotEmpty()) m["$groupName.$field"] = value
             }
         }

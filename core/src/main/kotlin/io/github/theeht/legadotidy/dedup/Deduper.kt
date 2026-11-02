@@ -4,29 +4,16 @@ import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
 
-/** HTML 原型使用的 URL 完全重复分组。 */
+/** 按规范化 URL 判定的完全重复分组。 */
 enum class DedupKind(val label: String) {
     EXACT("相同 URL"),
-    FINGERPRINT("规则指纹相同"),
-    SIMILAR("规则高度相似"),
 }
-
-/**
- * 保留流水线旧配置入口的兼容类型。
- * URL-only 去重与 HTML 原型一致，不再使用相似度阈值或 shingle 候选参数。
- */
-data class DedupConfig(
-    @Deprecated("去重现在只按规范化 URL 分组") val similarityThreshold: Double = 0.92,
-    @Deprecated("去重现在只按规范化 URL 分组") val minSharedShingles: Int = 3,
-    @Deprecated("去重现在只按规范化 URL 分组") val maxShingleDocFreq: Int = 60,
-)
 
 data class DedupGroup(
     val kind: DedupKind,
     /** 组内成员在输入列表里的下标。 */
     val members: List<Int>,
     val keep: Int,
-    val similarity: Double,
 ) {
     val size: Int get() = members.size
 }
@@ -37,9 +24,6 @@ data class DedupReport(
 ) {
     /** 每组建议保留一项，其余均为候选删除项。 */
     val keepCount: Int = total - groups.sumOf { it.size - 1 }
-    val exactGroups: Int get() = groups.count { it.kind == DedupKind.EXACT }
-    val fingerprintGroups: Int get() = 0
-    val similarGroups: Int get() = 0
 }
 
 /**
@@ -71,10 +55,8 @@ object Deduper {
         "respondTime",
     )
 
-    @Suppress("UNUSED_PARAMETER")
     fun run(
         sources: List<BookSourceDoc>,
-        config: DedupConfig = DedupConfig(),
         probeResults: Map<Int, ProbeResult> = emptyMap(),
     ): DedupReport {
         if (sources.size <= 1) return DedupReport(emptyList(), sources.size)
@@ -85,27 +67,32 @@ object Deduper {
             if (key.isNotEmpty()) buckets.getOrPut(key) { ArrayList(2) }.add(index)
         }
 
-        val groups = buckets.values
-            .asSequence()
-            .filter { it.size >= 2 }
-            .map { members ->
-                val keep = members.minWithOrNull(
-                    compareBy<Int> { probeQuality(probeResults[it]) }
-                        .thenByDescending { coreCapabilityCount(sources[it]) }
-                        .thenByDescending { auxiliaryCapabilityCount(sources[it]) }
-                        .thenByDescending { sources[it].ruleCompleteness }
-                        .thenBy { successfulProbeElapsedMs(probeResults[it]) }
-                        .thenByDescending { qualityTopLevelFieldCount(sources[it]) }
-                        .thenBy { it },
-                ) ?: members.first()
-                DedupGroup(
-                    kind = DedupKind.EXACT,
-                    members = members.toList(),
-                    keep = keep,
-                    similarity = 1.0,
-                )
+        val duplicateBuckets = buckets.values.filter { it.size >= 2 }
+
+        // 评分项涉及规则遍历和 JSON 字段统计；每个重复候选只计算一次。
+        val scoresByIndex = HashMap<Int, CandidateScore>()
+        duplicateBuckets.forEach { members ->
+            members.forEach { index ->
+                scoresByIndex[index] = scoreCandidate(sources[index], probeResults[index])
             }
-            .toList()
+        }
+
+        val keepComparator = compareBy<Int> { scoresByIndex.getValue(it).probeQuality }
+            .thenByDescending { scoresByIndex.getValue(it).coreCapabilities }
+            .thenByDescending { scoresByIndex.getValue(it).auxiliaryCapabilities }
+            .thenByDescending { scoresByIndex.getValue(it).ruleCompleteness }
+            .thenBy { scoresByIndex.getValue(it).successfulElapsedMs }
+            .thenByDescending { scoresByIndex.getValue(it).topLevelFieldCount }
+            .thenBy { it }
+
+        val groups = duplicateBuckets.map { members ->
+            val keep = members.minWithOrNull(keepComparator) ?: members.first()
+            DedupGroup(
+                kind = DedupKind.EXACT,
+                members = members.toList(),
+                keep = keep,
+            )
+        }
 
         return DedupReport(groups, sources.size)
     }
@@ -118,6 +105,25 @@ object Deduper {
         .substringBefore('?')
         .substringBefore('#')
         .trimEnd('/')
+
+    private data class CandidateScore(
+        val probeQuality: Int,
+        val coreCapabilities: Int,
+        val auxiliaryCapabilities: Int,
+        val ruleCompleteness: Int,
+        val successfulElapsedMs: Long,
+        val topLevelFieldCount: Int,
+    )
+
+    private fun scoreCandidate(source: BookSourceDoc, result: ProbeResult?): CandidateScore =
+        CandidateScore(
+            probeQuality = probeQuality(result),
+            coreCapabilities = coreCapabilityCount(source),
+            auxiliaryCapabilities = auxiliaryCapabilityCount(source),
+            ruleCompleteness = source.ruleCompleteness,
+            successfulElapsedMs = successfulProbeElapsedMs(result),
+            topLevelFieldCount = qualityTopLevelFieldCount(source),
+        )
 
     /**
      * 只有实际搜索成功或明确缺少搜索入口/解析为空，才形成确定的质量差异。

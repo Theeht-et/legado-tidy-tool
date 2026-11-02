@@ -1,6 +1,5 @@
 package io.github.theeht.legadotidy.probe
 
-import io.github.theeht.legadotidy.model.BookSourceDoc
 
 /**
  * 书源校验结论。UNCHECKABLE 对应 Legado 的 CheckSourceStatus.UNCHECKABLE，
@@ -34,12 +33,6 @@ enum class ProbeStage(val label: String) {
     TOC("目录"),
     CONTENT("正文"),
 
-    /** @deprecated 旧版入口式发现流程字段，不再由校验引擎产生。 */
-    @Deprecated("发现校验现已合并到上游单轮校验流程")
-    EXPLORE_CATEGORIES("发现分类解析"),
-    /** @deprecated 旧版入口式发现分页字段，不再由校验引擎产生。 */
-    @Deprecated("发现校验现已合并到上游单轮校验流程")
-    EXPLORE("发现分页"),
 }
 
 enum class ProbeStageStatus(val label: String) {
@@ -62,31 +55,15 @@ data class ProbeStageResult(
 )
 
 /**
- * Legacy API fields kept temporarily so existing callers compile while migration to the
- * single upstream check flow completes. The engine intentionally ignores entry/depth/pages.
- */
-@Deprecated("校验入口已与 Legado CheckSourceService 合并为单轮流程")
-enum class ProbeEntry { SEARCH, EXPLORE }
-
-@Deprecated("校验深度由 Legado 的六项独立开关控制")
-enum class ProbeDepth { SEARCH, WITH_TOC, FULL_CHAIN }
-
-/**
  * 与 Legado CheckSource 的六个开关和默认值一致。
  * 一个 timeoutMs 包裹单个书源的整轮 doCheckSource；域名 Socket 检测另有上游 2 秒超时。
  */
 data class ProbeOptions(
-    @Deprecated("由 checkInfo/checkCategory/checkContent 独立控制")
-    val depth: ProbeDepth = ProbeDepth.FULL_CHAIN,
     val timeoutMs: Long = 180_000,
     /** 上游 CheckSource.keyword 默认值；书源 ruleSearch.checkKeyWord 可覆盖。 */
     val keyword: String = "我的",
     /** 本轮默认代理；书源 header.proxy 存在时仍由上游请求配置优先。 */
     val proxy: String? = null,
-    @Deprecated("搜索和发现现在按上游规则在同一轮依次执行")
-    val entry: ProbeEntry = ProbeEntry.SEARCH,
-    @Deprecated("上游自动校验只请求发现第一页")
-    val maxExplorePages: Int = 1,
     val checkDomain: Boolean = false,
     val checkSearch: Boolean = true,
     val checkDiscovery: Boolean = true,
@@ -109,12 +86,8 @@ data class ProbeResult(
     val elapsedMs: Long = 0,
     val detail: String? = null,
     val stageResults: List<ProbeStageResult> = emptyList(),
-    /** Legacy metadata; no longer selects a separate entry or depth. */
-    val entry: ProbeEntry = ProbeEntry.SEARCH,
-    val depth: ProbeDepth = ProbeDepth.FULL_CHAIN,
     val keyword: String = "我的",
     val timeoutMs: Long = 180_000,
-    val maxExplorePages: Int = 1,
     val proxy: String? = null,
     val actualElapsedMs: Long = elapsedMs,
     val options: ProbeOptions = ProbeOptions(),
@@ -122,9 +95,3 @@ data class ProbeResult(
     val ok: Boolean get() = status == ProbeStatus.OK || status == ProbeStatus.UNCHECKABLE
 }
 
-interface ProbeEngine {
-    /** Reject run-wide configuration errors before individual sources are probed. */
-    fun validateOptions(options: ProbeOptions): String? = null
-
-    suspend fun probe(index: Int, source: BookSourceDoc, options: ProbeOptions): ProbeResult
-}

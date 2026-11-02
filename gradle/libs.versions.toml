@@ -13,7 +13,6 @@ jsonPath = "3.0.0"
 jsoupXpath = "2.5.3"
 hutool = "5.8.22"
 commonsText = "1.13.1"
-annotations = "24.1.0"
 junit = "5.11.4"
 compose = "1.8.2"
 
@@ -28,7 +27,6 @@ jsoup-xpath = { module = "cn.wanghaomiao:JsoupXpath", version.ref = "jsoupXpath"
 hutool-core = { module = "cn.hutool:hutool-core", version.ref = "hutool" }
 hutool-crypto = { module = "cn.hutool:hutool-crypto", version.ref = "hutool" }
 commons-text = { module = "org.apache.commons:commons-text", version.ref = "commonsText" }
-annotations = { module = "org.jetbrains:annotations", version.ref = "annotations" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 junit-launcher = { module = "org.junit.platform:junit-platform-launcher", version = "1.11.4" }

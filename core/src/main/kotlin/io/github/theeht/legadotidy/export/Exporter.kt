@@ -1,6 +1,5 @@
 package io.github.theeht.legadotidy.export
 
-import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import io.github.theeht.legadotidy.model.SourceField
 import io.github.theeht.legadotidy.model.SourceIO
@@ -11,38 +10,25 @@ import java.nio.file.StandardCopyOption
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
-/** 直链发布通道。默认不启用；实现方只需返回一个手机能打开的 URL。 */
-fun interface DirectLinkPublisher {
-    suspend fun publish(fileName: String, bytes: ByteArray): Result<String>
-}
-
-object NoDirectLink : DirectLinkPublisher {
-    override suspend fun publish(fileName: String, bytes: ByteArray): Result<String> =
-        Result.failure(UnsupportedOperationException("未配置直链通道"))
-}
-
 data class ExportConfig(
     /** 是否把清洗后的名字写回导出文件。 */
     val applyCleanNames: Boolean = true,
-    /** 向后兼容开关：旧调用同时控制分组与排序。 */
-    val applyGroupAndOrder: Boolean = true,
+    /** 是否写回 `bookSourceGroup`。 */
+    val applyGroups: Boolean = true,
+    /** 是否写回 `customOrder`。 */
+    val applyOrder: Boolean = true,
     val pretty: Boolean = true,
-    /** 是否写回 `bookSourceGroup`；null 表示继承旧的组合开关。 */
-    val applyGroups: Boolean? = null,
-    /** 是否写回 `customOrder`；null 表示继承旧的组合开关。 */
-    val applyOrder: Boolean? = null,
 )
 
 data class ExportResult(
     val file: Path,
     val count: Int,
-    val directLink: String? = null,
 )
 
 /**
- * S4 导出：默认写本地 JSON（用户手动导入阅读 App）；直链是可选通道。
+ * 将整理后的书源写入本地 JSON。
  *
- * 导出保留每个源的所有未知字段——只改我们确实要改的那几个。
+ * 导出保留每个源的所有未知字段——只改用户明确勾选的字段。
  */
 object Exporter {
 
@@ -63,10 +49,10 @@ object Exporter {
             if (config.applyCleanNames && (copy.has(SourceField.NAME) || org.name.isNotEmpty())) {
                 copy.addProperty(SourceField.NAME, org.name)
             }
-            if (config.applyGroups ?: config.applyGroupAndOrder) {
+            if (config.applyGroups) {
                 copy.addProperty(SourceField.GROUP, org.group)
             }
-            if (config.applyOrder ?: config.applyGroupAndOrder) {
+            if (config.applyOrder) {
                 copy.addProperty(SourceField.CUSTOM_ORDER, org.rank)
             }
             copy
@@ -90,27 +76,4 @@ object Exporter {
         return ExportResult(target, raws.size)
     }
 
-    /** 把一个数组里的源按分类拆成多个文件（大库分文件导入更友好）。 */
-    fun writeSplit(
-        raws: List<JsonObject>,
-        organized: List<OrganizedSource>,
-        dir: Path,
-        config: ExportConfig = ExportConfig(),
-    ): List<ExportResult> {
-        val built = buildJson(raws, organized, config)
-        val byGroup = LinkedHashMap<String, JsonArray>()
-        organized.forEach { org ->
-            val arr = byGroup.getOrPut(org.group) { JsonArray() }
-            arr.add(built[org.index])
-        }
-        Files.createDirectories(dir)
-        return byGroup.map { (group, arr) ->
-            val safe = group.replace(Regex("[\\\\/:*?\"<>|]"), "_")
-            val target = dir.resolve("$safe.json")
-            val text = arr.toString()
-            val prettyText = if (config.pretty) SourceIO.toJson(arr.map { it.asJsonObject }, true) else text
-            Files.writeString(target, prettyText)
-            ExportResult(target, arr.size())
-        }
-    }
 }
