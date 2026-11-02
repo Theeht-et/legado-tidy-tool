@@ -67,26 +67,32 @@ object Deduper {
             if (key.isNotEmpty()) buckets.getOrPut(key) { ArrayList(2) }.add(index)
         }
 
-        val groups = buckets.values
-            .asSequence()
-            .filter { it.size >= 2 }
-            .map { members ->
-                val keep = members.minWithOrNull(
-                    compareBy<Int> { probeQuality(probeResults[it]) }
-                        .thenByDescending { coreCapabilityCount(sources[it]) }
-                        .thenByDescending { auxiliaryCapabilityCount(sources[it]) }
-                        .thenByDescending { sources[it].ruleCompleteness }
-                        .thenBy { successfulProbeElapsedMs(probeResults[it]) }
-                        .thenByDescending { qualityTopLevelFieldCount(sources[it]) }
-                        .thenBy { it },
-                ) ?: members.first()
-                DedupGroup(
-                    kind = DedupKind.EXACT,
-                    members = members.toList(),
-                    keep = keep,
-                )
+        val duplicateBuckets = buckets.values.filter { it.size >= 2 }
+
+        // 评分项涉及规则遍历和 JSON 字段统计；每个重复候选只计算一次。
+        val scoresByIndex = HashMap<Int, CandidateScore>()
+        duplicateBuckets.forEach { members ->
+            members.forEach { index ->
+                scoresByIndex[index] = scoreCandidate(sources[index], probeResults[index])
             }
-            .toList()
+        }
+
+        val keepComparator = compareBy<Int> { scoresByIndex.getValue(it).probeQuality }
+            .thenByDescending { scoresByIndex.getValue(it).coreCapabilities }
+            .thenByDescending { scoresByIndex.getValue(it).auxiliaryCapabilities }
+            .thenByDescending { scoresByIndex.getValue(it).ruleCompleteness }
+            .thenBy { scoresByIndex.getValue(it).successfulElapsedMs }
+            .thenByDescending { scoresByIndex.getValue(it).topLevelFieldCount }
+            .thenBy { it }
+
+        val groups = duplicateBuckets.map { members ->
+            val keep = members.minWithOrNull(keepComparator) ?: members.first()
+            DedupGroup(
+                kind = DedupKind.EXACT,
+                members = members.toList(),
+                keep = keep,
+            )
+        }
 
         return DedupReport(groups, sources.size)
     }
@@ -99,6 +105,25 @@ object Deduper {
         .substringBefore('?')
         .substringBefore('#')
         .trimEnd('/')
+
+    private data class CandidateScore(
+        val probeQuality: Int,
+        val coreCapabilities: Int,
+        val auxiliaryCapabilities: Int,
+        val ruleCompleteness: Int,
+        val successfulElapsedMs: Long,
+        val topLevelFieldCount: Int,
+    )
+
+    private fun scoreCandidate(source: BookSourceDoc, result: ProbeResult?): CandidateScore =
+        CandidateScore(
+            probeQuality = probeQuality(result),
+            coreCapabilities = coreCapabilityCount(source),
+            auxiliaryCapabilities = auxiliaryCapabilityCount(source),
+            ruleCompleteness = source.ruleCompleteness,
+            successfulElapsedMs = successfulProbeElapsedMs(result),
+            topLevelFieldCount = qualityTopLevelFieldCount(source),
+        )
 
     /**
      * 只有实际搜索成功或明确缺少搜索入口/解析为空，才形成确定的质量差异。
