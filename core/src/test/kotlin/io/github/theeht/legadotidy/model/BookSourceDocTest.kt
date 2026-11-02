@@ -23,7 +23,6 @@ class BookSourceDocTest {
         assertEquals("x", source.behaviorFields()["ruleSearch.customFutureField"])
         assertEquals("article", source.behaviorFields()["ruleContent.content"])
         assertFalse(source.behaviorFields().containsKey("ruleSearch.wordCount"))
-        assertTrue(source.hasAnyRule)
     }
 
     @Test
@@ -31,11 +30,9 @@ class BookSourceDocTest {
         val review = doc("""{"ruleReview":{"reviewUrl":"/reviews","enabled":true}}""")
         assertEquals("/reviews", review.behaviorFields()["ruleReview.reviewUrl"])
         assertEquals("true", review.behaviorFields()["ruleReview.enabled"])
-        assertTrue(review.hasAnyRule)
 
         val js = doc("""{"mainJs":"function searchBook(){ return []; }"}""")
         assertEquals("function searchBook(){ return []; }", js.behaviorFields()["mainJs"])
-        assertTrue(js.hasAnyRule)
         assertTrue(js.canSearch)
     }
 
@@ -49,7 +46,8 @@ class BookSourceDocTest {
         )
 
         assertFalse(source.canSearch)
-        assertTrue(source.canExplore)
+        assertEquals("分类::https://example.test/explore?page={{page}}", source.exploreUrl)
+        assertEquals("div.book", source.ruleExplore["bookList"])
     }
 
     @Test
@@ -81,7 +79,6 @@ class BookSourceDocTest {
 
         assertTrue(source.ruleSearch.isEmpty())
         assertTrue(source.ruleReview.isEmpty())
-        assertFalse(source.hasAnyRule)
         assertTrue(source.behaviorFields().isEmpty())
     }
 

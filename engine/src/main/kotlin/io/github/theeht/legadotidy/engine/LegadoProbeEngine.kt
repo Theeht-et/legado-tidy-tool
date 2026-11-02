@@ -3,7 +3,6 @@ package io.github.theeht.legadotidy.engine
 import com.google.gson.Gson
 import com.script.ScriptException
 import io.github.theeht.legadotidy.model.BookSourceDoc
-import io.github.theeht.legadotidy.probe.ProbeEngine
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStage
@@ -14,7 +13,6 @@ import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.ContentEmptyException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
@@ -56,7 +54,7 @@ import java.net.UnknownHostException
 class LegadoProbeEngine(
     /** 使用上游 GSON，兼容 Legado 自己的 JSON 字段反序列化规则。 */
     private val gson: Gson = GSON,
-) : ProbeEngine {
+) {
 
     companion object {
         /**
@@ -71,16 +69,13 @@ class LegadoProbeEngine(
         }
     }
 
-    override fun validateOptions(options: ProbeOptions): String? =
-        validateProxyConfiguration(options.proxy)
-
     internal data class ChapterSelection(
         val chapter: BookChapter,
         val nextChapterUrl: String,
         val chapterCount: Int,
     )
 
-    override suspend fun probe(
+    suspend fun probe(
         index: Int,
         source: BookSourceDoc,
         options: ProbeOptions,

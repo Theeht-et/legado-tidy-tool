@@ -42,7 +42,7 @@ class ExporterTest {
         val organized = listOf(OrganizedSource(0, "新名字", "分类", ProbeStatus.OK, 0))
         Exporter.write(
             listOf(raw), organized, dir, "x.json",
-            ExportConfig(applyCleanNames = false, applyGroupAndOrder = false),
+            ExportConfig(applyCleanNames = false, applyGroups = false, applyOrder = false),
         )
         val parsed = SourceIO.parse(Files.readString(dir.resolve("x.json")))[0]
         assertEquals("原名字", parsed.get("bookSourceName").asString)
@@ -67,7 +67,6 @@ class ExporterTest {
             organized = organized,
             config = ExportConfig(
                 applyCleanNames = true,
-                applyGroupAndOrder = false,
                 applyGroups = false,
                 applyOrder = false,
             ),
@@ -92,7 +91,6 @@ class ExporterTest {
             "order-only.json",
             ExportConfig(
                 applyCleanNames = false,
-                applyGroupAndOrder = true,
                 applyGroups = false,
                 applyOrder = true,
             ),

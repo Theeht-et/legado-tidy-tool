@@ -23,7 +23,6 @@ dependencies {
     implementation(libs.hutool.core)
     implementation(libs.hutool.crypto)
     implementation(libs.commons.text)
-    implementation(libs.annotations)
     implementation(libs.kotlinx.coroutines.core)
 
     // 上游 third_party/maven 里 vendored 的 htmlunit-core-js（Maven Central 无此版本）

@@ -26,7 +26,6 @@ object SourceField {
     const val LOGIN_UI = "loginUi"
     const val LOGIN_CHECK_JS = "loginCheckJs"
     const val COVER_DECODE_JS = "coverDecodeJs"
-    const val COMMENT = "bookSourceComment"
     const val VARIABLE_COMMENT = "variableComment"
     const val LAST_UPDATE_TIME = "lastUpdateTime"
     const val RESPOND_TIME = "respondTime"
@@ -78,12 +77,8 @@ class BookSourceDoc(val raw: JsonObject) {
     val group: String = raw.str(SourceField.GROUP)
     val type: Int = raw.int(SourceField.TYPE)
     val enabled: Boolean = raw.bool(SourceField.ENABLED, fallback = true)
-    val comment: String = raw.str(SourceField.COMMENT)
 
     val searchUrl: String = raw.str(SourceField.SEARCH_URL)
-    val loginUrl: String = raw.str(SourceField.LOGIN_URL)
-    val loginCheckJs: String = raw.str(SourceField.LOGIN_CHECK_JS)
-    val header: String = raw.str(SourceField.HEADER)
     val exploreUrl: String = raw.str(SourceField.EXPLORE_URL)
     val mainJs: String = raw.str(SourceField.MAIN_JS)
 
@@ -118,18 +113,7 @@ class BookSourceDoc(val raw: JsonObject) {
         get() = mainJs.isNotBlank() || searchUrl.isNotBlank()
 
     /**
-     * 是否具备发现分类入口。上游先解析 exploreUrl，再筛选 type=url 且 URL 非空的分类；
-     * 不能要求 searchUrl，因为发现型书源可以完全没有搜索入口。
-     */
-    val canExplore: Boolean
-        get() = exploreUrl.isNotBlank()
-
-    /** 是否包含上游规则组或 JS 主脚本。可选规则组缺失不视为格式错误。 */
-    val hasAnyRule: Boolean
-        get() = mainJs.isNotEmpty() || SourceField.RULE_GROUPS.any { !ruleGroup(it).isEmpty() }
-
-    /**
-     * 行为字段用于去重指纹与相似度。
+     * 行为字段用于重复候选质量评分和规则完整度比较。
      *
      * 规则组字段按 JSON 中实际出现的键动态收集，覆盖上游新增字段和 ruleReview；
      * 同时纳入会改变抓取行为的顶层配置。展示属性、启用状态、排序和统计时间不参与。

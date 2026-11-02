@@ -4,29 +4,18 @@ import io.github.theeht.legadotidy.model.BookSourceDoc
 import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
 
-/** HTML 原型使用的 URL 完全重复分组。 */
+/** 按规范化 URL 判定的完全重复分组。 */
 enum class DedupKind(val label: String) {
     EXACT("相同 URL"),
     FINGERPRINT("规则指纹相同"),
     SIMILAR("规则高度相似"),
 }
 
-/**
- * 保留流水线旧配置入口的兼容类型。
- * URL-only 去重与 HTML 原型一致，不再使用相似度阈值或 shingle 候选参数。
- */
-data class DedupConfig(
-    @Deprecated("去重现在只按规范化 URL 分组") val similarityThreshold: Double = 0.92,
-    @Deprecated("去重现在只按规范化 URL 分组") val minSharedShingles: Int = 3,
-    @Deprecated("去重现在只按规范化 URL 分组") val maxShingleDocFreq: Int = 60,
-)
-
 data class DedupGroup(
     val kind: DedupKind,
     /** 组内成员在输入列表里的下标。 */
     val members: List<Int>,
     val keep: Int,
-    val similarity: Double,
 ) {
     val size: Int get() = members.size
 }
@@ -37,9 +26,6 @@ data class DedupReport(
 ) {
     /** 每组建议保留一项，其余均为候选删除项。 */
     val keepCount: Int = total - groups.sumOf { it.size - 1 }
-    val exactGroups: Int get() = groups.count { it.kind == DedupKind.EXACT }
-    val fingerprintGroups: Int get() = 0
-    val similarGroups: Int get() = 0
 }
 
 /**
@@ -71,10 +57,8 @@ object Deduper {
         "respondTime",
     )
 
-    @Suppress("UNUSED_PARAMETER")
     fun run(
         sources: List<BookSourceDoc>,
-        config: DedupConfig = DedupConfig(),
         probeResults: Map<Int, ProbeResult> = emptyMap(),
     ): DedupReport {
         if (sources.size <= 1) return DedupReport(emptyList(), sources.size)
@@ -102,7 +86,6 @@ object Deduper {
                     kind = DedupKind.EXACT,
                     members = members.toList(),
                     keep = keep,
-                    similarity = 1.0,
                 )
             }
             .toList()

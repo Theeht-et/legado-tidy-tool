@@ -71,7 +71,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.github.theeht.legadotidy.dedup.DedupKind
-import io.github.theeht.legadotidy.dedup.DedupReport
 import io.github.theeht.legadotidy.dedup.Deduper
 import io.github.theeht.legadotidy.engine.LegadoProbeEngine
 import io.github.theeht.legadotidy.export.DirectLink
@@ -85,8 +84,6 @@ import io.github.theeht.legadotidy.organize.OrganizeConfig
 import io.github.theeht.legadotidy.organize.OrganizeRule
 import io.github.theeht.legadotidy.organize.Organizer
 import io.github.theeht.legadotidy.organize.OrganizedSource
-import io.github.theeht.legadotidy.probe.ProbeDepth
-import io.github.theeht.legadotidy.probe.ProbeEntry
 import io.github.theeht.legadotidy.probe.ProbeOptions
 import io.github.theeht.legadotidy.probe.ProbeResult
 import io.github.theeht.legadotidy.probe.ProbeStatus
@@ -235,7 +232,6 @@ private data class DuplicateGroupUi(
     val kind: DedupKind,
     val sourceIds: List<Int>,
     val suggestedKeepId: Int,
-    val similarity: Double,
 )
 
 private data class PreviewSource(
@@ -271,7 +267,6 @@ private class WorkflowState {
     var total by mutableStateOf(0)
     var removedCount by mutableStateOf(0)
     var duplicateGroups by mutableStateOf<List<DuplicateGroupUi>>(emptyList())
-    var duplicateReport by mutableStateOf<DedupReport?>(null)
     var preview by mutableStateOf<Map<Int, PreviewSource>?>(null)
     var previewOrder by mutableStateOf<List<Int>>(emptyList())
     var exported by mutableStateOf<ExportResult?>(null)
@@ -334,7 +329,6 @@ fun TidyApp() {
             state.stage = WorkflowStage.IMPORT
             state.sourceFilter = "全部"
             state.duplicateGroups = emptyList()
-            state.duplicateReport = null
             state.preview = null
             state.previewOrder = emptyList()
             state.exported = null
@@ -372,7 +366,6 @@ fun TidyApp() {
                         kind = group.kind,
                         sourceIds = stableIdsAtIndexes(snapshot, group.members) { it.id },
                         suggestedKeepId = snapshot[group.keep].id,
-                        similarity = group.similarity,
                     )
                 }
                 val groupById = groups.flatMap { group -> group.sourceIds.map { it to group } }.toMap()
@@ -403,7 +396,6 @@ fun TidyApp() {
                     )
                 })
                 state.duplicateGroups = groups
-                state.duplicateReport = report
                 state.stage = WorkflowStage.DEDUP_REVIEW
                 state.sourceFilter = "全部"
                 state.selectedId = state.sources.firstOrNull()?.id
@@ -516,7 +508,6 @@ fun TidyApp() {
     fun startValidation() {
         if (state.busy || state.sources.isEmpty()) return
         state.duplicateGroups = emptyList()
-        state.duplicateReport = null
         state.stage = WorkflowStage.PROBE_REVIEW
         state.sourceFilter = "全部"
         runValidation()
@@ -536,7 +527,6 @@ fun TidyApp() {
             )
         }
         state.duplicateGroups = emptyList()
-        state.duplicateReport = null
         state.preview = null
         state.previewOrder = emptyList()
         state.sourceFilter = "全部"
@@ -546,7 +536,6 @@ fun TidyApp() {
         // Commit only the delete marks made during duplicate review at this stage boundary.
         if (!commitMarkedDeletions(state)) return
         state.duplicateGroups = emptyList()
-        state.duplicateReport = null
         state.sources.indices.forEach { index ->
             state.sources[index] = state.sources[index].copy(duplicateGroup = null)
         }
@@ -584,7 +573,6 @@ fun TidyApp() {
         val validationRemovedCount = state.sources.count { it.deleteMarked }
         commitMarkedDeletions(state, resetUserDecisions = true)
         state.duplicateGroups = emptyList()
-        state.duplicateReport = null
         state.preview = null
         state.previewOrder = emptyList()
 
@@ -727,7 +715,6 @@ fun TidyApp() {
         val preview = state.preview.orEmpty()
         val exportConfig = ExportConfig(
             applyCleanNames = state.applyCleanNames,
-            applyGroupAndOrder = state.applyGroups || state.applyOrder,
             pretty = true,
             applyGroups = state.applyGroups,
             applyOrder = state.applyOrder,
@@ -1155,26 +1142,6 @@ private fun RuleCheckMark(checked: Boolean) {
         contentAlignment = Alignment.Center,
     ) {
         if (checked) Text("✓", color = Color.White, fontSize = UiTypography.compact, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-private fun RuleRadio(label: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier.clip(RoundedCornerShape(7.dp)).clickable(onClick = onClick).padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Box(
-            Modifier.size(14.dp).clip(RoundedCornerShape(50))
-                .border(1.dp, if (selected) Primary else Muted, RoundedCornerShape(50)),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (selected) Box(
-                Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(Primary),
-            )
-        }
-        Text(label, fontSize = UiTypography.caption, color = BodyText)
     }
 }
 
