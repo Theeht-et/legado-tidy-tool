@@ -7,8 +7,6 @@ import io.github.theeht.legadotidy.probe.ProbeStatus
 /** 按规范化 URL 判定的完全重复分组。 */
 enum class DedupKind(val label: String) {
     EXACT("相同 URL"),
-    FINGERPRINT("规则指纹相同"),
-    SIMILAR("规则高度相似"),
 }
 
 data class DedupGroup(
