@@ -79,6 +79,30 @@ val jlinkRuntime by tasks.registering(Exec::class) {
         "--output",
         out.absolutePath,
     )
+
+    // jlink 在 Windows runtime/lib 中会包含供本机 C/C++ 开发链接使用的导入库。
+    // jpackage 通过 EXE 启动器加载 JVM，不需要这两个链接文件；删除它们不影响
+    // Java 类、JNI DLL 或运行时动态库。只针对 Windows 镜像执行，其他平台不处理。
+    doLast {
+        if (System.getProperty("os.name").lowercase().contains("windows")) {
+            val linkLibraries = listOf(
+                File(out, "lib/jvm.lib"),
+                File(out, "lib/jawt.lib"),
+            )
+            var removedBytes = 0L
+            linkLibraries.forEach { file ->
+                if (file.exists()) {
+                    val size = file.length()
+                    if (!file.delete()) {
+                        throw GradleException("无法删除 JRE 开发链接库：${file.absolutePath}")
+                    }
+                    removedBytes += size
+                    logger.lifecycle("已移除非运行时开发链接库：${file.name}（$size bytes）")
+                }
+            }
+            logger.lifecycle("JRE 非运行时文件清理完成，释放 $removedBytes bytes。")
+        }
+    }
 }
 
 val windowsAppInput = layout.buildDirectory.dir("windows-app-input")
