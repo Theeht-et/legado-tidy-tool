@@ -1202,6 +1202,9 @@ private fun SourceListPanel(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+    val filterStage = sourceFilterStage(state.stage)
+    val filterLabels = sourceFilterLabelsForStage(filterStage)
+    val activeFilter = activeSourceFilter(filterStage, state.sourceFilter)
     Card(modifier.border(1.dp, Line, RoundedCornerShape(12.dp)), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(
@@ -1250,28 +1253,30 @@ private fun SourceListPanel(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 11.dp, vertical = 4.dp),
                 ) { Text("清除", fontSize = UiTypography.body) }
             }
-            HorizontalDivider(color = Line)
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(1.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                sourceFilterLabels.forEach { label ->
-                    val count = sourceFilterCount(state, label)
-                    val selected = state.sourceFilter == label
-                    Box(
-                        Modifier.clip(RoundedCornerShape(6.dp))
-                            .background(if (selected) SoftBlue else Color.Transparent)
-                            .border(1.dp, if (selected) SoftBlueBorder else Color.Transparent, RoundedCornerShape(6.dp))
-                            .clickable { state.sourceFilter = label }
-                            .padding(horizontal = 7.dp, vertical = 3.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("$label $count", fontSize = UiTypography.label, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium, color = if (selected) Primary else BodyText, maxLines = 1)
+            if (filterLabels.isNotEmpty()) {
+                HorizontalDivider(color = Line)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(1.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    filterLabels.forEach { label ->
+                        val count = sourceFilterCount(state, label)
+                        val selected = activeFilter == label
+                        Box(
+                            Modifier.clip(RoundedCornerShape(6.dp))
+                                .background(if (selected) SoftBlue else Color.Transparent)
+                                .border(1.dp, if (selected) SoftBlueBorder else Color.Transparent, RoundedCornerShape(6.dp))
+                                .clickable { state.sourceFilter = label }
+                                .padding(horizontal = 7.dp, vertical = 3.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("$label $count", fontSize = UiTypography.label, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium, color = if (selected) Primary else BodyText, maxLines = 1)
+                        }
                     }
                 }
+                HorizontalDivider(color = Line)
             }
-            HorizontalDivider(color = Line)
             if (state.stage == WorkflowStage.ORGANIZE_REVIEW) {
                 OrganizeRulePanel(
                     state = state,
@@ -2637,7 +2642,12 @@ private fun EditSourceDialog(
     )
 }
 
-private val sourceFilterLabels = listOf("全部", "重复候选", "待校验", "校验通过", "异常 / 复核", "待删除")
+private fun sourceFilterStage(stage: WorkflowStage): SourceFilterStage = when (stage) {
+    WorkflowStage.PROBE_REVIEW -> SourceFilterStage.VALIDATION
+    WorkflowStage.DEDUP_REVIEW -> SourceFilterStage.DEDUP
+    WorkflowStage.ORGANIZE_REVIEW -> SourceFilterStage.ORGANIZE
+    WorkflowStage.IMPORT, WorkflowStage.EXPORT -> SourceFilterStage.NONE
+}
 
 private fun sourceFilterCount(state: WorkflowState, filter: String): Int =
     state.sources.count { source ->
@@ -2657,7 +2667,7 @@ private fun sourceMatchesFilter(state: WorkflowState, source: WorkflowSource): B
         source.probe?.status?.label.orEmpty(), source.suggestion, source.probe?.detail.orEmpty(),
     ).any { it.lowercase().contains(query) }
     val matchesFilter = isSourceIncludedInFilter(
-        filter = state.sourceFilter,
+        filter = activeSourceFilter(sourceFilterStage(state.stage), state.sourceFilter),
         hasDuplicateGroup = source.duplicateGroup != null,
         needsProbe = source.probe == null,
         probeStatus = source.probe?.status,

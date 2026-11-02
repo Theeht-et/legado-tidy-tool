@@ -279,6 +279,28 @@ class WorkflowDecisionsTest {
     }
 
     @Test
+    fun `每个工作阶段只显示当前阶段需要的筛选分类`() {
+        assertEquals(
+            listOf("全部", "待校验", "校验通过", "异常 / 复核", "待删除"),
+            sourceFilterLabelsForStage(SourceFilterStage.VALIDATION),
+        )
+        assertEquals(
+            listOf("全部", "重复候选", "待删除"),
+            sourceFilterLabelsForStage(SourceFilterStage.DEDUP),
+        )
+        assertEquals(
+            listOf("全部", "待删除"),
+            sourceFilterLabelsForStage(SourceFilterStage.ORGANIZE),
+        )
+        assertTrue(sourceFilterLabelsForStage(SourceFilterStage.NONE).isEmpty())
+
+        // A filter selected in a previous stage must not silently constrain the next stage.
+        assertEquals("全部", activeSourceFilter(SourceFilterStage.DEDUP, "异常 / 复核"))
+        assertEquals("全部", activeSourceFilter(SourceFilterStage.ORGANIZE, "重复候选"))
+        assertEquals("待删除", activeSourceFilter(SourceFilterStage.ORGANIZE, "待删除"))
+    }
+
+    @Test
     fun `导出文件名不会覆盖输入或之前的导出`(@TempDir dir: Path) {
         val input = File(dir.toFile(), "sources.json")
         input.writeText("original")
