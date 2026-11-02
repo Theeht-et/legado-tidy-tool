@@ -96,6 +96,27 @@ internal fun shouldShowInExceptionReview(status: ProbeStatus?, deleteMarked: Boo
     !deleteMarked && status != null &&
         status != ProbeStatus.OK && status != ProbeStatus.UNCHECKABLE && status != ProbeStatus.SKIPPED
 
+internal enum class SourceFilterStage {
+    NONE,
+    VALIDATION,
+    DEDUP,
+    ORGANIZE,
+}
+
+/** Only expose categories that help with decisions in the current workflow stage. */
+internal fun sourceFilterLabelsForStage(stage: SourceFilterStage): List<String> = when (stage) {
+    SourceFilterStage.NONE -> emptyList()
+    SourceFilterStage.VALIDATION ->
+        listOf("全部", "待校验", "校验通过", "异常 / 复核", "待删除")
+    SourceFilterStage.DEDUP ->
+        listOf("全部", "重复候选", "待删除")
+    SourceFilterStage.ORGANIZE ->
+        listOf("全部", "待删除")
+}
+
+internal fun activeSourceFilter(stage: SourceFilterStage, selectedFilter: String): String =
+    selectedFilter.takeIf { it in sourceFilterLabelsForStage(stage) } ?: "全部"
+
 /**
  * Single source of truth for the category filters shown above the source list.
  * Both row visibility and the displayed counts use this predicate.
