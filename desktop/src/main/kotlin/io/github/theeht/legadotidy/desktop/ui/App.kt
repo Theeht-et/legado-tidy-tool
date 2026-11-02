@@ -276,10 +276,17 @@ private class WorkflowState {
     var previewOrder by mutableStateOf<List<Int>>(emptyList())
     var exported by mutableStateOf<ExportResult?>(null)
 
-    var keyword by mutableStateOf("剑来")
+    var keyword by mutableStateOf("我的")
     var concurrency by mutableStateOf(100)
-    var timeoutSeconds by mutableStateOf(20)
+    var timeoutSeconds by mutableStateOf(180)
     var proxy by mutableStateOf("")
+    var checkDomain by mutableStateOf(false)
+    var checkSearch by mutableStateOf(true)
+    var checkDiscovery by mutableStateOf(true)
+    var checkInfo by mutableStateOf(true)
+    var checkCategory by mutableStateOf(true)
+    var checkContent by mutableStateOf(true)
+    var writeErrorComment by mutableStateOf(true)
     var exportDir by mutableStateOf(defaultExportDir())
     var directUrl by mutableStateOf("")
 
@@ -341,7 +348,7 @@ fun TidyApp() {
         }
     }
 
-    fun startDedup() {
+    fun startDedup(validationRemovedCount: Int = 0) {
         if (state.busy || state.sources.isEmpty()) return
         if (state.sources.any { it.probe == null }) {
             state.error = "还有书源没有校验结果，不能开始去重。"
@@ -349,7 +356,7 @@ fun TidyApp() {
         }
         state.busy = true
         state.error = null
-        state.notice = "正在结合校验结果分析重复候选，不会直接删除书源。"
+        state.notice = "正在对校验阶段删除标记清理后的 ${state.sources.size} 个书源进行去重分析。"
         activeJob = scope.launch {
             try {
                 val snapshot = state.sources.toList()
@@ -374,20 +381,21 @@ fun TidyApp() {
                     val group = groupById[source.id]
                     val keep = group?.suggestedKeepId == source.id
                     val hasUserDecision = source.userDecision
+                    val deleteMarked = if (group == null) {
+                        source.deleteMarked
+                    } else {
+                        resolveDeleteMark(
+                            defaultMarked = !keep,
+                            currentMarked = source.deleteMarked,
+                            hasUserDecision = hasUserDecision,
+                        )
+                    }
                     source.copy(
                         duplicateGroup = group?.number,
-                        deleteMarked = if (group == null) {
-                            source.deleteMarked
-                        } else {
-                            resolveDeleteMark(
-                                defaultMarked = !keep,
-                                currentMarked = source.deleteMarked,
-                                hasUserDecision = hasUserDecision,
-                            )
-                        },
+                        deleteMarked = deleteMarked,
                         suggestion = when {
                             hasUserDecision -> source.suggestion
-                            group == null && source.deleteMarked -> source.suggestion
+                            deleteMarked -> "去重阶段标记删除"
                             group == null -> "未发现重复"
                             keep -> "建议保留"
                             else -> "建议删除"
@@ -399,7 +407,7 @@ fun TidyApp() {
                 state.stage = WorkflowStage.DEDUP_REVIEW
                 state.sourceFilter = "全部"
                 state.selectedId = state.sources.firstOrNull()?.id
-                state.notice = "去重分析完成：发现 ${groups.size} 个重复组；系统保留建议已参考本次校验结果。"
+                state.notice = "校验阶段已删除 ${validationRemovedCount} 个标记书源；对剩余 ${state.sources.size} 个书源去重完成，发现 ${groups.size} 个重复组。系统建议已参考剩余书源的校验结果。"
             } catch (e: CancellationException) {
                 state.error = "去重分析已停止。"
             } catch (e: Throwable) {
@@ -413,35 +421,40 @@ fun TidyApp() {
 
     fun runValidation() {
         if (state.busy || state.sources.isEmpty()) return
+        val proxy = state.proxy.trim().takeIf { it.isNotEmpty() }
+        val proxyError = LegadoProbeEngine.validateProxyConfiguration(proxy)
+        if (proxyError != null) {
+            state.error = proxyError
+            state.notice = "代理配置无效，本轮校验尚未开始；书源结果和删除标记均未更改。"
+            return
+        }
         state.busy = true
         state.error = null
         state.total = state.sources.size
-        val entry = ProbeEntry.SEARCH
-        val depth = ProbeDepth.FULL_CHAIN
         val keyword = state.keyword
         val timeoutMs = state.timeoutSeconds.coerceAtLeast(1) * 1000L
-        val proxy = state.proxy.trim().takeIf { it.isNotEmpty() }
         val concurrency = state.concurrency.coerceIn(1, 2000)
+        val options = ProbeOptions(
+            timeoutMs = timeoutMs,
+            keyword = keyword,
+            proxy = proxy,
+            checkDomain = state.checkDomain,
+            checkSearch = state.checkSearch,
+            checkDiscovery = state.checkDiscovery,
+            checkInfo = state.checkInfo,
+            checkCategory = state.checkCategory,
+            checkContent = state.checkContent,
+            writeErrorComment = state.writeErrorComment,
+        )
         val snapshot = state.sources.toList()
         val pending = snapshot.filter { source ->
             val previous = source.probe
             previous == null ||
-                previous.entry != entry ||
-                previous.depth != depth ||
-                previous.keyword != keyword ||
-                previous.timeoutMs != timeoutMs ||
-                previous.proxy != proxy ||
+                previous.options != options ||
                 previous.status == ProbeStatus.SKIPPED
         }
         state.completed = snapshot.size - pending.size
-        state.notice = "正在使用 Legado 搜索入口执行完整校验链：搜索、详情、目录和正文。"
-        val options = ProbeOptions(
-            depth = depth,
-            timeoutMs = timeoutMs,
-            keyword = keyword,
-            proxy = proxy,
-            entry = entry,
-        )
+        state.notice = "正在按 Legado 上游顺序校验：域名检测 → 搜索及结果校验 → 发现及结果校验。"
         activeJob = scope.launch {
             try {
                 val gate = Semaphore(concurrency)
@@ -450,34 +463,20 @@ fun TidyApp() {
                     pending.map { source ->
                         async(Dispatchers.IO) {
                             val index = snapshot.indexOfFirst { it.id == source.id }
-                            val result = if (!source.doc.canSearch) {
+                            val result = try {
+                                gate.withPermit { probeEngine.probe(index, source.doc, options) }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Throwable) {
                                 ProbeResult(
-                                    index,
-                                    ProbeStatus.NO_SEARCH_URL,
-                                    detail = "未配置上游搜索入口（普通源需要 searchUrl，JS 源需要 mainJs）",
-                                    entry = entry,
-                                    depth = depth,
+                                    index = index,
+                                    status = ProbeStatus.ERROR,
+                                    detail = e.message ?: e::class.java.simpleName,
                                     keyword = keyword,
                                     timeoutMs = timeoutMs,
                                     proxy = proxy,
+                                    options = options,
                                 )
-                            } else {
-                                try {
-                                    gate.withPermit { probeEngine.probe(index, source.doc, options) }
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Throwable) {
-                                    ProbeResult(
-                                        index,
-                                        ProbeStatus.ERROR,
-                                        detail = e.message ?: e::class.java.simpleName,
-                                        entry = entry,
-                                        depth = depth,
-                                        keyword = keyword,
-                                        timeoutMs = timeoutMs,
-                                        proxy = proxy,
-                                    )
-                                }
                             }
                             withContext(Dispatchers.Main) {
                                 val currentIndex = state.sources.indexOfFirst { it.id == source.id }
@@ -487,7 +486,11 @@ fun TidyApp() {
                                         probe = result,
                                         deleteMarked = deleteByDefault,
                                         userDecision = false,
-                                        suggestion = if (deleteByDefault) "建议删除" else "建议保留",
+                                         suggestion = when {
+                                            deleteByDefault -> "建议删除"
+                                            result.status == ProbeStatus.UNCHECKABLE -> "域名无法检测，建议复核"
+                                            else -> "建议保留"
+                                        },
                                     )
                                 }
                                 state.completed = (state.completed + 1).coerceAtMost(state.total)
@@ -497,12 +500,12 @@ fun TidyApp() {
                 }
                 if (state.sources.all { it.probe != null }) {
                     val marked = state.sources.count { it.deleteMarked }
-                    state.notice = "校验完成。${marked} 个书源至少有一项校验未通过，已标记为待删除；可在复核后取消标记。"
+                    state.notice = "校验完成。" + marked + " 个书源至少有一项上游校验未通过，已标记为待删除；无法检测域名的书源不会因此自动标记删除。"
                 }
             } catch (e: CancellationException) {
                 state.error = "校验已停止；已完成的结果已保留，可继续校验剩余书源。"
             } catch (e: Throwable) {
-                state.error = "校验任务失败：${e.message ?: e::class.java.simpleName}"
+                state.error = "校验任务失败：" + (e.message ?: e::class.java.simpleName)
             } finally {
                 state.busy = false
                 activeJob = null
@@ -519,36 +522,52 @@ fun TidyApp() {
         runValidation()
     }
 
+    fun resetLaterStageDecisionsForValidationReview(editedSourceId: Int) {
+        state.sources.indices.forEach { index ->
+            val current = state.sources[index]
+            val probe = if (current.id == editedSourceId) null else current.probe
+            val reset = validationReviewReset(probe?.status)
+            state.sources[index] = current.copy(
+                duplicateGroup = null,
+                probe = probe,
+                deleteMarked = reset.deleteMarked,
+                userDecision = reset.userDecision,
+                suggestion = reset.suggestion,
+            )
+        }
+        state.duplicateGroups = emptyList()
+        state.duplicateReport = null
+        state.preview = null
+        state.previewOrder = emptyList()
+        state.sourceFilter = "全部"
+    }
+
     fun confirmDedup() {
-        val emptyDuplicateGroup = state.duplicateGroups.firstOrNull { group ->
-            group.sourceIds.isNotEmpty() && group.sourceIds.all { id ->
-                state.sources.firstOrNull { it.id == id }?.deleteMarked == true
-            }
-        }
-        if (emptyDuplicateGroup != null) {
-            state.error = "重复组 ${emptyDuplicateGroup.number} 的候选项全部被标记为删除。每组至少需要保留一项，或确认它们并不重复后取消相应标记。"
-            state.selectedId = emptyDuplicateGroup.sourceIds.firstOrNull { id ->
-                state.sources.firstOrNull { it.id == id }?.deleteMarked == true
-            }
-            return
-        }
+        // Commit only the delete marks made during duplicate review at this stage boundary.
         if (!commitMarkedDeletions(state)) return
         state.duplicateGroups = emptyList()
         state.duplicateReport = null
         state.sources.indices.forEach { index ->
             state.sources[index] = state.sources[index].copy(duplicateGroup = null)
         }
-        state.stage = WorkflowStage.ORGANIZE_REVIEW
         state.sourceFilter = "全部"
+        state.error = null
+        state.preview = null
+        state.previewOrder = emptyList()
+        if (state.sources.isEmpty()) {
+            state.stage = WorkflowStage.EXPORT
+            state.selectedId = null
+            state.exported = null
+            state.notice = "已直接删除全部标记书源；没有需要保留或导出的书源。原始导入文件未修改。"
+            return
+        }
+        state.stage = WorkflowStage.ORGANIZE_REVIEW
         state.selectedRules = setOf(
             OrganizeRule.CLEAN_DECORATIONS,
             OrganizeRule.REMOVE_ADVERTISING_WORDS,
             OrganizeRule.KEEP_ORIGINAL_GROUPS,
         )
-        state.preview = null
-        state.previewOrder = emptyList()
-        state.error = null
-        state.notice = "去重阶段已确认。现在选择需要执行的整理规则；未勾选的规则不会执行。"
+        state.notice = "去重阶段待删除项已全部移除；现在只整理剩余书源。"
     }
 
     fun confirmValidation() {
@@ -557,8 +576,27 @@ fun TidyApp() {
             return
         }
         state.error = null
-        state.notice = "校验结果已确认。现在根据所有书源的校验结果识别重复项并生成保留建议。"
-        startDedup()
+
+        // Validation and deduplication are separate stages. Remove validation-stage marks
+        // now so the deduper only sees the surviving sources. A user's manual unmarking
+        // of a validation result is accepted, but that decision must not block later
+        // duplicate-stage recommendations.
+        val validationRemovedCount = state.sources.count { it.deleteMarked }
+        commitMarkedDeletions(state, resetUserDecisions = true)
+        state.duplicateGroups = emptyList()
+        state.duplicateReport = null
+        state.preview = null
+        state.previewOrder = emptyList()
+
+        if (state.sources.isEmpty()) {
+            state.stage = WorkflowStage.EXPORT
+            state.selectedId = null
+            state.exported = null
+            state.notice = "校验阶段已删除全部 ${validationRemovedCount} 个待删除书源；没有剩余书源可以进入去重或导出。原始导入文件未修改。"
+            return
+        }
+
+        startDedup(validationRemovedCount)
     }
 
     fun generateOrganizePreview() {
@@ -649,15 +687,7 @@ fun TidyApp() {
             return
         }
         val deletionPlan = planMarkedDeletions(allOrdered) { it.deleteMarked }
-        if (deletionPlan.allItemsMarked) {
-            state.error = "当前所有书源都被标记为删除。请至少保留一项，或修改删除标记后再进入导出。"
-            return
-        }
         val ordered = deletionPlan.retained
-        if (ordered.isEmpty()) {
-            state.error = "整理结果为空，无法进入导出。"
-            return
-        }
         state.removedCount += deletionPlan.removedCount
         val retainedIds = ordered.map { it.id }.toSet()
         state.preview = rankedPreview.filterKeys { it in retainedIds }
@@ -669,10 +699,10 @@ fun TidyApp() {
         state.selectedId = state.sources.firstOrNull()?.id
         state.exported = null
         state.error = null
-        state.notice = if (deletionPlan.removedCount > 0) {
-            "整理结果已确认，并将 " + deletionPlan.removedCount + " 个标记项从当前工作池移除。导出时只写入已确认或手动修改的字段。"
-        } else {
-            "整理结果已确认。导出时只写入已确认或手动修改的字段。"
+        state.notice = when {
+            ordered.isEmpty() -> "整理完成：所有标记删除项已直接移除，没有书源需要保留或导出。原始导入文件未修改。"
+            deletionPlan.removedCount > 0 -> "整理结果已确认，已直接删除 " + deletionPlan.removedCount + " 个标记项；导出只包含未标记的书源。"
+            else -> "整理结果已确认。导出时只写入已确认或手动修改的字段。"
         }
 
 
@@ -948,57 +978,30 @@ fun TidyApp() {
                             }
                         }
                         if (state.stage == WorkflowStage.DEDUP_REVIEW && editedProbeInputsChanged) {
-                            // URL/type edits invalidate this source's probe and all URL-based duplicate groups.
-                            // Keep other sources' probe results; restore their pre-dedup validation marks.
+                            // Validation marks were committed on entry to dedup. Clear every
+                            // later-stage decision rather than recreating old validation marks
+                            // from the status of sources that the user chose to keep.
                             state.stage = WorkflowStage.PROBE_REVIEW
-                            state.sourceFilter = "全部"
-                            state.duplicateGroups = emptyList()
-                            state.duplicateReport = null
-                            state.sources.indices.forEach { index ->
-                                val current = state.sources[index]
-                                val isEditedSource = current.id == id
-                                val hasUserDecision = current.userDecision
-                                val probe = if (isEditedSource) null else current.probe
-                                val deleteMarked = when {
-                                    isEditedSource -> false
-                                    probe == null -> current.deleteMarked
-                                    else -> resolveDeleteMark(
-                                        defaultMarked = shouldMarkForDeletionByDefault(probe.status),
-                                        currentMarked = current.deleteMarked,
-                                        hasUserDecision = hasUserDecision,
-                                    )
-                                }
-                                state.sources[index] = current.copy(
-                                    duplicateGroup = null,
-                                    probe = probe,
-                                    deleteMarked = deleteMarked,
-                                    suggestion = when {
-                                        isEditedSource -> "待重新校验"
-                                        hasUserDecision -> current.suggestion
-                                        deleteMarked -> "建议删除"
-                                        probe?.status == ProbeStatus.OK -> "建议保留"
-                                        probe?.status == ProbeStatus.SKIPPED -> "跳过校验"
-                                        probe != null -> "建议复核"
-                                        else -> "待重新校验"
-                                    },
-                                )
-                            }
+                            resetLaterStageDecisionsForValidationReview(id)
                             state.completed = state.sources.count { it.probe != null }
                             state.total = state.sources.size
-                            state.notice = "书源地址或类型已修改，相关校验结果已失效；其他书源结果已保留。请重新校验后再去重。"
+                            state.notice = "书源地址或类型已修改；去重阶段的删除标记和手动选择已清空，其他校验结果保留。请重新校验后再去重。"
                         } else if (
                             (state.stage == WorkflowStage.PROBE_REVIEW ||
                                 state.stage == WorkflowStage.ORGANIZE_REVIEW) && editedProbeInputsChanged
                         ) {
+                            val returningFromOrganize = state.stage == WorkflowStage.ORGANIZE_REVIEW
                             state.completed = state.sources.count { it.probe != null }
                             state.total = state.sources.size
-                            if (state.stage == WorkflowStage.ORGANIZE_REVIEW) {
+                            if (returningFromOrganize) {
                                 state.stage = WorkflowStage.PROBE_REVIEW
-                                state.sourceFilter = "全部"
-                                state.preview = null
-                                state.previewOrder = emptyList()
+                                resetLaterStageDecisionsForValidationReview(id)
                             }
-                            state.notice = "书源地址或类型已修改，该书源需要重新校验；已返回校验审核阶段。"
+                            state.notice = if (returningFromOrganize) {
+                                "书源地址或类型已修改；整理阶段的删除标记和手动选择已清空，该书源需要重新校验。"
+                            } else {
+                                "书源地址或类型已修改，该书源需要重新校验；当前校验阶段的其他删除标记保持不变。"
+                            }
                         }
                     }
                     editingId = null
@@ -1319,8 +1322,13 @@ private fun SourceListPanel(
             if (state.sources.isEmpty()) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("尚未导入书源", fontSize = UiTypography.sectionTitle, color = BodyText)
-                        Text("点击右上角「导入 JSON」选择书源文件。", fontSize = UiTypography.body, color = Muted)
+                        if (state.inputCount > 0 && state.removedCount >= state.inputCount) {
+                            Text("所有标记书源均已删除", fontSize = UiTypography.sectionTitle, color = BodyText)
+                            Text("已从当前工作池删除 ${state.removedCount} 个书源；没有保留项或可导出内容。原始导入文件未修改。", fontSize = UiTypography.body, color = Muted)
+                        } else {
+                            Text("尚未导入书源", fontSize = UiTypography.sectionTitle, color = BodyText)
+                            Text("点击右上角「导入 JSON」选择书源文件。", fontSize = UiTypography.body, color = Muted)
+                        }
                     }
                 }
             } else {
@@ -1404,7 +1412,7 @@ private fun TableHeader(showNameComparison: Boolean = false) {
         Text("URL", Modifier.weight(if (showNameComparison) 1.95f else 2.15f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
         Text("类型", Modifier.weight(0.65f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
         Text("分组", Modifier.weight(0.9f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
-        Text("耗时", Modifier.weight(0.6f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
+        Text("响应耗时", Modifier.weight(0.6f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
         Text("状态", Modifier.weight(0.95f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
         Text("建议", Modifier.weight(1.1f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
         Text("操作", Modifier.weight(1.35f), fontSize = UiTypography.label, fontWeight = FontWeight.Bold, color = BodyText)
@@ -1914,6 +1922,7 @@ private fun DetailOverviewContent(source: WorkflowSource) {
             Text(
                 when {
                     source.deleteMarked -> "该书源会在确认进入下一阶段时从当前工作池移除。"
+                    source.probe?.status == ProbeStatus.UNCHECKABLE -> "域名无法按 HTTP(S) 方式检测；其他已启用校验项目没有发现失效项。建议人工确认源地址。"
                     source.probe?.status == ProbeStatus.OK -> "校验成功；仍可根据规则完整度与重复候选情况人工判断。"
                     source.probe?.status?.let { it == ProbeStatus.TIMEOUT || it == ProbeStatus.NETWORK || it == ProbeStatus.HTTP_ERROR } == true ->
                         "网络或服务响应异常不代表书源一定失效，建议人工复核。"
@@ -1930,7 +1939,7 @@ private fun DetailOverviewContent(source: WorkflowSource) {
                     result.stageResults.forEach { stage ->
                         val count = if (stage.itemCount > 0) " · ${stage.itemCount} 项" else ""
                         Text(
-                            "${stage.stage.label}：${stage.status.label}${count} · ${stage.elapsedMs}ms",
+                            "${stage.context?.let { "$it · " }.orEmpty()}${stage.stage.label}：${stage.status.label}${count} · ${stage.elapsedMs}ms",
                             fontSize = UiTypography.caption,
                             color = when (stage.status) {
                                 io.github.theeht.legadotidy.probe.ProbeStageStatus.SUCCESS -> Ok
@@ -2125,7 +2134,7 @@ private fun WorkflowNavigationBar(
                         enabled = state.sources.isNotEmpty() && !state.busy,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                    ) { Text("确认去重并进入整理", fontSize = UiTypography.label) }
+                    ) { Text("删除去重标记并进入整理", fontSize = UiTypography.label) }
                 }
                 WorkflowStage.PROBE_REVIEW -> {
                     OutlinedButton(
@@ -2149,7 +2158,7 @@ private fun WorkflowNavigationBar(
                             enabled = state.sources.isNotEmpty(),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                        ) { Text("确认校验并开始去重", fontSize = UiTypography.label) }
+                        ) { Text("删除校验标记并开始去重", fontSize = UiTypography.label) }
                     }
                 }
                 WorkflowStage.ORGANIZE_REVIEW -> {
@@ -2175,7 +2184,7 @@ private fun WorkflowNavigationBar(
                             enabled = !state.busy,
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 3.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
-                        ) { Text("确认整理并导出", fontSize = UiTypography.label) }
+                        ) { Text("删除整理标记并进入导出", fontSize = UiTypography.label) }
                     }
                 }
                 WorkflowStage.EXPORT -> {
@@ -2275,8 +2284,21 @@ private fun SettingsDialog(state: WorkflowState, onDismiss: () -> Unit, onChoose
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    "校验模式固定为完整搜索链：搜索 → 详情 → 目录 → 正文。",
+                    "校验项目（默认值与 Legado 上游一致）",
                     fontSize = UiTypography.body,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Ink,
+                )
+                ProbeOptionRow("域名检测", state.checkDomain) { state.checkDomain = it }
+                ProbeOptionRow("搜索", state.checkSearch) { state.checkSearch = it }
+                ProbeOptionRow("发现", state.checkDiscovery) { state.checkDiscovery = it }
+                ProbeOptionRow("书籍详情", state.checkInfo) { state.checkInfo = it }
+                ProbeOptionRow("目录", state.checkCategory) { state.checkCategory = it }
+                ProbeOptionRow("正文", state.checkContent) { state.checkContent = it }
+                ProbeOptionRow("记录错误注释", state.writeErrorComment) { state.writeErrorComment = it }
+                Text(
+                    "单源超时包住整轮校验，默认 180 秒；域名 Socket 检测另按上游使用 2 秒超时。书源 ruleSearch.checkKeyWord 有效时优先于上方默认关键词。",
+                    fontSize = UiTypography.caption,
                     color = Muted,
                 )
                 OutlinedTextField(
@@ -2297,6 +2319,24 @@ private fun SettingsDialog(state: WorkflowState, onDismiss: () -> Unit, onChoose
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } },
     )
+}
+
+@Composable
+private fun ProbeOptionRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+        )
+        Text(label, fontSize = UiTypography.body, color = BodyText)
+    }
 }
 
 @Composable
@@ -2389,12 +2429,16 @@ private fun CompareGroupDialog(
     onDismiss: () -> Unit,
 ) {
     val candidates = group.sourceIds.mapNotNull { id -> state.sources.firstOrNull { it.id == id } }
-    var keepId by remember(group.number) {
-        mutableStateOf(candidates.firstOrNull { !it.deleteMarked }?.id ?: group.suggestedKeepId)
+    var keepId by remember(group.number, candidates.map { it.id to it.deleteMarked }) {
+        mutableStateOf(
+            initialDuplicateKeepId(
+                candidates.map { it.id to it.deleteMarked },
+                group.suggestedKeepId,
+            )
+        )
     }
-    var keepAll by remember(group.number) {
-        mutableStateOf(candidates.isNotEmpty() && candidates.all { !it.deleteMarked })
-    }
+    var keepSelectionMade by remember(group.number) { mutableStateOf(false) }
+    var keepAll by remember(group.number) { mutableStateOf(false) }
     val differingRuleKeys = ruleDifferenceKeys(candidates)
     Dialog(
         onDismissRequest = onDismiss,
@@ -2413,7 +2457,7 @@ private fun CompareGroupDialog(
                 ) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text("重复组 ${group.number}", fontSize = UiTypography.emphasis, fontWeight = FontWeight.Bold, color = Ink)
-                        Text("选择保留的书源；其他候选将标记为待删除", fontSize = UiTypography.caption, color = Muted)
+                        Text("可明确选择一个保留项或保留全部；未作选择时不会更改当前标记。", fontSize = UiTypography.caption, color = Muted)
                     }
                     TextButton(onClick = onDismiss, contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)) {
                         Text("×", fontSize = UiTypography.pageTitle, color = Muted)
@@ -2435,20 +2479,30 @@ private fun CompareGroupDialog(
                 ) {
                     candidates.forEachIndexed { index, source ->
                         val recommended = source.id == group.suggestedKeepId
-                        val selectedKeep = !keepAll && source.id == keepId
-                        val proposedKeep = keepAll || selectedKeep
+                        val selectedKeep = !keepAll && keepSelectionMade && source.id == keepId
+                        val proposedKeep = when {
+                            keepAll -> true
+                            keepSelectionMade -> selectedKeep
+                            else -> !source.deleteMarked
+                        }
                         val differences = ruleDifferenceSummary(differingRuleKeys, source)
                         Row(
                             Modifier.fillMaxWidth()
                                 .background(if (selectedKeep) SoftBlue else Color.White)
-                                .clickable(enabled = !state.busy && !keepAll) { keepId = source.id }
+                                .clickable(enabled = !state.busy && !keepAll) {
+                                    keepId = source.id
+                                    keepSelectionMade = true
+                                }
                                 .padding(horizontal = 14.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(Modifier.width(42.dp), contentAlignment = Alignment.CenterStart) {
                                 RadioButton(
                                     selected = selectedKeep,
-                                    onClick = { keepId = source.id },
+                                    onClick = {
+                                        keepId = source.id
+                                        keepSelectionMade = true
+                                    },
                                     enabled = !state.busy && !keepAll,
                                     modifier = Modifier.size(28.dp),
                                 )
@@ -2489,8 +2543,8 @@ private fun CompareGroupDialog(
                             Box(Modifier.width(88.dp), contentAlignment = Alignment.CenterStart) {
                                 Text(
                                     when {
-                                        keepAll -> "全部保留"
-                                        selectedKeep -> "保留"
+                                        proposedKeep -> "保留"
+                                        source.deleteMarked -> "已标记删除"
                                         else -> "标记删除"
                                     },
                                     fontSize = UiTypography.label,
@@ -2513,30 +2567,42 @@ private fun CompareGroupDialog(
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
                             checked = keepAll,
-                            onCheckedChange = { keepAll = it },
-                            enabled = !state.busy,
+                            onCheckedChange = {
+                                keepAll = it
+                                keepSelectionMade = false
+                            },
+                            enabled = !state.busy && candidates.isNotEmpty(),
                             modifier = Modifier.size(30.dp),
                         )
-                        Text("本组全部保留", fontSize = UiTypography.label, color = BodyText)
+                        Text("保留本组全部候选", fontSize = UiTypography.label, color = BodyText)
                     }
                     TextButton(onClick = onDismiss) { Text("取消", color = Muted) }
                     Spacer(Modifier.width(5.dp))
                     Button(
                         onClick = {
                             candidates.forEach { candidate ->
-                                val keep = keepAll || candidate.id == keepId
+                                val keep = keepAll || (keepSelectionMade && candidate.id == keepId)
                                 val index = state.sources.indexOfFirst { it.id == candidate.id }
                                 if (index >= 0) state.sources[index] = state.sources[index].copy(
+                                    // Duplicate-stage marks are reviewable and may be changed
+                                    // by explicitly choosing a different keeper.
                                     deleteMarked = !keep,
                                     userDecision = true,
-                                    suggestion = if (keep) {
-                                        if (keepAll) "用户确认：本组全部保留" else "用户指定保留"
-                                    } else "用户确认：同组其他候选删除",
+                                    suggestion = when {
+                                        keep && keepAll -> "用户确认：本组全部候选保留"
+                                        keep -> "用户指定保留"
+                                        else -> "用户确认：同组其他候选删除"
+                                    },
                                 )
                             }
                             onDismiss()
                         },
-                        enabled = !state.busy && candidates.isNotEmpty(),
+                        enabled = !state.busy && canSaveDuplicateChoice(
+                            selectionMade = keepSelectionMade,
+                            keepAll = keepAll,
+                            keepId = keepId,
+                            candidateIds = candidates.map { it.id },
+                        ),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 5.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.White),
                     ) { Text("保存选择", fontSize = UiTypography.label) }
@@ -2658,7 +2724,7 @@ private data class ProbeStatusStyle(val background: Color, val foreground: Color
 
 private fun probeStatusStyle(status: ProbeStatus?): ProbeStatusStyle = when (status) {
     ProbeStatus.OK -> ProbeStatusStyle(SoftGreen, Ok)
-    ProbeStatus.PARTIAL, ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> ProbeStatusStyle(SoftAmber, Warn)
+    ProbeStatus.UNCHECKABLE, ProbeStatus.PARTIAL, ProbeStatus.TIMEOUT, ProbeStatus.NETWORK, ProbeStatus.HTTP_ERROR -> ProbeStatusStyle(SoftAmber, Warn)
     ProbeStatus.NO_SEARCH_URL, ProbeStatus.NO_EXPLORE_CATEGORY, ProbeStatus.UNSUPPORTED, ProbeStatus.PARSE_EMPTY, ProbeStatus.NEED_JS, ProbeStatus.ERROR ->
         ProbeStatusStyle(SoftRed, Bad)
     else -> ProbeStatusStyle(SoftSlate, Muted)
@@ -2700,24 +2766,29 @@ private fun buildSourceRows(state: WorkflowState): List<SourceListRow> {
     return rows
 }
 
-private fun commitMarkedDeletions(state: WorkflowState): Boolean {
+private fun commitMarkedDeletions(
+    state: WorkflowState,
+    resetUserDecisions: Boolean = false,
+): Boolean {
     val plan = planMarkedDeletions(state.sources.toList()) { it.deleteMarked }
-    if (plan.allItemsMarked) {
-        state.error = "当前所有书源都被标记为删除。请至少保留一项，或修改删除标记后再进入下一阶段。"
-        return false
-    }
-    if (plan.removedCount == 0) {
-        state.notice = "没有待删除的书源需要移除。"
-        return plan.canAdvance
-    }
-    if (!plan.canAdvance) return false
-
     state.sources.clear()
-    state.sources.addAll(plan.retained.map { it.copy(deleteMarked = false, duplicateGroup = null) })
+    state.sources.addAll(plan.retained.map { source ->
+        source.copy(
+            deleteMarked = false,
+            duplicateGroup = null,
+            userDecision = if (resetUserDecisions) false else source.userDecision,
+        )
+    })
     state.removedCount += plan.removedCount
     state.selectedId = resolveSelectedId(state.selectedId, state.sources) { it.id }
-    state.notice = "已将 ${plan.removedCount} 个标记项从当前工作池移除；导入文件未修改。"
-    return state.sources.isNotEmpty()
+    state.notice = when {
+        plan.removedCount == 0 -> "没有待删除的书源需要移除。"
+        state.sources.isEmpty() ->
+            "已直接删除全部 ${plan.removedCount} 个标记书源；没有保留项。导入文件未修改。"
+        else ->
+            "已直接删除 ${plan.removedCount} 个标记书源；剩余 ${state.sources.size} 个未标记书源进入下一阶段。导入文件未修改。"
+    }
+    return true
 }
 
 private fun toggleDeleteMark(state: WorkflowState, id: Int, marked: Boolean? = null) {

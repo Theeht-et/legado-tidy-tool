@@ -38,5 +38,15 @@ internal class ProbeProxyContext(
         private val currentProxyLocal = ThreadLocal<String?>()
 
         fun currentProxy(): String? = currentProxyLocal.get()
+
+        /**
+         * A configured source proxy always overrides the tool default. An explicitly
+         * empty source proxy means direct access; only an absent source proxy inherits
+         * the coroutine-scoped default.
+         */
+        fun resolveProxy(sourceProxy: String?, sourceProxyConfigured: Boolean): String? {
+            val normalized = sourceProxy?.trim()?.takeIf { it.isNotEmpty() }
+            return if (sourceProxyConfigured) normalized else normalized ?: currentProxy()
+        }
     }
 }

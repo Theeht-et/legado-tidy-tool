@@ -7,6 +7,7 @@ import io.github.theeht.legadotidy.probe.ProbeStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -41,7 +42,7 @@ class WorkflowDecisionsTest {
     }
 
     @Test
-    fun `不允许把全部书源一次性标记删除`() {
+    fun `全部标记删除时允许清空工作池而不强制保留一项`() {
         val original = listOf(
             Row(id = 7, markedForDeletion = true),
             Row(id = 8, markedForDeletion = true),
@@ -49,10 +50,10 @@ class WorkflowDecisionsTest {
 
         val plan = planMarkedDeletions(original) { it.markedForDeletion }
 
-        assertFalse(plan.canAdvance)
+        assertTrue(plan.canAdvance)
         assertTrue(plan.allItemsMarked)
-        assertEquals(0, plan.removedCount)
-        assertEquals(listOf(7, 8), plan.retained.map { it.id })
+        assertEquals(2, plan.removedCount)
+        assertTrue(plan.retained.isEmpty())
     }
 
     @Test
@@ -136,11 +137,88 @@ class WorkflowDecisionsTest {
     @Test
     fun `任一校验未通过都默认标记待删除`() {
         assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.OK))
-        ProbeStatus.values().filter { it != ProbeStatus.OK }.forEach { status ->
-            assertTrue(shouldMarkForDeletionByDefault(status), status.name)
-        }
+        ProbeStatus.values()
+            .filter { it != ProbeStatus.OK && it != ProbeStatus.UNCHECKABLE }
+            .forEach { status ->
+                assertTrue(shouldMarkForDeletionByDefault(status), status.name)
+            }
+        assertFalse(shouldMarkForDeletionByDefault(ProbeStatus.UNCHECKABLE))
+        assertFalse(shouldShowInExceptionReview(ProbeStatus.UNCHECKABLE, deleteMarked = false))
         assertTrue(shouldShowInExceptionReview(ProbeStatus.PARTIAL, deleteMarked = false))
         assertFalse(shouldShowInExceptionReview(ProbeStatus.PARTIAL, deleteMarked = true))
+    }
+
+    @Test
+    fun `每个阶段只清除本阶段的待删除标记`() {
+        val imported = listOf(
+            Row(id = 1, markedForDeletion = true),
+            Row(id = 2, markedForDeletion = false),
+            Row(id = 3, markedForDeletion = false),
+        )
+
+        // Validation -> Dedup: validation marks are removed before duplicate analysis.
+        val afterValidation = planMarkedDeletions(imported) { it.markedForDeletion }.retained
+        assertEquals(listOf(2, 3), afterValidation.map { it.id })
+
+        // Dedup marks are newly assigned to the remaining pool; they do not inherit
+        // validation-stage marks or decisions from sources already removed.
+        val dedupPool = afterValidation.map { row ->
+            row.copy(markedForDeletion = row.id == 3)
+        }
+        val afterDedup = planMarkedDeletions(dedupPool) { it.markedForDeletion }.retained
+        assertEquals(listOf(2), afterDedup.map { it.id })
+
+        // Organize -> Export: the organize-stage mark is committed at its own boundary.
+        val organizePool = afterDedup.map { it.copy(markedForDeletion = true) }
+        val afterOrganize = planMarkedDeletions(organizePool) { it.markedForDeletion }.retained
+        assertTrue(afterOrganize.isEmpty())
+    }
+
+    @Test
+    fun `退回校验审核时清空后续阶段标记且不复活旧校验失败项`() {
+        val statuses = listOf(
+            ProbeStatus.NETWORK,
+            ProbeStatus.OK,
+            ProbeStatus.UNCHECKABLE,
+            ProbeStatus.SKIPPED,
+            null,
+        )
+
+        val reset = statuses.map(::validationReviewReset)
+
+        assertTrue(reset.all { !it.deleteMarked && !it.userDecision })
+        assertEquals(
+            listOf("建议复核", "建议保留", "建议保留", "跳过校验", "待重新校验"),
+            reset.map { it.suggestion },
+        )
+    }
+
+    @Test
+    fun `重复组初始化只指向尚未标记删除的候选且全标记时不自动保留`() {
+        assertEquals(
+            202,
+            initialDuplicateKeepId(listOf(101 to true, 202 to false, 303 to false), 101),
+        )
+        assertEquals(101, initialDuplicateKeepId(listOf(101 to false, 202 to true), 101))
+        assertNull(initialDuplicateKeepId(listOf(101 to true, 202 to true), 101))
+    }
+
+    @Test
+    fun `重复组弹窗只有明确选择保留项或勾选全部才允许保存`() {
+        val candidateIds = listOf(101, 202)
+        val suggestedDefault = initialDuplicateKeepId(listOf(101 to true, 202 to false), 101)
+
+        assertFalse(canSaveDuplicateChoice(false, false, suggestedDefault, candidateIds))
+        assertFalse(canSaveDuplicateChoice(false, false, null, candidateIds))
+        assertTrue(canSaveDuplicateChoice(true, false, 202, candidateIds))
+        assertTrue(canSaveDuplicateChoice(false, true, null, candidateIds))
+    }
+
+    @Test
+    fun `去重建议可标记删除且用户明确保留选择优先`() {
+        assertTrue(resolveDeleteMark(defaultMarked = true, currentMarked = false, hasUserDecision = false))
+        assertFalse(resolveDeleteMark(defaultMarked = true, currentMarked = false, hasUserDecision = true))
+        assertTrue(resolveDeleteMark(defaultMarked = false, currentMarked = true, hasUserDecision = true))
     }
 
     @Test
@@ -167,6 +245,7 @@ class WorkflowDecisionsTest {
         assertTrue(matches("待校验", pending = true))
         assertFalse(matches("待校验", status = ProbeStatus.OK))
         assertTrue(matches("校验通过", status = ProbeStatus.OK))
+        assertTrue(matches("校验通过", status = ProbeStatus.UNCHECKABLE))
         assertFalse(matches("校验通过", status = ProbeStatus.NETWORK))
         assertFalse(matches("校验通过", status = ProbeStatus.PARTIAL))
         assertTrue(matches("异常 / 复核", status = ProbeStatus.NETWORK))

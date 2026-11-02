@@ -125,14 +125,14 @@ object Deduper {
      * 与跳过/缺失结果一样继续比较配置能力。
      */
     private fun probeQuality(result: ProbeResult?): Int = when (result?.status) {
-        ProbeStatus.OK -> 0
+        ProbeStatus.OK, ProbeStatus.UNCHECKABLE -> 0
         ProbeStatus.NO_SEARCH_URL, ProbeStatus.PARSE_EMPTY -> 2
         else -> 1
     }
 
     /** 只在成功校验时比较实测耗时；失败、跳过和缺失结果不提供速度依据。 */
     private fun successfulProbeElapsedMs(result: ProbeResult?): Long =
-        result?.takeIf { it.status == ProbeStatus.OK && it.elapsedMs > 0 }?.elapsedMs ?: Long.MAX_VALUE
+        result?.takeIf { it.ok && it.elapsedMs > 0 }?.elapsedMs ?: Long.MAX_VALUE
 
     private fun coreCapabilityCount(source: BookSourceDoc): Int = listOf(
         source.canSearch,

@@ -29,6 +29,7 @@ import io.legado.app.help.http.CookieManager.mergeCookies
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.http.Cronet
 import io.legado.app.help.http.RequestMethod
+import io.legado.app.help.http.ProbeProxyContext
 import io.legado.app.help.http.StrResponse
 import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.get
@@ -114,6 +115,7 @@ class AnalyzeUrl(
     private var charset: String? = null
     private var method = RequestMethod.GET
     private var proxy: String? = null
+    private var sourceProxyConfigured: Boolean = false
     private var readTimeoutMs: Long? = readTimeout
     private var callTimeoutMs: Long? = callTimeout
     private var urlTimeoutConfigured: Boolean = false
@@ -141,6 +143,7 @@ class AnalyzeUrl(
         })?.let {
             headerMap.putAll(it)
             if (it.containsKey("proxy")) {
+                sourceProxyConfigured = true
                 proxy = it["proxy"]
                 headerMap.remove("proxy")
             }
@@ -636,8 +639,9 @@ class AnalyzeUrl(
         StrResponse(getErrResponse(e), e.stackTraceStr)
 
     private fun getClient(): OkHttpClient {
-        validateDnsIpProxyCompatibility(proxy, dnsIp)
-        val client = getProxyClient(proxy)
+        val effectiveProxy = ProbeProxyContext.resolveProxy(proxy, sourceProxyConfigured)
+        validateDnsIpProxyCompatibility(effectiveProxy, dnsIp)
+        val client = getProxyClient(effectiveProxy, inheritContextProxy = false)
         if (
             readTimeoutMs == null &&
             callTimeoutMs == null &&
