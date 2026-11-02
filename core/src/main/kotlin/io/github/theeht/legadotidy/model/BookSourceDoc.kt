@@ -57,11 +57,17 @@ class RuleGroup internal constructor(private val raw: JsonObject?) {
         return if (value.isJsonPrimitive) value.asString else value.toString()
     }
 
+    /** 遍历实际存在的字段，不为每次行为评分额外创建中间 Map。 */
+    fun forEachField(action: (String, String) -> Unit) {
+        raw?.entrySet()?.forEach { (key, value) ->
+            action(key, if (value.isJsonNull) "" else if (value.isJsonPrimitive) value.asString else value.toString())
+        }
+    }
+
     /** 返回实际存在的字段，而不是假设每个书源都填满上游实体的所有属性。 */
-    fun fields(): Map<String, String> = raw?.entrySet()
-        ?.associateTo(LinkedHashMap()) { (key, value) ->
-            key to if (value.isJsonNull) "" else if (value.isJsonPrimitive) value.asString else value.toString()
-        } ?: emptyMap()
+    fun fields(): Map<String, String> = LinkedHashMap<String, String>().also { result ->
+        forEachField { key, value -> result[key] = value }
+    }
 
     fun isEmpty(): Boolean = raw == null || raw.size() == 0
 }
@@ -88,6 +94,16 @@ class BookSourceDoc(val raw: JsonObject) {
     val ruleToc: RuleGroup = ruleGroup(SourceField.RULE_TOC)
     val ruleContent: RuleGroup = ruleGroup(SourceField.RULE_CONTENT)
     val ruleReview: RuleGroup = ruleGroup(SourceField.RULE_REVIEW)
+
+    // 在构造时解析一次；行为评分复用这些 RuleGroup，避免反复解析 JSON 字符串。
+    private val parsedRuleGroups: Map<String, RuleGroup> = mapOf(
+        SourceField.RULE_SEARCH to ruleSearch,
+        SourceField.RULE_EXPLORE to ruleExplore,
+        SourceField.RULE_BOOK_INFO to ruleBookInfo,
+        SourceField.RULE_TOC to ruleToc,
+        SourceField.RULE_CONTENT to ruleContent,
+        SourceField.RULE_REVIEW to ruleReview,
+    )
 
     private fun ruleGroup(key: String): RuleGroup {
         val element = raw.get(key) ?: return RuleGroup(null)
@@ -141,7 +157,7 @@ class BookSourceDoc(val raw: JsonObject) {
         }
 
         for (groupName in SourceField.RULE_GROUPS) {
-            ruleGroup(groupName).fields().forEach { (field, value) ->
+            parsedRuleGroups.getValue(groupName).forEachField { field, value ->
                 if (value.isNotEmpty()) m["$groupName.$field"] = value
             }
         }
